@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- Harnesses are drawn and kept in this browser tab. The only network use is reading a board's fab
+     package from Signoff EE's private repos (GitHub, read only), with JSZip and SheetJS pinned like Fabcheck's. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.sheetjs.com; connect-src 'self' https://api.github.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>Loom · Harness drawings</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23004952'/%3E%3Cpath d='M7 11h6c4 0 4 10 8 10h4M7 21h6c4 0 4-10 8-10h4' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/suite.css">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div id="demo-banner" class="demo-banner" hidden></div>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand" data-act="home" style="cursor:pointer" title="Home">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"><path d="M2.5 6.5h3.5c3 0 3 7 6 7h5.5M2.5 13.5h3.5c3 0 3-7 6-7h5.5"/></svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-name">Loom</div>
+        <div class="brand-sub">Dovetail harness drawings</div>
+      </div>
+    </div>
+    <div class="side-head">
+      <span class="side-label">Harnesses</span>
+      <button class="icon-btn" data-act="new" title="New harness (N)" aria-label="New harness">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+      </button>
+    </div>
+    <nav class="side-list" id="harness-list"></nav>
+    <button class="side-link" data-act="open" title="Open a .loom.json file">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5a2 2 0 0 1 2-2h3l2 2h5a2 2 0 0 1 2 2V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      Open a file
+    </button>
+    <div class="side-tools">
+      <div class="side-head"><span class="side-label">Dovetail Signoff</span></div>
+      <a class="side-link" href="../pcb_dfm/index.html" data-demo-href title="Open Fabcheck, the PCB fab package check">
+        <span class="tool-mark"><svg viewBox="0 0 18 18" fill="none" stroke="#fff" stroke-width="1.6"><rect x="1.5" y="1.5" width="15" height="15" rx="2.5"/><circle cx="6" cy="6" r="1.4" fill="#fff" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="#fff" stroke="none"/></svg></span>
+        <span>Fabcheck<small>PCB fab package check</small></span>
+      </a>
+      <a class="side-link" href="../signoff/index.html" data-demo-href title="Back to Dovetail Signoff, all tools">
+        <span class="tool-mark"><svg viewBox="0 0 18 18" fill="#fff"><rect x="2" y="2" width="6" height="6" rx="1.5"/><rect x="10" y="2" width="6" height="6" rx="1.5"/><rect x="2" y="10" width="6" height="6" rx="1.5"/><rect x="10" y="10" width="6" height="6" rx="1.5"/></svg></span>
+        <span>All tools<small>Dovetail Signoff home</small></span>
+      </a>
+    </div>
+    <div class="side-foot">
+      <div class="privacy" title="Harnesses are kept in this browser until you save a file. Nothing is uploaded.">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <span>Stays in this browser</span>
+      </div>
+      <span class="lm-version" id="version"></span>
+      <button class="icon-btn" data-act="theme" id="theme-btn" title="Dark mode" aria-label="Toggle dark mode"></button>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <header class="toolbar" id="toolbar">
+      <div class="toolbar-center"><div class="seg" id="view-seg" role="tablist"></div></div>
+      <div class="toolbar-actions" id="toolbar-actions"></div>
+    </header>
+    <div id="page"></div>
+    <section class="build-view" id="build-view" hidden>
+      <div class="parts-pane" id="parts-pane"></div>
+      <div class="canvas-wrap cv-paper" id="canvas-wrap">
+        <svg class="lm-canvas" id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="board-hud" id="hud"></div>
+        <div class="tip" id="tip"></div>
+        <div class="coords" id="coords"></div>
+      </div>
+      <aside class="rail" id="rail"></aside>
+    </section>
+  </main>
+</div>
+<div class="toasts" id="toasts"></div>
+<div class="lm-modal-back" id="board-modal" hidden><div class="lm-modal" role="dialog" aria-modal="true" aria-label="Add a board connector" id="board-modal-body"></div></div>
+<input type="file" id="file-input" accept=".json,application/json" hidden>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT" crossorigin="anonymous"></script>
+<script src="assets/vendor/ipc356.js"></script>
+<script src="assets/vendor/assembly.js"></script>
+<script src="assets/version.js"></script>
+<script src="assets/util.js"></script>
+<script src="assets/library.js"></script>
+<script src="assets/model.js"></script>
+<script src="assets/conn.js"></script>
+<script src="assets/boards.js"></script>
+<script src="assets/shapes.js"></script>
+<script src="assets/sheet.js"></script>
+<script src="assets/demo.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
