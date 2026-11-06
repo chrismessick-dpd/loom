@@ -1,15 +1,71 @@
 # Loom
 
 Loom is a harness drawing tool in the Dovetail Signoff suite, and a prototype. You add the ends,
-click pin to pin to run wires, and group wires into cables. Loom draws the wiring diagram, the
-connector faces, the wire list, the BOM, the notes and the title block on one printable sheet.
+click pin to pin to run wires, and group wires into cables. Loom draws the sheet a tech builds
+from.
 
-- **Hosted:** https://chrismessick-dpd.github.io/loom/ (try `?demo`)
-- **From a board:** a connector can come from a Signoff EE board's stored fab package. It gets the
-  board's pin names, nets as pin labels, and suggested wires to other ends with matching nets.
-  Reading uses the GitHub access Signoff EE keeps in the browser and is read-only.
-- **Storage:** harnesses stay in the browser until you save a `.loom.json` file.
+**Hosted:** https://chrismessick-dpd.github.io/loom/ (add `?demo` for a made-up Smart Thermostat
+harness).
 
-It is a static site with classic scripts and no build step. Serve the folder above it (so
-`../pcb_dfm` and `../ee_design_review` resolve) and open `loom/?demo`. See `CLAUDE.md` for the
-layout, and `docs/direction-2026-11.md` for the design direction and the harness software audit.
+## Features
+
+**Build**: a WireViz-style wiring diagram, laid out automatically.
+- **Connectors.** Each is a table with a header, its family, gender and pin count, and one row per
+  pin with its label.
+  - Families: JST, Molex, TE, D-sub, M8/M12, generic, flying leads, ring terminals and ferrules.
+    Housing part numbers are suggested where the series names them.
+  - Pin labels are usually net names.
+- **Wires.** Click a pin, then a pin on another end or a splice. Each wire has a color (IEC 60757
+  codes, with stripes), a gauge and a signal. *Wire 1:1* runs pin *n* to pin *n* between two ends.
+- **Cables and bundles.**
+  - Shift-click wires to make a cable, a twisted pair or a shield.
+  - Each cable gets its own box (`4x · 0.13 mm² (26 AWG) · 300 mm`). Other wires are bundled by the
+    two ends they join.
+  - Lengths are set per box, face to face.
+- **Selecting.** Selecting an end, wire or cable dims everything unrelated.
+
+**From a board**: add a connector from a Signoff EE board's stored fab package.
+- Loom reads the latest tagged revision's package, or the latest stored Fabcheck run when none is
+  tagged.
+- It gets the board's pin names, with mounting and shield pads left out, and its nets as pin labels.
+- It suggests the mating family from the board's part number.
+- It offers wires between ends whose pins carry the same net.
+- Reading is read-only and uses the GitHub access Signoff EE keeps in the browser.
+
+**Drawing**: one printable sheet.
+- **Contents:** the wiring diagram, a face view of each connector (with pin 1 and the side shown),
+  the wire list, the BOM, numbered notes and a title block.
+- **Export:** SVG, PNG, or print and PDF.
+- **Wires section:** under the sheet, it opens to the editable wire list. It has CSV export and
+  paste from a spreadsheet (`P1.3, P2.3, I2C_SDA, BU, 28`).
+
+**BOM**: housings, terminals per wired pin, splices, wire by gauge and color, cables, shields and
+coverings. Lengths include an allowance (5% by default). CSV export.
+
+**Checks**:
+- duplicate refs;
+- wires on pins that don't exist, or two wires on one pin;
+- gauges outside a terminal's range;
+- missing colors, gauges or lengths;
+- unused pins and loose ends.
+
+**Everything else**
+- **Storage:** harnesses stay in this browser until you save a `.loom.json` file. Open one, or drop
+  it on the page.
+- **Shortcuts:** undo and redo (Ctrl+Z, Ctrl+Shift+Z), Save (Ctrl+S), add a connector (C), fit the
+  diagram (F), cancel (Esc) and Delete.
+- **Look:** light and dark themes, shared with the rest of Signoff. Lengths are stored in mm and
+  shown in mm and in.
+
+## Running it
+
+It's a static site of classic scripts with no build step.
+- **Libraries:** JSZip and SheetJS load from CDNs with pinned integrity hashes.
+- **Locally:** serve the folder above Loom, so `../pcb_dfm` and `../ee_design_review` resolve, and
+  open `loom/?demo`.
+- **Copied files:**
+  - `assets/suite.css` comes from Signoff EE, through `tools/sync_suite_css.py`.
+  - `assets/vendor/` holds Fabcheck's netlist and BOM parsers, copied by `tools/sync_vendor.py`.
+
+See `CLAUDE.md` for the code layout, and `docs/direction-2026-11.md` for the design direction, the
+harness software audit and the feature options list.
