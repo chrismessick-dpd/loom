@@ -214,8 +214,8 @@
   }
 
   // Pointer: drag a connector, splice or box to move it (snapping to the grid; Ctrl places it
-  // anywhere), drag anywhere else, or with the right or middle button anywhere, to pan; wheel to
-  // zoom; click to pick or wire.
+  // anywhere); drag with the right or middle button to pan; wheel to zoom; click to pick or wire.
+  // A left drag on empty canvas does nothing.
   let gesture = null;
   function onDown(e) {
     if (e.button > 2) return;
@@ -242,6 +242,8 @@
       renderCanvas();
       return;
     }
+    if (g.button === 0) return; // a left drag on empty canvas does nothing; the right or middle button pans
+    svgEl().classList.add('dragging');
     S.cam.x = g.cam0.x - dx / S.cam.k; S.cam.y = g.cam0.y - dy / S.cam.k;
     svgEl().setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${svgEl().clientWidth / S.cam.k} ${svgEl().clientHeight / S.cam.k}`);
   }

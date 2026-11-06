@@ -13,6 +13,8 @@ harness).
 - **Arranging.** Drag a connector, splice or box to move it; it snaps to the grid. Hold Ctrl to
   place it anywhere. The grid size (or Off) is set over the canvas, and **Auto layout** forgets the
   dragged positions. Positions are saved with the harness and used on the drawing.
+- **Navigating.** Drag with the right (or middle) mouse button to pan, and use the wheel to zoom.
+  **Fit** (F) frames the diagram. A left drag on empty canvas does nothing.
 - **Connectors.** Each is a table with a header, its family, gender and pin count, and one row per
   pin with its label.
   - Families: JST, Molex, TE, D-sub, M8/M12, generic, flying leads, ring terminals and ferrules.

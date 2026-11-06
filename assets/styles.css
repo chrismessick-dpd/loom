@@ -117,8 +117,7 @@ body.has-banner .build-view { height: calc(100dvh - 56px - 33px); }
 .howto i { font-style: normal; font-weight: 700; color: var(--accent); text-align: center; }
 
 .canvas-wrap { position: relative; min-width: 0; background: var(--canvas-bg); overflow: hidden; }
-.lm-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; user-select: none; }
-.lm-canvas:active { cursor: grabbing; }
+.lm-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: default; user-select: none; }
 .board-hud { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .board-hud .seg { background: rgba(40, 40, 44, 0.72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
 .board-hud .seg button { color: rgba(255, 255, 255, 0.72); }
@@ -206,7 +205,7 @@ button.chip.g-chip { cursor: pointer; }
 /* Grid and dragging */
 .lm-canvas .gd { fill: var(--cv-ink-2); opacity: 0.22; }
 .lm-canvas .gd.major { opacity: 0.45; }
-.lm-canvas .cv-head, .lm-canvas .cv-boxg, .lm-canvas .cv-splice { cursor: grab; }
+.lm-canvas .cv-head, .lm-canvas .cv-boxg, .lm-canvas .cv-splice, .lm-canvas .cv-wrow, .lm-canvas .w-hit { cursor: default; }
 .lm-canvas.dragging, .lm-canvas.dragging * { cursor: grabbing !important; }
 .hud-grid { display: flex; align-items: center; gap: 6px; padding: 0 4px 0 12px; font-size: 12.5px; color: var(--text-2); }
 .hud-grid select { border: none; background: var(--bg-sunk); color: var(--text); border-radius: 7px; padding: 4px 6px; font: inherit; cursor: pointer; }
