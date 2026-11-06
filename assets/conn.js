@@ -126,7 +126,7 @@
     const infoW = info.reduce((t, s) => t + tw(s) + 20, 0);
     const w = Math.max(rowW, infoW, note ? tw(note, 11) + 20 : 0, 180);
     const h0 = G.HEAD + G.INFO + (note ? 18 : 0);
-    return { w, h: h0 + rows.length * G.BROW + 6, h0, port0: h0 + G.BROW / 2, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
+    return { w, h: h0 + rows.length * G.BROW + 6, h0, port0: h0 + G.BROW - 3, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
   }
 
   function layout(h, A) {
@@ -332,7 +332,8 @@
     const c = sz.cols, inner = c.from + c.c + c.to + 40 + (c.t ? c.t + 18 : 0);
     const x0 = x + (w - inner) / 2;
     sz.rows.forEach((r, i) => {
-      const top = y + sz.h0 + i * G.BROW, ty = top + G.BROW / 2 + 4;
+      // The text sits above the wire, which runs near the bottom of its row (sz.port0).
+      const top = y + sz.h0 + i * G.BROW, ty = top + 12;
       o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(x)}" y="${f(top)}" width="${f(w)}" height="${G.BROW}"/>` +
         `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + 20 + c.c / 2)}" y="${f(ty)}" text-anchor="middle">${esc(r.color)}</text>` +
