@@ -34,7 +34,7 @@
 .lm-sheet .tube-tex.cv-spiral{stroke-dasharray:2 7}.lm-sheet .tube-tex.cv-tape{stroke-dasharray:14 2}.lm-sheet .tube-tex.cv-heatshrink{display:none}
 .lm-sheet .w-edge{fill:none;stroke:#1d1d1f;stroke-width:4.4;stroke-linecap:round;stroke-linejoin:round}
 .lm-sheet .w-base,.lm-sheet .w-stripe{fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
-.lm-sheet .w-stripe{stroke-dasharray:5 5;stroke-linecap:butt}.lm-sheet .w.unrouted .w-base{stroke-dasharray:4 3}
+.lm-sheet .w-stripe{stroke-dasharray:5 5;stroke-linecap:butt}.lm-sheet .w-over path{stroke-linecap:butt}.lm-sheet .w.unrouted .w-base{stroke-dasharray:4 3}
 .lm-sheet .g-cable{fill:none;stroke:#1d1d1f;opacity:.16;stroke-linecap:round}.lm-sheet .g-shield{fill:none;stroke:#1d1d1f;stroke-width:1;stroke-dasharray:3 2}
 .lm-sheet .g-twist{fill:none;stroke:#1d1d1f;stroke-width:.9}.lm-sheet .fan{fill:none;stroke:#1d1d1f;stroke-width:.9}
 .lm-sheet .splice rect{fill:#1d1d1f}.lm-sheet .splice text{font-size:11px;font-weight:700}.lm-sheet .bk circle{fill:#1d1d1f}

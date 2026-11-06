@@ -227,6 +227,20 @@
     });
     boxes.forEach(b => b.item.sz.rows.forEach((r, i) => boxRowY.set(r.w.id, rowY(b.item, i))));
 
+    // Twisted wires twist together inside their box: any run of two or more wires of one twist
+    // group on neighboring rows of the same box (a pair, three motor wires…). A wire of the group on
+    // a row apart from the rest stays straight.
+    const twistOf = new Map();
+    h.groups.filter(g => g.kind === 'twist').forEach(g => boxes.forEach(b => {
+      const rows = b.item.sz.rows, runs = [];
+      rows.forEach((r, i) => {
+        if (!g.wires.includes(r.w.id) || twistOf.has(r.w.id)) return;
+        const last = runs[runs.length - 1];
+        if (last && last.end === i - 1) { last.ws.push(r.w); last.end = i; } else runs.push({ ws: [r.w], end: i });
+      });
+      runs.filter(run => run.ws.length > 1).forEach(run => run.ws.forEach((w, i) => twistOf.set(w.id, { ws: run.ws, i })));
+    }));
+
     // Anchors: a pin row's edge facing the other end.
     function anchor(e, towardX) {
       const it = itemOf.get(e.node);
@@ -246,8 +260,47 @@
       // Enter on the side facing each end.
       const lIn = { x: lit.x + lit.w / 2 < it.x ? it.x : it.x + it.w, y };
       const rIn = { x: rit.x + rit.w / 2 > it.x + it.w ? it.x + it.w : it.x, y };
-      segs.push(`M${f(L0.x)} ${f(L0.y)}`, curve(L0, lIn), `L${f(rIn.x)} ${f(rIn.y)}`, curve(rIn, R0));
-      return segs.join('');
+      segs.push(`M${f(L0.x)} ${f(L0.y)}`, curve(L0, lIn));
+      const tw = twist(w, b, lIn, rIn);
+      segs.push(tw ? tw.d : `L${f(rIn.x)} ${f(rIn.y)}`, curve(rIn, R0));
+      return { d: segs.join(''), over: tw ? tw.over : [] };
+    }
+    // A twisted wire's run through its box, drawn as a helix seen from the side: past the box's ends
+    // (the sheath's caps or the bundle's bands) every wire of the set swings across the set's rows,
+    // a whole number of turns of about TURN × (wires) units, each wire a 1/n turn behind the next.
+    // It eases from its own row into the helix and back out, so it leaves on its own row. `over`
+    // holds the stretches on the near side of the helix, drawn on top of the others, so the wires
+    // alternate over and under where they cross.
+    const TURN = 40;
+    function twist(w, b, lIn, rIn) {
+      const t = twistOf.get(w.id);
+      if (!t || Math.abs(rIn.x - lIn.x) < 1) return null;
+      const dir = rIn.x > lIn.x ? 1 : -1, pad = BOX_END[b.kind] + 6;
+      const xa = lIn.x + dir * pad, xb = rIn.x - dir * pad, run = Math.abs(xb - xa), n = t.ws.length;
+      const turns = Math.max(1, Math.round(run / (TURN * n)));
+      if (run < TURN * n * 0.6) return null;
+      const ys = t.ws.map(x => boxRowY.get(x.id)), lo = Math.min(...ys), hi = Math.max(...ys);
+      // The ease (smoothstep, level at both ends) takes about half a turn, so the wire leaves the
+      // straight part and joins the helix without a kink.
+      const c = (lo + hi) / 2, A = (hi - lo) / 2, y0 = lIn.y, ease = Math.min(TURN * n / 2, run / 4);
+      const phase = Math.PI - 2 * Math.PI * t.i / n;
+      const steps = Math.max(24, Math.ceil(run / 3));
+      const pts = [];
+      for (let k = 0; k <= steps; k++) {
+        const u = k / steps, th = phase + 2 * Math.PI * turns * u, dx = u * run;
+        const e = Math.min(1, dx / ease, (run - dx) / ease), m = e * e * (3 - 2 * e);
+        pts.push({ x: xa + dir * dx, y: y0 + (c + A * Math.cos(th) - y0) * m, front: Math.sin(th) > 0 && m > 0.5 });
+      }
+      let d = `L${f(xa)} ${f(y0)}`;
+      pts.forEach(p => { d += `L${f(p.x)} ${f(p.y)}`; });
+      const over = [];
+      let cur = null;
+      pts.forEach((p, k) => {
+        if (p.front) { if (!cur) { cur = `M${f(pts[Math.max(0, k - 1)].x)} ${f(pts[Math.max(0, k - 1)].y)}`; } cur += `L${f(p.x)} ${f(p.y)}`; }
+        else if (cur) { over.push(cur); cur = null; }
+      });
+      if (cur) over.push(cur);
+      return { d: d + `L${f(rIn.x)} ${f(rIn.y)}`, over };
     }
     const box = { x0: Math.min(0, ...items.map(i => i.x)), y0: Math.min(0, ...items.map(i => i.y)),
       x1: Math.max(200, ...items.map(i => i.x + i.w)), y1: Math.max(120, ...items.map(i => i.y + i.h)) };
@@ -255,6 +308,13 @@
   }
 
   // ── SVG ───────────────────────────────────────────────────────────────────
+  // The half twists a twisted wire crosses on top of, drawn after every wire (no hit area).
+  function overSvg(w, ds, cls) {
+    const c = M.colorInfo(w.color);
+    return ds.map(d => `<g class="w w-over${c.base ? '' : ' nocolor'}${cls || ''}"><path class="w-edge" d="${d}"/>` +
+      `<path class="w-base" style="stroke:${c.base || '#9a9aa0'}" d="${d}"/>` +
+      (c.stripe ? `<path class="w-stripe" style="stroke:${c.stripe}" d="${d}"/>` : '') + '</g>').join('');
+  }
   function wireSvg(w, d, cls) {
     const c = M.colorInfo(w.color);
     return `<g class="w${c.base ? '' : ' nocolor'}${cls || ''}" data-wire="${w.id}"><path class="w-hit" d="${d}"/><path class="w-edge" d="${d}"/>` +
@@ -378,17 +438,20 @@
     A = A || M.analyze(h);
     const Lo = layout(h, A);
     opts = Object.assign({}, opts, { focus: focusOf(h, opts.sel, opts.pending) });
-    let backs = '', wires = '', fronts = '', ends = '';
+    let backs = '', wires = '', overs = '', fronts = '', ends = '';
     Lo.items.forEach(it => {
       if (it.kind === 'box') { backs += boxBack(it, opts); fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts)}</g>`; }
       else if (it.kind === 'conn') ends += connSvg(h, it, opts, Lo);
       else ends += spliceSvg(it, opts);
     });
     h.wires.slice().sort((a, b) => a.no - b.no).forEach(w => {
-      const d = Lo.wirePath(w);
-      if (d) wires += wireSvg(w, d, (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + dimIf(opts.focus && !opts.focus.wires.has(w.id)));
+      const p = Lo.wirePath(w);
+      if (!p) return;
+      const cls = (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + dimIf(opts.focus && !opts.focus.wires.has(w.id));
+      wires += wireSvg(w, p.d, cls);
+      overs += overSvg(w, p.over, cls);
     });
-    return { svg: backs + wires + fronts + ends, box: Lo.box, layout: Lo };
+    return { svg: backs + wires + overs + fronts + ends, box: Lo.box, layout: Lo };
   }
 
   LM.conn = { G, layout, render, boxesOf, pinLabel };

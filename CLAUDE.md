@@ -56,6 +56,11 @@ links to it so far. Before every commit:
     stored as `n.faceView` (unset means front). Back is the wire side, the mirror of the face
     (`shapes.js` `face(h, n, view)`, `views`, `fitViews`). The sheet prints the chosen views; Both
     takes a double-width cell. Leads, rings and ferrules have no back view.
+  - Twisted wires twist inside their box (`conn.js` `twist`): any run of two or more wires of one
+    twist group on neighboring rows (a pair, three motor wires…) is drawn as a helix seen from the
+    side, a whole number of turns of about 40 units per wire, easing level into and out of the
+    straight runs. The near-side stretches (`over`, `.w-over`) are drawn over the other wires, so
+    they alternate over and under. A group wire on a row apart from the rest stays straight.
 - **From a board (2026-11-06):** Add › From a board lists Signoff EE boards and reads one's stored fab
   package (`assets/boards.js`).
   - **Which package:** the latest tagged revision's package (picked as EE's `latestRevision`
