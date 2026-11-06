@@ -54,10 +54,18 @@
 .cat-label { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 14px 10px 4px; }
 
 /* Build workspace (Fabcheck's board view) */
-.build-view { display: grid; grid-template-columns: 216px 1fr 330px; height: calc(100dvh - 56px); min-height: 420px; }
+/* The project rail (harness and inspector) on the left, the parts pane on the right; either folds
+   away (.fold-rail, .fold-parts; remembered per browser). */
+.build-view { --rail-w: 330px; --parts-w: 216px; display: grid; grid-template-columns: var(--rail-w) 1fr var(--parts-w); grid-template-areas: "rail canvas parts"; height: calc(100dvh - 56px); min-height: 420px; }
+.build-view.fold-rail { --rail-w: 0px; }
+.build-view.fold-parts { --parts-w: 0px; }
+.build-view.fold-rail .rail, .build-view.fold-parts .parts-pane { visibility: hidden; border: none; padding: 0; }
 body.has-banner .build-view { height: calc(100dvh - 56px - 33px); }
 .build-view[hidden] { display: none !important; }
-.parts-pane { border-right: 1px solid var(--hair); overflow-y: auto; padding: 14px 10px; background: var(--bg-elev); min-width: 0; }
+.parts-pane { grid-area: parts; border-left: 1px solid var(--hair); overflow-y: auto; overflow-x: hidden; padding: 14px 10px; background: var(--bg-elev); min-width: 0; }
+.board-hud.right { left: auto; right: 12px; }
+.hud-fold { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; }
+.hud-fold svg { width: 17px; height: 17px; }
 .parts-pane .side-head { padding: 10px 8px 6px; gap: 6px; }
 .parts-pane .side-head:first-child { padding-top: 4px; }
 .side-count { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
@@ -116,7 +124,7 @@ body.has-banner .build-view { height: calc(100dvh - 56px - 33px); }
 .howto p { margin: 7px 0 0; display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
 .howto i { font-style: normal; font-weight: 700; color: var(--accent); text-align: center; }
 
-.canvas-wrap { position: relative; min-width: 0; background: var(--canvas-bg); overflow: hidden; }
+.canvas-wrap { grid-area: canvas; position: relative; min-width: 0; background: var(--canvas-bg); overflow: hidden; }
 .lm-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: default; user-select: none; }
 .board-hud { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .board-hud .seg { background: rgba(40, 40, 44, 0.72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
@@ -129,7 +137,7 @@ body.has-banner .build-view { height: calc(100dvh - 56px - 33px); }
 .tip-k { font: 11px var(--mono); padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.14); }
 
 /* Rail */
-.rail { border-left: 1px solid var(--hair); background: var(--bg-elev); display: flex; flex-direction: column; min-height: 0; }
+.rail { grid-area: rail; border-right: 1px solid var(--hair); background: var(--bg-elev); display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
 .rail-head { padding: 14px 16px 12px; border-bottom: 1px solid var(--hair); display: flex; flex-direction: column; gap: 6px; }
 .rail-head .eyebrow { margin: 0; }
 .rail-title { font: 600 17px/1.25 var(--display); letter-spacing: -0.01em; overflow-wrap: anywhere; }
@@ -283,9 +291,10 @@ button.chip.g-chip { cursor: pointer; }
   .print-sheet svg { width: 100%; height: auto; }
 }
 
-@media (max-width: 1100px) { .build-view { grid-template-columns: 200px 1fr 310px; } }
+@media (max-width: 1100px) { .build-view:not(.fold-rail) { --rail-w: 300px; } .build-view:not(.fold-parts) { --parts-w: 200px; } }
 @media (max-width: 860px) {
-  .build-view { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; }
-  .parts-pane { display: none; }
+  .build-view { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; grid-template-areas: "canvas" "rail"; }
+  .build-view.fold-rail { grid-template-rows: 1fr 0; }
+  .parts-pane, .hud-fold[data-act="fold-parts"] { display: none; }
   .drop-tiles { grid-template-columns: repeat(2, 1fr); }
 }

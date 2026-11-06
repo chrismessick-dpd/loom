@@ -111,7 +111,7 @@
     $('#build-view').hidden = !build;
     $('#page').hidden = build;
     if (!h) { $('#page').innerHTML = homeHtml(); return; }
-    if (build) { renderCanvas(); renderParts(); renderRail(); renderHud(); return; }
+    if (build) { applyFold(); renderCanvas(); renderParts(); renderRail(); renderHud(); return; }
     if (S.view === 'wires') { S.view = 'drawing'; S.wiresOpen = true; }
     const pages = { drawing: drawingHtml, bom: bomHtml, checks: checksHtml };
     const keep = $('#main').scrollTop;
@@ -206,9 +206,27 @@
   // Grid step in diagram units; 0 turns the grid and snapping off. Kept with the harness.
   const GRIDS = [0, 5, 10, 20, 40];
   const gridOf = h => (h && GRIDS.includes(h.grid) ? h.grid : 10);
+  // The two side panels fold away; remembered in this browser.
+  const FOLD_KEY = NS + 'fold';
+  const fold = (() => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { return {}; } })();
+  const FOLD_ICON = side => `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="${side === 'left' ? 'M8 3.5v13' : 'M12 3.5v13'}"/></svg>`;
+  function applyFold() {
+    const bv = $('#build-view');
+    bv.classList.toggle('fold-rail', !!fold.rail);
+    bv.classList.toggle('fold-parts', !!fold.parts);
+  }
+  function toggleFold(which) {
+    fold[which] = !fold[which];
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ }
+    applyFold();
+    renderHud();
+    renderCanvas();
+  }
   function renderHud() {
     const h = H(), gs = gridOf(h), placed = h && h.place && Object.keys(h.place).length;
-    $('#hud').innerHTML = `<div class="seg"><button data-act="fit" title="Fit the diagram (F)">Fit</button></div>` +
+    $('#hud-right').innerHTML = `<div class="seg"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
+    $('#hud').innerHTML = `<div class="seg"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
+      `<div class="seg"><button data-act="fit" title="Fit the diagram (F)">Fit</button></div>` +
       `<label class="seg hud-grid" title="Parts snap to the grid as you drag them. Hold Ctrl to place one anywhere.">Grid <select data-hud="grid">${GRIDS.map(g => `<option value="${g}"${g === gs ? ' selected' : ''}>${g ? g : 'Off'}</option>`).join('')}</select></label>` +
       (placed ? `<div class="seg"><button data-act="auto-layout" title="Forget the positions you dragged and lay the diagram out again">Auto layout</button></div>` : '');
   }
@@ -750,6 +768,8 @@
       case 'undo': undo(); break;
       case 'redo': redo(); break;
       case 'fit': fit(); renderCanvas(); break;
+      case 'fold-rail': toggleFold('rail'); break;
+      case 'fold-parts': toggleFold('parts'); break;
       case 'auto-layout': change(x => { x.place = {}; }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
