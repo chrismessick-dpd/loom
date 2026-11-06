@@ -203,9 +203,10 @@
     const rc = svgEl().getBoundingClientRect();
     return { x: S.cam.x + (e.clientX - rc.left) / S.cam.k, y: S.cam.y + (e.clientY - rc.top) / S.cam.k };
   }
-  // Grid step in diagram units; 0 turns the grid and snapping off. Kept with the harness.
-  const GRIDS = [0, 5, 10, 20, 40];
-  const gridOf = h => (h && GRIDS.includes(h.grid) ? h.grid : 10);
+  // Grid step in diagram units; 0 turns the grid and snapping off. Kept with the harness. Every step
+  // divides the port pitch (C.G.PITCH, 20), so ports on different parts can share a grid line.
+  const GRIDS = [0, 5, 10, 20];
+  const gridOf = h => (h && GRIDS.includes(h.grid) ? h.grid : h && h.grid > 20 ? 20 : 10);
   // The two side panels fold away; remembered in this browser.
   const FOLD_KEY = NS + 'fold';
   const fold = (() => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { return {}; } })();
@@ -249,14 +250,15 @@
     if (!g.moved && g.item) {
       const it = lastLayout && lastLayout.items.find(i => i.key === g.item);
       if (!it) g.item = null;
-      else { snapshot(); g.start = { x: it.x, y: it.y }; svgEl().classList.add('dragging'); }
+      else { snapshot(); g.start = { x: it.x, y: it.y }; g.port0 = it.sz.port0 || 0; svgEl().classList.add('dragging'); }
     }
     g.moved = true;
     if (g.item) {
       const h = H(), gs = gridOf(h), free = e.ctrlKey || e.metaKey || !gs;
       const snap = v => (free ? Math.round(v) : Math.round(v / gs) * gs);
+      // Snap the first port, not the top edge, so the part's ports land on grid lines.
       h.place = h.place || {};
-      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k) };
+      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k + g.port0) - g.port0 };
       renderCanvas();
       return;
     }

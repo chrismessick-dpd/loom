@@ -28,7 +28,11 @@ links to it so far. Before every commit:
   - Dragging came back the same day (Chris). Connectors, splices and boxes drag by any part of them
     (`data-item`), and their positions are saved in `h.place` (`n:<node id>` or `b:<box key>`),
     which win over the auto layout on the canvas and the sheet. They snap to `h.grid`: 0 (off),
-    5, 10 (default), 20 or 40, set in the Grid control over the canvas. Ctrl places freely.
+    5, 10 (default) or 20, set in the Grid control over the canvas. Ctrl places freely. Every port
+    (pin rows, box wire rows) is on one pitch, `G.PITCH` = 20, and a drag snaps a part's first port
+    (`sz.port0`), not its top edge, so ports on different parts share grid lines and wires run
+    straight. Grid steps must divide the pitch (an old 40 reads as 20). Auto layout also puts ports
+    on the pitch.
     **Auto layout** clears `h.place`. A click without movement still selects, or starts a wire
     on a pin.
   - Boxes follow option (b): one box per cable group, and other wires are bundled per end pair

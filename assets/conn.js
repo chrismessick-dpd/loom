@@ -10,7 +10,10 @@
 (function (LM) {
   'use strict';
   const M = LM.model, U = LM.util, esc = U.esc;
-  const G = { ROW: 22, HEAD: 24, INFO: 22, BROW: 30, GAP_X: 110, GAP_Y: 30, FS: 12 };
+  // PITCH is the spacing of every port (a connector's pin rows, a box's wire rows), so ports on all
+  // parts share one ladder and lines up when the parts are dragged onto the same grid line.
+  const PITCH = 20;
+  const G = { PITCH, ROW: PITCH, HEAD: 24, INFO: 22, BROW: PITCH, GAP_X: 110, GAP_Y: 30, FS: 12 };
   const f = v => Math.round(v * 10) / 10;
   const tw = (s, size) => U.textW(s, size || G.FS);
 
@@ -96,7 +99,7 @@
     const w = Math.max(labW + numW, infoW, headW, 150);
     const hasName = !!n.name;
     const h0 = G.HEAD + (hasName ? 16 : 0) + G.INFO;
-    return { w, h: h0 + pins.length * G.ROW, h0, labels, info, numW, hasName };
+    return { w, h: h0 + pins.length * G.ROW, h0, port0: h0 + G.ROW / 2, labels, info, numW, hasName };
   }
   function boxRows(h, b) {
     return b.wires.map(w => {
@@ -123,7 +126,7 @@
     const infoW = info.reduce((t, s) => t + tw(s) + 20, 0);
     const w = Math.max(rowW, infoW, note ? tw(note, 11) + 20 : 0, 180);
     const h0 = G.HEAD + G.INFO + (note ? 18 : 0);
-    return { w, h: h0 + rows.length * G.BROW + 8, h0, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
+    return { w, h: h0 + rows.length * G.BROW + 6, h0, port0: h0 + G.BROW / 2, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
   }
 
   function layout(h, A) {
@@ -133,7 +136,7 @@
     const items = [];
     const itemOf = new Map();
     h.nodes.filter(n => M.isConn(n) || n.kind === 'splice').forEach(n => {
-      const sz = M.isConn(n) ? sizeConn(h, n) : { w: 46, h: 30, h0: 0 };
+      const sz = M.isConn(n) ? sizeConn(h, n) : { w: 46, h: 30, h0: 0, port0: 15 };
       const it = { kind: M.isConn(n) ? 'conn' : 'splice', n, col: R.rank.get(n.id) * 2, sz };
       items.push(it); itemOf.set(n.id, it);
     });
@@ -163,7 +166,9 @@
       if (it.kind === 'splice') return it.y + it.h / 2;
       return it.y + it.sz.h0 + G.ROW * (pinIdx(it.n, e.pin) + 0.5);
     };
-    const rowY = (it, i) => it.y + it.sz.h0 + G.BROW * i + G.BROW - 8;
+    const rowY = (it, i) => it.y + it.sz.port0 + G.BROW * i;
+    // Auto-placed parts sit with their ports on the pitch, like dragged ones on the grid.
+    const onPitch = it => Math.round((it.y + it.sz.port0) / PITCH) * PITCH - it.sz.port0;
     const boxRowY = new Map();
     cols.forEach((list, c) => {
       list.forEach(it => {
@@ -182,6 +187,7 @@
       list.forEach(it => {
         const want = it.bary == null ? bottom + G.GAP_Y : it.bary - it.h / 2;
         it.y = isFinite(bottom) ? Math.max(bottom + G.GAP_Y, want) : (it.bary == null ? 0 : want);
+        it.y = onPitch(it);
         bottom = it.y + it.h;
         if (it.kind === 'box') {
           // Order the rows by the height of their first placed end.
@@ -193,7 +199,7 @@
       });
     });
     // Columns placed without anything to their left start near the top.
-    const minY = Math.min(0, ...items.map(i => i.y));
+    const minY = Math.floor(Math.min(0, ...items.map(i => i.y)) / PITCH) * PITCH;
     items.forEach(i => { i.y -= minY; });
     // Positions dragged by hand (`h.place`, keyed n:<node id> or b:<box key>) win over the auto
     // layout. Then each box's rows are re-sorted by where their wires now come from.
@@ -297,8 +303,8 @@
       o += `<g class="cv-pin${pend ? ' pend' : ''}${used ? ' used' : ''}${dimIf(pinDim(p))}" data-node="${n.id}" data-pin="${esc(p)}">` +
         `<rect class="cv-cell cv-pinrow" x="${f(x)}" y="${f(ry)}" width="${f(w)}" height="${G.ROW}"/>` +
         `<line class="cv-rule" x1="${f(numRight ? numX : labX)}" x2="${f(numRight ? numX : labX)}" y1="${f(ry)}" y2="${f(ry + G.ROW)}"/>` +
-        `<text class="cv-t" x="${f(labX + (w - sz.numW) / 2)}" y="${f(ry + 15)}" text-anchor="middle">${esc(sz.labels[i])}</text>` +
-        `<text class="cv-t cv-num" x="${f(numX + sz.numW / 2)}" y="${f(ry + 15)}" text-anchor="middle">${esc(p)}</text></g>`;
+        `<text class="cv-t" x="${f(labX + (w - sz.numW) / 2)}" y="${f(ry + G.ROW / 2 + 4)}" text-anchor="middle">${esc(sz.labels[i])}</text>` +
+        `<text class="cv-t cv-num" x="${f(numX + sz.numW / 2)}" y="${f(ry + G.ROW / 2 + 4)}" text-anchor="middle">${esc(p)}</text></g>`;
     });
     o += `<rect class="cv-frame" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
     return o + '</g>';
@@ -326,8 +332,8 @@
     const c = sz.cols, inner = c.from + c.c + c.to + 40 + (c.t ? c.t + 18 : 0);
     const x0 = x + (w - inner) / 2;
     sz.rows.forEach((r, i) => {
-      const ty = y + sz.h0 + i * G.BROW + 13;
-      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(x)}" y="${f(ty - 12)}" width="${f(w)}" height="${G.BROW}"/>` +
+      const top = y + sz.h0 + i * G.BROW, ty = top + G.BROW / 2 + 4;
+      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(x)}" y="${f(top)}" width="${f(w)}" height="${G.BROW}"/>` +
         `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + 20 + c.c / 2)}" y="${f(ty)}" text-anchor="middle">${esc(r.color)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text>` +
