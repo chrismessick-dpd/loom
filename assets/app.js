@@ -214,12 +214,13 @@
   }
 
   // Pointer: drag a connector, splice or box to move it (snapping to the grid; Ctrl places it
-  // anywhere), drag anywhere else to pan, wheel to zoom, click to pick or wire.
+  // anywhere), drag anywhere else, or with the right or middle button anywhere, to pan; wheel to
+  // zoom; click to pick or wire.
   let gesture = null;
   function onDown(e) {
-    if (e.button !== 0 && e.button !== 1) return;
+    if (e.button > 2) return;
     const itemEl = e.button === 0 && e.target.closest('[data-item]');
-    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl ? itemEl.dataset.item : null };
+    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl ? itemEl.dataset.item : null };
     svgEl().setPointerCapture(e.pointerId);
   }
   function onMove(e) {
@@ -249,7 +250,7 @@
     gesture = null;
     svgEl().classList.remove('dragging');
     if (g && g.item && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
-    if (g && !g.moved) click(g.t, g.shift);
+    if (g && !g.moved && g.button === 0) click(g.t, g.shift);
   }
   function click(t, shift) {
     const h = H();
@@ -850,6 +851,7 @@
   svg.addEventListener('pointerup', onUp);
   svg.addEventListener('pointercancel', () => { gesture = null; });
   svg.addEventListener('wheel', onWheel, { passive: false });
+  svg.addEventListener('contextmenu', e => e.preventDefault()); // the right button pans
   window.addEventListener('resize', () => { if (H() && S.view === 'build') renderCanvas(); });
   // Drop a .loom.json anywhere to open it.
   window.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
