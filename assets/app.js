@@ -335,8 +335,30 @@
     if (kind === 'connector') toast('Added. Click one of its pins, then a pin on another end, to run a wire.');
   }
 
-  // ── Build: parts pane ──
+  // ── Build: the right pane, with a Parts tab and a Properties tab ──
+  // A new selection switches it to Properties; clearing the selection goes back to Parts.
   function renderParts() {
+    const sel = S.sel, key = sel ? sel.kind + ':' + [...sel.ids].sort().join(',') : '';
+    if (key !== S.paneSelKey) { S.paneSelKey = key; S.paneTab = key ? 'props' : 'parts'; }
+    const tab = S.paneTab === 'props' ? 'props' : 'parts';
+    const tabs = `<div class="pane-tabs" role="tablist">${[['parts', 'Parts'], ['props', 'Properties']].map(([k, t]) =>
+      `<button role="tab" class="pane-tab${k === tab ? ' on' : ''}" aria-selected="${k === tab}" data-act="pane-tab" data-tab="${k}">${t}</button>`).join('')}</div>`;
+    const body = tab === 'props'
+      ? `<div class="pane-props">${propsHtml() || `<div class="pane-empty">Select a connector, splice, wire or box on the canvas to see its properties here.</div>`}</div>`
+      : `<div class="pane-body">${partsHtml()}</div>`;
+    paint($('#parts-pane'), tabs + body);
+  }
+  // Redraw a panel, keeping the focused field and the scroll position.
+  function paint(el, html) {
+    const focus = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset.f : null;
+    const sc = el.querySelector('.rail-list, .pane-body');
+    const scroll = sc ? sc.scrollTop : 0, scKind = sc ? sc.className : '';
+    el.innerHTML = html;
+    const sc2 = el.querySelector('.rail-list, .pane-body');
+    if (sc2 && sc2.className === scKind) sc2.scrollTop = scroll;
+    if (focus) { const f2 = el.querySelector(`[data-f="${focus}"]`); if (f2) f2.focus(); }
+  }
+  function partsHtml() {
     const h = H(), A = M.analyze(h);
     const sel = id => S.sel && S.sel.kind === 'node' && S.sel.ids.has(id);
     const conns = h.nodes.filter(M.isConn).sort((a, b) => a.ref.localeCompare(b.ref, 'en', { numeric: true }));
@@ -369,7 +391,7 @@
       <p><i>⇧</i> Shift-click wires, then make them a cable, twisted pair or shield.</p>
       <p><i>▭</i> Click a box header to edit its cable or bundle, including length.</p>
       <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p></div>`;
-    $('#parts-pane').innerHTML = o;
+    return o;
   }
 
   // ── From a board: a connector from Signoff EE's stored fab package ──
@@ -489,20 +511,21 @@
     return o;
   }
 
+  // The selection's properties, shown in the right pane's Properties tab ('' with nothing selected).
+  function propsHtml() {
+    const h = H(), A = M.analyze(h), sel = S.sel;
+    if (!sel) return '';
+    if (sel.kind === 'node') { const n = M.node(h, [...sel.ids][0]); return M.isConn(n) ? railConnector(h, A, n) : railJunction(h, A, n); }
+    if (sel.kind === 'wire') return sel.ids.size > 1 ? railWires(h, A, [...sel.ids].map(id => M.wire(h, id))) : railWire(h, A, M.wire(h, [...sel.ids][0]));
+    if (sel.kind === 'group') return railGroup(h, A, M.group(h, [...sel.ids][0]));
+    return '';
+  }
+  // The left rail is the harness. On a narrow screen the right pane is hidden, so the rail shows the
+  // selection instead.
+  const narrow = () => window.matchMedia('(max-width: 860px)').matches;
   function renderRail() {
-    const h = H(), A = M.analyze(h);
-    const sel = S.sel;
-    let o;
-    if (!sel) o = railHarness(h, A);
-    else if (sel.kind === 'node') { const n = M.node(h, [...sel.ids][0]); o = M.isConn(n) ? railConnector(h, A, n) : railJunction(h, A, n); }
-    else if (sel.kind === 'wire') o = sel.ids.size > 1 ? railWires(h, A, [...sel.ids].map(id => M.wire(h, id))) : railWire(h, A, M.wire(h, [...sel.ids][0]));
-    else if (sel.kind === 'group') o = railGroup(h, A, M.group(h, [...sel.ids][0]));
-    const rail = $('#rail');
-    const focus = document.activeElement && rail.contains(document.activeElement) ? document.activeElement.dataset.f : null;
-    const scroll = rail.querySelector('.rail-list') ? rail.querySelector('.rail-list').scrollTop : 0;
-    rail.innerHTML = o;
-    if (rail.querySelector('.rail-list')) rail.querySelector('.rail-list').scrollTop = scroll;
-    if (focus) { const el = rail.querySelector(`[data-f="${focus}"]`); if (el) el.focus(); }
+    const h = H();
+    paint($('#rail'), (narrow() && propsHtml()) || railHarness(h, M.analyze(h)));
   }
   const railHead = (eyebrow, title, extra) => `<div class="rail-head"><div class="eyebrow">${eyebrow}</div><div class="rail-title">${title}</div>${extra || ''}</div>`;
 
@@ -772,6 +795,7 @@
       case 'fit': fit(); renderCanvas(); break;
       case 'fold-rail': toggleFold('rail'); break;
       case 'fold-parts': toggleFold('parts'); break;
+      case 'pane-tab': S.paneTab = el.dataset.tab; renderParts(); break;
       case 'auto-layout': change(x => { x.place = {}; }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
@@ -876,7 +900,12 @@
   svg.addEventListener('pointercancel', () => { gesture = null; });
   svg.addEventListener('wheel', onWheel, { passive: false });
   svg.addEventListener('contextmenu', e => e.preventDefault()); // the right button pans
-  window.addEventListener('resize', () => { if (H() && S.view === 'build') renderCanvas(); });
+  let wasNarrow = narrow();
+  window.addEventListener('resize', () => {
+    if (!H() || S.view !== 'build') return;
+    renderCanvas();
+    if (narrow() !== wasNarrow) { wasNarrow = narrow(); renderRail(); }
+  });
   // Drop a .loom.json anywhere to open it.
   window.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
   window.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) { e.preventDefault(); openFile(f); } });

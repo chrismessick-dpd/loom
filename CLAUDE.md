@@ -35,6 +35,10 @@ links to it so far. Before every commit:
     on the pitch.
     **Auto layout** clears `h.place`. A click without movement still selects, or starts a wire
     on a pin.
+  - The right pane has two tabs, **Parts** (the parts list and Add palette) and **Properties** (the
+    selection's fields and its Delete button). A new selection switches to Properties, and clearing
+    it goes back to Parts (`renderParts`, `propsHtml`). The left rail shows only the harness, except
+    under 860 px, where the right pane is hidden and the rail shows the selection.
   - Boxes follow option (b): one box per cable group, and other wires are bundled per end pair
     (`B1`, `B2`…).
   - The canvas is a paper diagram that follows the theme. The drawing sheet uses the same diagram.

@@ -56,13 +56,21 @@
 /* Build workspace (Fabcheck's board view) */
 /* The project rail (harness and inspector) on the left, the parts pane on the right; either folds
    away (.fold-rail, .fold-parts; remembered per browser). */
-.build-view { --rail-w: 330px; --parts-w: 216px; display: grid; grid-template-columns: var(--rail-w) 1fr var(--parts-w); grid-template-areas: "rail canvas parts"; height: calc(100dvh - 56px); min-height: 420px; }
+.build-view { --rail-w: 330px; --parts-w: 300px; display: grid; grid-template-columns: var(--rail-w) 1fr var(--parts-w); grid-template-areas: "rail canvas parts"; height: calc(100dvh - 56px); min-height: 420px; }
 .build-view.fold-rail { --rail-w: 0px; }
 .build-view.fold-parts { --parts-w: 0px; }
 .build-view.fold-rail .rail, .build-view.fold-parts .parts-pane { visibility: hidden; border: none; padding: 0; }
 body.has-banner .build-view { height: calc(100dvh - 56px - 33px); }
 .build-view[hidden] { display: none !important; }
-.parts-pane { grid-area: parts; border-left: 1px solid var(--hair); overflow-y: auto; overflow-x: hidden; padding: 14px 10px; background: var(--bg-elev); min-width: 0; }
+.parts-pane { grid-area: parts; border-left: 1px solid var(--hair); overflow: hidden; background: var(--bg-elev); min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+/* Parts and Properties tabs at the top of the right pane */
+.pane-tabs { display: flex; gap: 4px; padding: 10px 10px 0; border-bottom: 1px solid var(--hair); flex: none; }
+.pane-tab { flex: 1; border: none; background: none; color: var(--text-3); font: 600 12.5px var(--font, inherit); padding: 7px 8px 9px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.pane-tab:hover { color: var(--text); }
+.pane-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.pane-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 14px 10px; }
+.pane-props { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pane-empty { padding: 24px 18px; color: var(--text-3); font-size: 12.5px; line-height: 1.45; text-align: center; }
 .board-hud.right { left: auto; right: 12px; }
 .hud-fold { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; }
 .hud-fold svg { width: 17px; height: 17px; }
@@ -291,7 +299,7 @@ button.chip.g-chip { cursor: pointer; }
   .print-sheet svg { width: 100%; height: auto; }
 }
 
-@media (max-width: 1100px) { .build-view:not(.fold-rail) { --rail-w: 300px; } .build-view:not(.fold-parts) { --parts-w: 200px; } }
+@media (max-width: 1100px) { .build-view:not(.fold-rail) { --rail-w: 300px; } .build-view:not(.fold-parts) { --parts-w: 270px; } }
 @media (max-width: 860px) {
   .build-view { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; grid-template-areas: "canvas" "rail"; }
   .build-view.fold-rail { grid-template-rows: 1fr 0; }
