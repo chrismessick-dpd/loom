@@ -165,7 +165,7 @@
   }
 
   // ── Build: the connection diagram ──
-  // Laid out automatically, so the canvas only pans and zooms. Click a pin row, then a pin row on another
+  // Laid out automatically, unless parts were dragged (h.place). Click a pin row, then a pin row on another
   // end (or a splice), to run a wire. Click a box header to select its cable or wires.
   const svgEl = () => $('#canvas');
   let lastBox = null, lastLayout = null;
@@ -177,7 +177,12 @@
     const w = wrap.clientWidth || 800, hh = wrap.clientHeight || 600;
     if (!S.cam) fit(r.box, w, hh);
     svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${w / S.cam.k} ${hh / S.cam.k}`);
-    svg.innerHTML = `<rect class="bg" data-bg="1" x="-20000" y="-20000" width="40000" height="40000" fill="transparent"/>` +
+    // The grid parts snap to: a dot at every step and a stronger one every fifth.
+    const gs = gridOf(h);
+    const grid = gs ? `<defs><pattern id="cv-grid" width="${gs * 5}" height="${gs * 5}" patternUnits="userSpaceOnUse">` +
+      [...Array(25)].map((_, i) => `<circle class="${i % 5 || Math.floor(i / 5) % 5 ? 'gd' : 'gd major'}" cx="${(i % 5) * gs}" cy="${Math.floor(i / 5) * gs}" r="${i ? 0.9 : 1.4}"/>`).join('') +
+      `</pattern></defs>` : '';
+    svg.innerHTML = grid + `<rect class="bg" data-bg="1" x="-20000" y="-20000" width="40000" height="40000" fill="${gs ? 'url(#cv-grid)' : 'transparent'}"/>` +
       `<g id="world">${r.svg}</g><g id="ghost"></g>`;
     $('#coords').textContent = Math.round(S.cam.k * 100) + '%';
     const tip = $('#tip');
@@ -198,15 +203,23 @@
     const rc = svgEl().getBoundingClientRect();
     return { x: S.cam.x + (e.clientX - rc.left) / S.cam.k, y: S.cam.y + (e.clientY - rc.top) / S.cam.k };
   }
+  // Grid step in diagram units; 0 turns the grid and snapping off. Kept with the harness.
+  const GRIDS = [0, 5, 10, 20, 40];
+  const gridOf = h => (h && GRIDS.includes(h.grid) ? h.grid : 10);
   function renderHud() {
-    $('#hud').innerHTML = `<div class="seg"><button data-act="fit" title="Fit the diagram (F)">Fit</button></div>`;
+    const h = H(), gs = gridOf(h), placed = h && h.place && Object.keys(h.place).length;
+    $('#hud').innerHTML = `<div class="seg"><button data-act="fit" title="Fit the diagram (F)">Fit</button></div>` +
+      `<label class="seg hud-grid" title="Parts snap to the grid as you drag them. Hold Ctrl to place one anywhere.">Grid <select data-hud="grid">${GRIDS.map(g => `<option value="${g}"${g === gs ? ' selected' : ''}>${g ? g : 'Off'}</option>`).join('')}</select></label>` +
+      (placed ? `<div class="seg"><button data-act="auto-layout" title="Forget the positions you dragged and lay the diagram out again">Auto layout</button></div>` : '');
   }
 
-  // Pointer: drag anywhere to pan, wheel to zoom, click to pick or wire.
+  // Pointer: drag a connector, splice or box to move it (snapping to the grid; Ctrl places it
+  // anywhere), drag anywhere else to pan, wheel to zoom, click to pick or wire.
   let gesture = null;
   function onDown(e) {
     if (e.button !== 0 && e.button !== 1) return;
-    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam) };
+    const itemEl = e.button === 0 && e.target.closest('[data-item]');
+    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl ? itemEl.dataset.item : null };
     svgEl().setPointerCapture(e.pointerId);
   }
   function onMove(e) {
@@ -214,13 +227,28 @@
     if (!g) { if (S.pending) drawGhost(e); return; }
     const dx = e.clientX - g.x, dy = e.clientY - g.y;
     if (!g.moved && Math.hypot(dx, dy) < 4) return;
+    if (!g.moved && g.item) {
+      const it = lastLayout && lastLayout.items.find(i => i.key === g.item);
+      if (!it) g.item = null;
+      else { snapshot(); g.start = { x: it.x, y: it.y }; svgEl().classList.add('dragging'); }
+    }
     g.moved = true;
+    if (g.item) {
+      const h = H(), gs = gridOf(h), free = e.ctrlKey || e.metaKey || !gs;
+      const snap = v => (free ? Math.round(v) : Math.round(v / gs) * gs);
+      h.place = h.place || {};
+      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k) };
+      renderCanvas();
+      return;
+    }
     S.cam.x = g.cam0.x - dx / S.cam.k; S.cam.y = g.cam0.y - dy / S.cam.k;
     svgEl().setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${svgEl().clientWidth / S.cam.k} ${svgEl().clientHeight / S.cam.k}`);
   }
   function onUp() {
     const g = gesture;
     gesture = null;
+    svgEl().classList.remove('dragging');
+    if (g && g.item && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && !g.moved) click(g.t, g.shift);
   }
   function click(t, shift) {
@@ -316,7 +344,8 @@
     o += `<div class="howto"><b>How it works</b>
       <p><i>●</i> Click a pin, then a pin on another end or a splice, to run a wire.</p>
       <p><i>⇧</i> Shift-click wires, then make them a cable, twisted pair or shield.</p>
-      <p><i>▭</i> Click a box header to edit its cable or bundle, including length.</p></div>`;
+      <p><i>▭</i> Click a box header to edit its cable or bundle, including length.</p>
+      <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p></div>`;
     $('#parts-pane').innerHTML = o;
   }
 
@@ -718,6 +747,7 @@
       case 'undo': undo(); break;
       case 'redo': redo(); break;
       case 'fit': fit(); renderCanvas(); break;
+      case 'auto-layout': change(x => { x.place = {}; }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
       case 'from-board': openBoards(); break;
@@ -796,6 +826,7 @@
   document.addEventListener('change', e => {
     const el = e.target;
     if (el.id === 'file-input') { if (el.files[0]) openFile(el.files[0]); el.value = ''; return; }
+    if (el.dataset && el.dataset.hud === 'grid') { change(h => { h.grid = +el.value; }); return; }
     if (el.dataset && el.dataset.f) setField(el.dataset.f, el.value, el);
   });
   document.addEventListener('keydown', e => {

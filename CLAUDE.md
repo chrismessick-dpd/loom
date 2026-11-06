@@ -19,7 +19,13 @@ links to it so far. Before pushing, grep the diff for client names and part numb
   needed; the first concept could be ripped out.
 - **Rewritten 2026-11-06:**
   - The Build canvas is the connection diagram (`assets/conn.js`), laid out automatically, with no
-    dragging and no + handles.
+    + handles.
+  - Dragging came back the same day (Chris). Connectors, splices and boxes drag by any part of them
+    (`data-item`), and their positions are saved in `h.place` (`n:<node id>` or `b:<box key>`),
+    which win over the auto layout on the canvas and the sheet. They snap to `h.grid`: 0 (off),
+    5, 10 (default), 20 or 40, set in the Grid control over the canvas. Ctrl places freely.
+    **Auto layout** clears `h.place`. A click without movement still selects, or starts a wire
+    on a pin.
   - Boxes follow option (b): one box per cable group, and other wires are bundled per end pair
     (`B1`, `B2`…).
   - The canvas is a paper diagram that follows the theme. The drawing sheet uses the same diagram.

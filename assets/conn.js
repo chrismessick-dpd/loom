@@ -3,7 +3,8 @@
 // ("P1:3  BU  P2:3"), and every wire is a curve in its own color that runs through its box.
 //
 // Boxes: a cable group gets its own box; every other wire is bundled with the wires that join the same
-// two ends. Splices are small nodes between boxes. Layout is automatic: ends and splices sit in columns
+// two ends. Splices are small nodes between boxes. Positions dragged by hand (h.place) win; the rest is
+// automatic: ends and splices sit in columns
 // by how far they are from the busiest connector, boxes sit in the columns between them, and each column
 // is ordered to keep wires from crossing. The editor's canvas and the drawing sheet both use it.
 (function (LM) {
@@ -194,6 +195,19 @@
     // Columns placed without anything to their left start near the top.
     const minY = Math.min(0, ...items.map(i => i.y));
     items.forEach(i => { i.y -= minY; });
+    // Positions dragged by hand (`h.place`, keyed n:<node id> or b:<box key>) win over the auto
+    // layout. Then each box's rows are re-sorted by where their wires now come from.
+    const place = h.place || {};
+    items.forEach(i => {
+      i.key = i.kind === 'box' ? 'b:' + i.b.key : 'n:' + i.n.id;
+      const p = place[i.key];
+      if (p && isFinite(p.x) && isFinite(p.y)) { i.x = p.x; i.y = p.y; i.placed = true; }
+    });
+    if (items.some(i => i.placed)) boxes.forEach(b => {
+      const it = b.item, cx = it.x + it.w / 2;
+      const yOf = w => { const e = [w.from, w.to].map(x => ({ e: x, it: itemOf.get(x.node) })).filter(o => o.it).sort((a, c) => Math.abs(a.it.x - cx) - Math.abs(c.it.x - cx))[0]; return e ? endY(e.e) : 0; };
+      it.sz.rows.sort((a, c) => yOf(a.w) - yOf(c.w) || a.w.no - c.w.no);
+    });
     boxes.forEach(b => b.item.sz.rows.forEach((r, i) => boxRowY.set(r.w.id, rowY(b.item, i))));
 
     // Anchors: a pin row's edge facing the other end.
@@ -218,7 +232,8 @@
       segs.push(`M${f(L0.x)} ${f(L0.y)}`, curve(L0, lIn), `L${f(rIn.x)} ${f(rIn.y)}`, curve(rIn, R0));
       return segs.join('');
     }
-    const box = { x0: 0, y0: 0, x1: Math.max(200, ...items.map(i => i.x + i.w)), y1: Math.max(120, ...items.map(i => i.y + i.h)) };
+    const box = { x0: Math.min(0, ...items.map(i => i.x)), y0: Math.min(0, ...items.map(i => i.y)),
+      x1: Math.max(200, ...items.map(i => i.x + i.w)), y1: Math.max(120, ...items.map(i => i.y + i.h)) };
     return { items, itemOf, boxes, wirePath, anchor, endY, box };
   }
 
@@ -266,7 +281,7 @@
     const toRight = h.wires.some(wr => { const o = wr.from.node === n.id ? wr.to : wr.to.node === n.id ? wr.from : null; if (!o) return false; const ot = Lo.itemOf.get(o.node); return ot && ot.x > x; });
     const toLeft = h.wires.some(wr => { const o = wr.from.node === n.id ? wr.to : wr.to.node === n.id ? wr.from : null; if (!o) return false; const ot = Lo.itemOf.get(o.node); return ot && ot.x < x; });
     const numRight = toRight || !toLeft;
-    let o = `<g class="cv-conn${sel ? ' sel' : ''}${dimIf(F && !F.nodes.has(n.id))}" data-node="${n.id}">`;
+    let o = `<g class="cv-conn${sel ? ' sel' : ''}${dimIf(F && !F.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}">`;
     o += `<rect class="cv-bg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
     const hh = G.HEAD + (sz.hasName ? 16 : 0);
     o += `<g class="cv-head" data-head="${n.id}"><rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${hh}"/>` +
@@ -290,7 +305,7 @@
   }
   function spliceSvg(it, opts) {
     const n = it.n, sel = opts.sel && opts.sel.kind === 'node' && opts.sel.ids.has(n.id);
-    return `<g class="cv-splice${sel ? ' sel' : ''}${opts.pending ? ' target' : ''}${dimIf(opts.focus && !opts.focus.nodes.has(n.id))}" data-node="${n.id}"><rect class="cv-bg cv-frame" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="4"/>` +
+    return `<g class="cv-splice${sel ? ' sel' : ''}${opts.pending ? ' target' : ''}${dimIf(opts.focus && !opts.focus.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}"><rect class="cv-bg cv-frame" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="4"/>` +
       `<text class="cv-ref" x="${f(it.x + it.w / 2)}" y="${f(it.y + it.h / 2 + 4.5)}" text-anchor="middle">${esc(n.ref)}</text></g>`;
   }
   function boxBack(it, opts) {
@@ -328,7 +343,7 @@
     opts = Object.assign({}, opts, { focus: focusOf(h, opts.sel, opts.pending) });
     let backs = '', wires = '', fronts = '', ends = '';
     Lo.items.forEach(it => {
-      if (it.kind === 'box') { backs += boxBack(it, opts); fronts += boxFront(it, opts); }
+      if (it.kind === 'box') { backs += boxBack(it, opts); fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts)}</g>`; }
       else if (it.kind === 'conn') ends += connSvg(h, it, opts, Lo);
       else ends += spliceSvg(it, opts);
     });
