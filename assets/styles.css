@@ -183,9 +183,9 @@ p.f-hint { margin: 0 0 12px; }
 button.chip.g-chip { cursor: pointer; }
 
 /* The connection view: a paper diagram (WireViz style). Ink and paper follow the theme; wire colors are real. */
-.canvas-wrap.cv-paper { --cv-paper: #fff; --cv-ink: #1d1d1f; --cv-ink-2: #6e6e73; --cv-head: #f2f2f4; --cv-rule: #1d1d1f; --cv-edge: #1d1d1f; --cv-sel: #00727f; --cv-sel-soft: rgba(0, 114, 127, 0.14); background: var(--cv-paper); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .canvas-wrap.cv-paper { --cv-paper: #1c1c1e; --cv-ink: #e5e5ea; --cv-ink-2: #98989d; --cv-head: #2c2c2e; --cv-rule: #636366; --cv-edge: #aeaeb2; --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.2); } }
-:root[data-theme="dark"] .canvas-wrap.cv-paper { --cv-paper: #1c1c1e; --cv-ink: #e5e5ea; --cv-ink-2: #98989d; --cv-head: #2c2c2e; --cv-rule: #636366; --cv-edge: #aeaeb2; --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.2); }
+.canvas-wrap.cv-paper { --cv-paper: #fff; --cv-ink: #1d1d1f; --cv-ink-2: #6e6e73; --cv-head: #f2f2f4; --cv-rule: #1d1d1f; --cv-edge: #1d1d1f; --cv-sel: #00727f; --cv-sel-soft: rgba(0, 114, 127, 0.14); --cv-sheath: rgba(29, 29, 31, 0.38); --cv-sheath-edge: rgba(29, 29, 31, 0.85); --cv-band: #2c2c2e; --cv-band-hi: rgba(255, 255, 255, 0.3); background: var(--cv-paper); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .canvas-wrap.cv-paper { --cv-paper: #1c1c1e; --cv-ink: #e5e5ea; --cv-ink-2: #98989d; --cv-head: #2c2c2e; --cv-rule: #636366; --cv-edge: #aeaeb2; --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.2); --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: #8e8e93; --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); } }
+:root[data-theme="dark"] .canvas-wrap.cv-paper { --cv-paper: #1c1c1e; --cv-ink: #e5e5ea; --cv-ink-2: #98989d; --cv-head: #2c2c2e; --cv-rule: #636366; --cv-edge: #aeaeb2; --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.2); --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: #8e8e93; --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); }
 .lm-canvas text { font-family: var(--sans); fill: var(--cv-ink); font-size: 12px; pointer-events: none; }
 .lm-canvas .cv-bg, .lm-canvas .cv-box { fill: var(--cv-paper); }
 .lm-canvas .cv-cell { fill: transparent; stroke: var(--cv-rule); stroke-width: 1; }
@@ -218,6 +218,25 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .w.nocolor .w-base { stroke-dasharray: 2 3; }
 .lm-canvas .w.sel .w-edge { stroke: var(--cv-sel); stroke-width: 7.5; }
 .lm-canvas .w:hover .w-edge { stroke-width: 6; }
+/* What holds a box's wires: a cable's sheath, a bundle's bands (conn.js holder). Over the wires, so
+   the row text gets a paper halo. */
+.lm-canvas .cv-sheath { fill: var(--cv-sheath); stroke: var(--cv-sheath-edge); stroke-width: 1.4; pointer-events: none; }
+.lm-canvas .cv-band rect { fill: var(--cv-band); stroke: var(--cv-sheath-edge); stroke-width: 1; }
+.lm-canvas .cv-band line { stroke: var(--cv-band-hi); stroke-width: 2; stroke-linecap: round; }
+.lm-canvas .cv-band { pointer-events: none; }
+.lm-canvas .cv-sheath.sel, .lm-canvas .cv-band.sel rect, .lm-canvas .cv-frame.sel { stroke: var(--cv-sel); stroke-width: 2.4; }
+.lm-canvas .cv-wrow text, .lm-canvas .cv-halo { paint-order: stroke; stroke: var(--cv-paper); stroke-width: 3px; stroke-linejoin: round; }
+/* The connector sketch in a table's header; its group's stroke-width keeps lines about 0.9 units at any scale. */
+.lm-canvas .cv-sketch .fv-body { fill: var(--cv-head); stroke: var(--cv-ink); stroke-width: inherit; }
+.lm-canvas .cv-sketch .fv-latch, .lm-canvas .cv-sketch .fv-flange, .lm-canvas .cv-sketch .fv-collar { fill: var(--cv-paper); stroke: var(--cv-ink); stroke-width: inherit; }
+.lm-canvas .cv-sketch .fv-cav { stroke: var(--cv-ink); stroke-width: inherit; }
+.lm-canvas .cv-sketch .fv-cav:not(.on) { fill: var(--cv-paper); }
+.lm-canvas .cv-sketch .fv-hole, .lm-canvas .cv-sketch .fv-key { fill: var(--cv-paper); stroke: var(--cv-ink); stroke-width: inherit; }
+.lm-canvas .cv-sketch .fv-one { fill: #d70015; }
+.lm-canvas .cv-sketch .fv-jacket { fill: var(--cv-ink-2); }
+.lm-canvas .cv-sketch .fv-lead { fill: none; stroke-width: inherit; stroke-linecap: round; }
+.lm-canvas .cv-sketch .fv-strip { stroke: #b08d57; stroke-width: inherit; }
+.lm-canvas .cv-sketch text { display: none; }
 /* Grid and dragging */
 .lm-canvas .gd { fill: var(--cv-ink-2); opacity: 0.22; }
 .lm-canvas .gd.major { opacity: 0.45; }
@@ -250,6 +269,7 @@ button.chip.g-chip { cursor: pointer; }
 .lm-face .fv-strip { stroke: #c9a36b; stroke-width: 2.2; }
 .lm-face .fv-num-out { fill: rgba(255, 255, 255, 0.8); font: 600 10px var(--mono); }
 .lm-face .fv-collar { fill: #5a5e66; stroke: rgba(255, 255, 255, 0.45); }
+.lm-face .fv-cap { fill: rgba(255, 255, 255, 0.6); font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; }
 
 /* Pages */
 .lm-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }

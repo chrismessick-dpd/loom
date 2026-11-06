@@ -13,7 +13,13 @@
 .lm-sheet .paper{fill:#fff}.lm-sheet .frame{fill:none;stroke:#1d1d1f;stroke-width:1.4}
 .lm-sheet .card-bg{fill:#fff;stroke:#1d1d1f;stroke-width:1.1}.lm-sheet .head-hit{fill:#e9f3f4;stroke:#1d1d1f;stroke-width:1.1}
 .lm-sheet .cv-bg,.lm-sheet .cv-box{fill:#fff}.lm-sheet .cv-cell{fill:none;stroke:#1d1d1f;stroke-width:1}.lm-sheet .cv-headbg{fill:#f2f2f4}
-.lm-sheet .cv-frame{fill:none;stroke:#1d1d1f;stroke-width:1.2}.lm-sheet .cv-frame.dashed{stroke-dasharray:6 4}.lm-sheet .cv-rule{stroke:#1d1d1f}
+.lm-sheet .cv-frame{fill:none;stroke:#1d1d1f;stroke-width:1.2}
+.lm-sheet .cv-sheath{fill:rgba(29,29,31,.38);stroke:rgba(29,29,31,.85);stroke-width:1.4}.lm-sheet .cv-band rect{fill:#2c2c2e;stroke:rgba(29,29,31,.85)}
+.lm-sheet .cv-band line{stroke:rgba(255,255,255,.3);stroke-width:2;stroke-linecap:round}
+.lm-sheet .cv-wrow text,.lm-sheet .cv-halo{paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+.lm-sheet .cv-sketch .fv-body,.lm-sheet .cv-sketch .fv-latch,.lm-sheet .cv-sketch .fv-flange,.lm-sheet .cv-sketch .fv-cav,.lm-sheet .cv-sketch .fv-hole,.lm-sheet .cv-sketch .fv-key,.lm-sheet .cv-sketch .fv-collar{stroke-width:inherit}
+.lm-sheet .cv-sketch .fv-lead,.lm-sheet .cv-sketch .fv-strip{stroke-width:inherit}.lm-sheet .cv-sketch text{display:none}
+.lm-sheet .cell-cap{font-size:10px;font-weight:700;letter-spacing:.08em;fill:#515154}.lm-sheet .cv-rule{stroke:#1d1d1f}
 .lm-sheet .cv-t{font-size:12px}.lm-sheet .cv-ref{font-size:13px;font-weight:600}.lm-sheet .cv-name{font-size:11px;fill:#6e6e73}
 .lm-sheet .cv-tag{font:600 10.5px ${MONO};fill:#6e6e73}.lm-sheet .cv-num{font-family:${MONO}}.lm-sheet .cv-hit{fill:none}
 .lm-sheet .cv-pin:not(.used) .cv-t:not(.cv-num){fill:#a1a1a6}
@@ -90,13 +96,12 @@
   }
 
   function detailCell(h, n, x, y, cw, chh) {
-    const fam = L.family(n.family), v = S.face(h, n);
-    const fitW = cw - 30, fitH = 118;
-    const k = Math.min(1.5, fitW / v.w, fitH / v.h);
-    const tx = x + (cw - v.w * k) / 2 + v.ox * k, ty = y + 34 + (fitH - v.h * k) / 2;
+    // The views chosen on the connector (Front, Back or Both); Both takes a double-width cell.
+    const fam = L.family(n.family), fitH = 118;
+    const v = S.fitViews(h, n, x + 15, y + 34, cw - 30, fitH, { max: 1.5, cap: 'cell-cap' });
     let o = `<rect class="cell" x="${x}" y="${y}" width="${cw}" height="${chh}" rx="6"/>`;
     o += `<text class="cell-t" x="${x + 12}" y="${y + 21}">${esc(n.ref)}<tspan class="cell-s" dx="8">${esc(U.clip(n.name, 11, cw - 60))}</tspan></text>`;
-    o += `<g transform="translate(${f(tx)} ${f(ty)}) scale(${f(k * 100) / 100})">${v.svg}</g>`;
+    o += v.svg;
     const lines = [
       `${fam.name}, ${n.pins} pos${n.rows === 2 && fam.style === 'rect' ? ', dual row' : ''}${L.hasHousing(fam) ? ', ' + n.gender : ''}`,
       (L.hasHousing(fam) ? 'Housing ' : 'Part ') + (n.mpn || L.suggestHousing(n) || 'not set'),
@@ -104,7 +109,7 @@
     if (L.hasHousing(fam)) lines.push('Terminal ' + (n.terminal || 'not set'));
     if (n.mate) lines.push('Mates with ' + n.mate);
     let ly = y + 34 + fitH + 18;
-    o += `<text class="cell-n" x="${x + cw / 2}" y="${ly - 4}" text-anchor="middle">${esc(v.note)}</text>`;
+    o += `<text class="cell-n" x="${x + cw / 2}" y="${ly - 4}" text-anchor="middle">${esc(v.notes.join(' · '))}</text>`;
     ly += 12;
     lines.forEach(t => { o += `<text class="cell-s" x="${x + 12}" y="${ly}">${esc(U.clip(t, 11, cw - 24))}</text>`; ly += 15; });
     return o;
@@ -131,8 +136,14 @@
       o += section('CONNECTORS', y);
       y += 12;
       const cw = 262, chh = 250, gap = 12, per = Math.floor((inner - 32 + gap) / (cw + gap));
-      conns.forEach((n, i) => { o += detailCell(h, n, MG + 16 + (i % per) * (cw + gap), y + Math.floor(i / per) * (chh + gap), cw, chh); });
-      y += Math.ceil(conns.length / per) * (chh + gap) + 22;
+      let col = 0, row = 0;
+      conns.forEach(n => {
+        const span = S.views(n).length;
+        if (col && col + span > per) { col = 0; row++; }
+        o += detailCell(h, n, MG + 16 + col * (cw + gap), y + row * (chh + gap), cw * span + gap * (span - 1), chh);
+        col += span;
+      });
+      y += (row + 1) * (chh + gap) + 22;
     }
 
     // Wire list and BOM side by side

@@ -562,8 +562,9 @@
     const boardBox = n.board ? `<div class="board-src"><span class="lay-ico">${ICON.board}</span><div><b>${esc(n.board.name)} ${esc(n.board.ref)}</b><div class="f-hint">${esc(n.board.source)}${n.board.mpn ? ' · board part ' + esc(n.board.mpn) : ''}. Pins and labels come from its netlist.</div></div></div>` : '';
     const suggBox = sugg.length ? `<div class="cat-label">Suggested wires</div><div class="rail-sec">${sugg.map(r => `<div class="sugg"><div><b>${r.pairs.length} pin${r.pairs.length > 1 ? 's' : ''} match ${esc(r.other.ref)}</b><div class="f-hint">${esc([...new Set(r.pairs.map(p => p.label))].slice(0, 6).join(', '))}${new Set(r.pairs.map(p => p.label)).size > 6 ? '…' : ''}</div></div><button class="btn" data-act="match-wire" data-a="${n.id}" data-b="${r.other.id}">Wire them</button></div>`).join('')}<p class="f-hint">Same net name on both ends, on pins with no wire yet. Check each against the boards.</p></div>` : '';
     return railHead('Connector', `<span class="mono-ref">${esc(n.ref)}</span> ${esc(n.name || fam.name)}`) +
-      `<div class="rail-list">${boardBox}${suggBox}<div class="face-tile">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.face(h, n).note)}</span></div>
+      `<div class="rail-list">${boardBox}${suggBox}<div class="face-tile">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.fitViews(h, n, 0, 0, 330, 150).note)}</span></div>
       <div class="rail-sec">
+      ${LM.shapes.hasBack(n) ? fld('Views', segBtns('n.faceView', LM.shapes.views(n).length > 1 ? 'both' : LM.shapes.views(n)[0], [['front', 'Front'], ['back', 'Back'], ['both', 'Both']]), 'Front is the mating face, back the wire side. The drawing prints these.') : ''}
       <div class="row2 r-ref">${fld('Ref', inp('n.ref', n.ref))}${fld('Name', inp('n.name', n.name, ' placeholder="Main PCBA J6"'))}</div>
       ${fld('Family', famSel, fam.awg ? `Terminals typically take ${fam.awg[0]}–${fam.awg[1]} AWG.` : '')}
       <div class="row2">${fld(fam.style === 'flying' ? 'Leads' : 'Pins', pinSel)}${fam.rows && fam.rows.length > 1 ? fld('Rows', segBtns('n.rows', n.rows, [[1, '1'], [2, '2']])) : ''}</div>

@@ -14,6 +14,8 @@
   // parts share one ladder and lines up when the parts are dragged onto the same grid line.
   const PITCH = 20;
   const G = { PITCH, ROW: PITCH, HEAD: 24, INFO: 22, BROW: PITCH, GAP_X: 110, GAP_Y: 30, FS: 12 };
+  // Room at each end of a box's wire rows for the cable sheath's rounded end or a bundle's band.
+  const BOX_END = { cable: 16, bundle: 24 };
   const f = v => Math.round(v * 10) / 10;
   const tw = (s, size) => U.textW(s, size || G.FS);
 
@@ -88,6 +90,13 @@
     const w = h.wires.find(x => (x.from.node === n.id && x.from.pin === p) || (x.to.node === n.id && x.to.pin === p));
     return w ? w.signal || '' : '';
   }
+  // A small sketch of the connector for its header: the view the drawing prints (the front when it
+  // prints both), at most H tall and 64 wide.
+  function sketchOf(h, n, H) {
+    const v = LM.shapes.face(h, n, LM.shapes.views(n)[0]);
+    const k = Math.min(H / v.h, 64 / v.w);
+    return { v, k, w: v.w * k, h: v.h * k };
+  }
   function sizeConn(h, n) {
     const pins = M.pinList(n);
     const labels = pins.map(p => pinLabel(h, n, p));
@@ -95,11 +104,13 @@
     const numW = Math.max(26, ...pins.map(p => tw(p))) + 18;
     const info = connInfo(n);
     const infoW = info.reduce((t, s) => t + tw(s) + 20, 0);
-    const headW = Math.max(tw(n.ref, 13) + 20, n.name ? tw(n.name, 11) + 20 : 0);
-    const w = Math.max(labW + numW, infoW, headW, 150);
     const hasName = !!n.name;
+    const sk = sketchOf(h, n, hasName ? 30 : 16);
+    const textW = Math.max(tw(n.ref, 13), n.name ? tw(n.name, 11) : 0);
+    const headW = textW + 20 + sk.w + 8;
+    const w = Math.max(labW + numW, infoW, headW, 150);
     const h0 = G.HEAD + (hasName ? 16 : 0) + G.INFO;
-    return { w, h: h0 + pins.length * G.ROW, h0, port0: h0 + G.ROW / 2, labels, info, numW, hasName };
+    return { w, h: h0 + pins.length * G.ROW, h0, port0: h0 + G.ROW / 2, labels, info, numW, hasName, sk, textW };
   }
   function boxRows(h, b) {
     return b.wires.map(w => {
@@ -124,7 +135,7 @@
     const colC = Math.max(...rows.map(r => tw(r.color))), colT = Math.max(0, ...rows.map(r => (r.tags ? tw(r.tags, 10.5) : 0)));
     const rowW = colFrom + colC + colTo + 64 + (colT ? colT + 18 : 0);
     const infoW = info.reduce((t, s) => t + tw(s) + 20, 0);
-    const w = Math.max(rowW, infoW, note ? tw(note, 11) + 20 : 0, 180);
+    const w = Math.max(rowW + 2 * BOX_END[b.kind], infoW, note ? tw(note, 11) + 20 : 0, 180);
     const h0 = G.HEAD + G.INFO + (note ? 18 : 0);
     return { w, h: h0 + rows.length * G.BROW + 6, h0, port0: h0 + G.BROW - 3, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
   }
@@ -290,9 +301,13 @@
     let o = `<g class="cv-conn${sel ? ' sel' : ''}${dimIf(F && !F.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}">`;
     o += `<rect class="cv-bg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
     const hh = G.HEAD + (sz.hasName ? 16 : 0);
+    // The sketch sits left of the ref (and name), and the pair is centered in the header.
+    const sk = sz.sk, textW = Math.min(sz.textW, w - 16 - sk.w - 8);
+    const sx = x + (w - (sk.w + 8 + textW)) / 2, tx = sx + sk.w + 8 + textW / 2;
     o += `<g class="cv-head" data-head="${n.id}"><rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${hh}"/>` +
-      `<text class="cv-ref" x="${f(x + w / 2)}" y="${f(y + 16)}" text-anchor="middle">${esc(n.ref)}</text>` +
-      (sz.hasName ? `<text class="cv-name" x="${f(x + w / 2)}" y="${f(y + 32)}" text-anchor="middle">${esc(U.clip(n.name, 11, w - 16))}</text>` : '') + '</g>';
+      `<g class="cv-sketch" style="stroke-width:${f(0.9 / sk.k)}" transform="translate(${f(sx + sk.v.ox * sk.k)} ${f(y + (hh - sk.h) / 2)}) scale(${f(sk.k * 1000) / 1000})">${sk.v.svg}</g>` +
+      `<text class="cv-ref" x="${f(tx)}" y="${f(y + 16)}" text-anchor="middle">${esc(n.ref)}</text>` +
+      (sz.hasName ? `<text class="cv-name" x="${f(tx)}" y="${f(y + 32)}" text-anchor="middle">${esc(U.clip(n.name, 11, textW + 4))}</text>` : '') + '</g>';
     o += cellRow(x, y + hh, w, G.INFO, sz.info, 'cv-t');
     const numX = numRight ? x + w - sz.numW : x;
     const labX = numRight ? x : x + sz.numW;
@@ -316,19 +331,34 @@
       `<text class="cv-ref" x="${f(it.x + it.w / 2)}" y="${f(it.y + it.h / 2 + 4.5)}" text-anchor="middle">${esc(n.ref)}</text></g>`;
   }
   function boxBack(it, opts) {
-    const b = it.b;
-    const sel = opts.sel && ((opts.sel.kind === 'group' && b.group && opts.sel.ids.has(b.group.id)) ||
-      (opts.sel.kind === 'wire' && b.wires.every(w => opts.sel.ids.has(w.id))));
+    const b = it.b, sel = boxSel(it, opts);
     return `<rect class="cv-box${b.kind === 'cable' ? ' cable' : ''}${sel ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>`;
   }
   const boxDim = (it, opts) => !!opts.focus && !it.b.wires.some(w => opts.focus.wires.has(w.id));
+  // Over the wires, the rows get a picture of what holds them: a cable's sheath, dark and see-through
+  // with rounded ends where the wires come out, or a bundle's shrink-tube bands at each end.
+  function holder(it, opts) {
+    const b = it.b, x = it.x, w = it.w, top = it.y + it.sz.h0, bot = it.y + it.h;
+    const cls = (boxSel(it, opts) ? ' sel' : '') + dimIf(boxDim(it, opts));
+    if (b.kind === 'cable') {
+      const hh = bot - top - 4;
+      return `<rect class="cv-sheath${cls}" x="${f(x)}" y="${f(top + 2)}" width="${f(w)}" height="${f(hh)}" rx="${f(Math.min(14, hh / 2))}" ry="${f(hh / 2)}"/>`;
+    }
+    const bw = 13, inset = (BOX_END.bundle - bw) / 2, hh = bot - top - 4;
+    return [x + inset, x + w - inset - bw].map(bx =>
+      `<g class="cv-band${cls}"><rect x="${f(bx)}" y="${f(top + 3)}" width="${bw}" height="${f(hh - 2)}" rx="3"/>` +
+      `<line x1="${f(bx + 3.5)}" x2="${f(bx + 3.5)}" y1="${f(top + 7)}" y2="${f(top + hh - 3)}"/></g>`).join('');
+  }
+  const boxSel = (it, opts) => { const b = it.b, sel = opts.sel; return !!sel && ((sel.kind === 'group' && b.group && sel.ids.has(b.group.id)) || (sel.kind === 'wire' && b.wires.every(w => sel.ids.has(w.id)))); };
   function boxFront(it, opts) {
     const b = it.b, sz = it.sz, x = it.x, y = it.y, w = it.w, F = opts.focus, bd = dimIf(boxDim(it, opts));
-    let o = `<g class="cv-boxg${bd}" data-box="${esc(b.key)}"><rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${G.HEAD}"/>` +
+    let o = holder(it, opts);
+    o += `<g class="cv-boxg${bd}" data-box="${esc(b.key)}"><rect class="cv-bg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/>` +
+      `<rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${G.HEAD}"/>` +
       `<text class="cv-ref" x="${f(x + w / 2)}" y="${f(y + 16)}" text-anchor="middle">${esc(b.label)}</text>`;
     o += cellRow(x, y + G.HEAD, w, G.INFO, sz.info, 'cv-t');
-    o += '</g>';
-    if (sz.note) o += `<text class="cv-name${bd}" x="${f(x + w / 2)}" y="${f(y + G.HEAD + G.INFO + 13)}" text-anchor="middle">${esc(U.clip(sz.note, 11, w - 16))}</text>`;
+    o += `<rect class="cv-frame${boxSel(it, opts) ? ' sel' : ''}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/></g>`;
+    if (sz.note) o += `<text class="cv-name cv-halo${bd}" x="${f(x + w / 2)}" y="${f(y + G.HEAD + G.INFO + 13)}" text-anchor="middle">${esc(U.clip(sz.note, 11, w - 16))}</text>`;
     const c = sz.cols, inner = c.from + c.c + c.to + 40 + (c.t ? c.t + 18 : 0);
     const x0 = x + (w - inner) / 2;
     sz.rows.forEach((r, i) => {
@@ -340,7 +370,6 @@
         `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text>` +
         (r.tags ? `<text class="cv-tag" x="${f(x0 + inner)}" y="${f(ty)}" text-anchor="end">${esc(r.tags)}</text>` : '') + '</g>';
     });
-    o += `<rect class="cv-frame${b.kind === 'cable' ? '' : ' dashed'}${bd}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
     return o;
   }
 

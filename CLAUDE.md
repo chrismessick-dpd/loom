@@ -45,6 +45,17 @@ links to it so far. Before every commit:
   - The formboard renderer (`render.js`), breakouts in the UI, coverings in the UI and the
     Formboard/Wiring sheet toggle are gone. The model still has segments, breakouts and coverings,
     so a Layout view can come back.
+- **Diagram look (2026-11-06, Chris):**
+  - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
+    the view the drawing prints; the front when it prints both).
+  - A cable's wire rows sit under a dark, see-through sheath with rounded ends, and a bundle's
+    under a shrink-tube band at each end (`holder`), in place of the solid and dashed frames. Both
+    are drawn over the wires, so row text has a paper halo. `BOX_END` widens boxes to make room.
+    Only the header and info rows keep a frame.
+  - Each housed connector (rect, D-sub, circular) has **Views: Front, Back, Both** in Properties,
+    stored as `n.faceView` (unset means front). Back is the wire side, the mirror of the face
+    (`shapes.js` `face(h, n, view)`, `views`, `fitViews`). The sheet prints the chosen views; Both
+    takes a double-width cell. Leads, rings and ferrules have no back view.
 - **From a board (2026-11-06):** Add › From a board lists Signoff EE boards and reads one's stored fab
   package (`assets/boards.js`).
   - **Which package:** the latest tagged revision's package (picked as EE's `latestRevision`
