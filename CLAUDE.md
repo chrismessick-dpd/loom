@@ -8,7 +8,8 @@ pin to run wires, and group wires into cables. Loom then draws the sheet a tech 
 - notes and a title block.
 
 Read `../CLAUDE.md` first for the suite's hard rules. The name is final (Chris, 2026-11-06, after
-briefly trying "Lacing"). Loom isn't a git repo yet.
+briefly trying "Lacing"). Repo: `chrismessick-dpd/loom` (public, Pages from `main`); only the hub
+links to it so far. Before pushing, grep the diff for client names and part numbers (`../CLAUDE.md`).
 
 ## Status (2026-11-06)
 
