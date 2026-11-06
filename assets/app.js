@@ -863,6 +863,61 @@
     setTimeout(() => t.remove(), tone === 'error' ? 7000 : 3200);
   }
 
+  // ── Tool updates (as in Signoff EE and Partcheck) ──
+  // A page left open keeps running the version it loaded. Now and then (5 s after opening, every 5
+  // minutes, when the tab comes back into view) it asks this site which version it serves. If that's
+  // another one, it reloads into it once the page is idle (not typing, dragging, wiring or picking a
+  // board), after writing any pending save. The new page says "Tool updated". A version it already
+  // reloaded for is never tried twice. Asset URLs carry ?v= stamps (tools/stamp_version.py), and the
+  // browser's copies are refreshed before the reload too.
+  const UPDATE_KEY = 'signoff.toolUpdate.' + location.pathname;   // sessionStorage: { tried, from }
+  let updateWaiting = '', updateBusy = false;
+  function updateMemo(v) {
+    try {
+      if (v === undefined) return JSON.parse(sessionStorage.getItem(UPDATE_KEY) || '{}') || {};
+      sessionStorage.setItem(UPDATE_KEY, JSON.stringify(v));
+    } catch (e) { return null; }
+  }
+  function pageIdle() {
+    const a = document.activeElement;
+    const typing = a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable);
+    return !typing && !document.hidden && !gesture && !S.pending && !BM.open;
+  }
+  async function reloadWhenIdle() {
+    if (!updateWaiting) return;
+    if (!pageIdle()) { setTimeout(reloadWhenIdle, 30000); return; }
+    if (updateMemo({ tried: updateWaiting, from: LM.VERSION }) === null) { updateWaiting = ''; return; }
+    clearTimeout(saveTimer);
+    try { localStorage.setItem(NS + 'harnesses', JSON.stringify(S.store)); localStorage.setItem(NS + 'current', S.cur || ''); } catch (e) { /* storage blocked */ }
+    const own = u => { try { return new URL(u, location.href).origin === location.origin; } catch (e) { return false; } };
+    const urls = [location.href.split('#')[0]]
+      .concat([...document.scripts].map(s => s.src), [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.href))
+      .filter(u => u && own(u));
+    await Promise.all(urls.map(u => fetch(u, { cache: 'reload' }).catch(() => null)));
+    location.reload();
+  }
+  function checkForUpdate() {
+    const have = LM.VERSION;
+    if (!have || have === 'proto' || updateBusy || updateWaiting || !window.fetch) return;
+    updateBusy = true;
+    fetch('assets/version.js?nc=' + Date.now(), { cache: 'no-store' })
+      .then(r => (r.ok ? r.text() : ''))
+      .then(text => {
+        updateBusy = false;
+        const m = /VERSION\s*=\s*["']([0-9a-f]+)["']/.exec(text || '');
+        if (!m || m[1] === have || (updateMemo() || {}).tried === m[1]) return;
+        updateWaiting = m[1];
+        reloadWhenIdle();
+      }, () => { updateBusy = false; });
+  }
+  {
+    const memo = updateMemo() || {};
+    if (memo.from && memo.from !== LM.VERSION) { updateMemo({ tried: memo.tried }); setTimeout(() => toast('Tool updated'), 300); }
+    setTimeout(checkForUpdate, 5000);
+    setInterval(checkForUpdate, 5 * 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+  }
+
   // ── Start ──
   applyTheme(readTheme());
   if (DEMO) {

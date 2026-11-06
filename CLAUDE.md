@@ -9,7 +9,12 @@ pin to run wires, and group wires into cables. Loom then draws the sheet a tech 
 
 Read `../CLAUDE.md` first for the suite's hard rules. The name is final (Chris, 2026-11-06, after
 briefly trying "Lacing"). Repo: `chrismessick-dpd/loom` (public, Pages from `main`); only the hub
-links to it so far. Before pushing, grep the diff for client names and part numbers (`../CLAUDE.md`).
+links to it so far. Before every commit:
+1. Run `python tools/stamp_version.py` (`--check` verifies). It puts `?v=<hash>` on the asset URLs
+   and writes the hash to `assets/version.js`. Open pages update themselves from that file, as in
+   the other tools: they check 5 s after opening, every 5 minutes and on focus, reload when idle,
+   and say "Tool updated" (`checkForUpdate` in `app.js`).
+2. Grep the diff for client names and part numbers (`../CLAUDE.md`).
 
 ## Status (2026-11-06)
 

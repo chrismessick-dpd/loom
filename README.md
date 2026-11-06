@@ -66,6 +66,8 @@ It's a static site of classic scripts with no build step.
 - **Libraries:** JSZip and SheetJS load from CDNs with pinned integrity hashes.
 - **Locally:** serve the folder above Loom, so `../pcb_dfm` and `../ee_design_review` resolve, and
   open `loom/?demo`.
+- **Before committing:** run `tools/stamp_version.py`. It stamps `?v=` on asset URLs and writes the
+  build hash that open pages watch to update themselves.
 - **Copied files:**
   - `assets/suite.css` comes from Signoff EE, through `tools/sync_suite_css.py`.
   - `assets/vendor/` holds Fabcheck's netlist and BOM parsers, copied by `tools/sync_vendor.py`.
