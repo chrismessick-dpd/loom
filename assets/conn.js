@@ -241,14 +241,32 @@
     return o;
   };
 
+  // What a selection is about: its wires, the ends they join, and the selected ends themselves.
+  // Everything else is dimmed on the canvas. No dimming while a wire is being drawn, so every pin
+  // stays easy to pick.
+  function focusOf(h, sel, pending) {
+    if (!sel || pending) return null;
+    const ids = sel.ids, wires = new Set(), nodes = new Set(), picked = new Set();
+    if (sel.kind === 'wire') ids.forEach(id => wires.add(id));
+    else if (sel.kind === 'node') { ids.forEach(id => { picked.add(id); nodes.add(id); }); h.wires.forEach(w => { if (ids.has(w.from.node) || ids.has(w.to.node)) wires.add(w.id); }); }
+    else if (sel.kind === 'group') h.groups.forEach(g => { if (ids.has(g.id)) g.wires.forEach(id => wires.add(id)); });
+    else return null;
+    h.wires.forEach(w => { if (wires.has(w.id)) { nodes.add(w.from.node); nodes.add(w.to.node); } });
+    const pins = new Set();
+    h.wires.forEach(w => { if (wires.has(w.id)) [w.from, w.to].forEach(e => pins.add(e.node + '|' + e.pin)); });
+    return { wires, nodes, picked, pins };
+  }
+  const dimIf = c => (c ? ' dim' : '');
+
   function connSvg(h, it, opts, Lo) {
-    const n = it.n, sz = it.sz, x = it.x, y = it.y, w = it.w;
+    const n = it.n, sz = it.sz, x = it.x, y = it.y, w = it.w, F = opts.focus;
     const sel = opts.sel && opts.sel.kind === 'node' && opts.sel.ids.has(n.id);
+    const pinDim = p => !!F && F.nodes.has(n.id) && !F.picked.has(n.id) && !F.pins.has(n.id + '|' + p);
     // Pin numbers go on the side the wires leave from.
     const toRight = h.wires.some(wr => { const o = wr.from.node === n.id ? wr.to : wr.to.node === n.id ? wr.from : null; if (!o) return false; const ot = Lo.itemOf.get(o.node); return ot && ot.x > x; });
     const toLeft = h.wires.some(wr => { const o = wr.from.node === n.id ? wr.to : wr.to.node === n.id ? wr.from : null; if (!o) return false; const ot = Lo.itemOf.get(o.node); return ot && ot.x < x; });
     const numRight = toRight || !toLeft;
-    let o = `<g class="cv-conn${sel ? ' sel' : ''}" data-node="${n.id}">`;
+    let o = `<g class="cv-conn${sel ? ' sel' : ''}${dimIf(F && !F.nodes.has(n.id))}" data-node="${n.id}">`;
     o += `<rect class="cv-bg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
     const hh = G.HEAD + (sz.hasName ? 16 : 0);
     o += `<g class="cv-head" data-head="${n.id}"><rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${hh}"/>` +
@@ -261,7 +279,7 @@
       const ry = y + sz.h0 + i * G.ROW;
       const pend = opts.pending && opts.pending.node === n.id && opts.pending.pin === p;
       const used = h.wires.some(wr => (wr.from.node === n.id && wr.from.pin === p) || (wr.to.node === n.id && wr.to.pin === p));
-      o += `<g class="cv-pin${pend ? ' pend' : ''}${used ? ' used' : ''}" data-node="${n.id}" data-pin="${esc(p)}">` +
+      o += `<g class="cv-pin${pend ? ' pend' : ''}${used ? ' used' : ''}${dimIf(pinDim(p))}" data-node="${n.id}" data-pin="${esc(p)}">` +
         `<rect class="cv-cell cv-pinrow" x="${f(x)}" y="${f(ry)}" width="${f(w)}" height="${G.ROW}"/>` +
         `<line class="cv-rule" x1="${f(numRight ? numX : labX)}" x2="${f(numRight ? numX : labX)}" y1="${f(ry)}" y2="${f(ry + G.ROW)}"/>` +
         `<text class="cv-t" x="${f(labX + (w - sz.numW) / 2)}" y="${f(ry + 15)}" text-anchor="middle">${esc(sz.labels[i])}</text>` +
@@ -272,33 +290,34 @@
   }
   function spliceSvg(it, opts) {
     const n = it.n, sel = opts.sel && opts.sel.kind === 'node' && opts.sel.ids.has(n.id);
-    return `<g class="cv-splice${sel ? ' sel' : ''}${opts.pending ? ' target' : ''}" data-node="${n.id}"><rect class="cv-bg cv-frame" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="4"/>` +
+    return `<g class="cv-splice${sel ? ' sel' : ''}${opts.pending ? ' target' : ''}${dimIf(opts.focus && !opts.focus.nodes.has(n.id))}" data-node="${n.id}"><rect class="cv-bg cv-frame" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="4"/>` +
       `<text class="cv-ref" x="${f(it.x + it.w / 2)}" y="${f(it.y + it.h / 2 + 4.5)}" text-anchor="middle">${esc(n.ref)}</text></g>`;
   }
   function boxBack(it, opts) {
     const b = it.b;
     const sel = opts.sel && ((opts.sel.kind === 'group' && b.group && opts.sel.ids.has(b.group.id)) ||
       (opts.sel.kind === 'wire' && b.wires.every(w => opts.sel.ids.has(w.id))));
-    return `<rect class="cv-box${b.kind === 'cable' ? ' cable' : ''}${sel ? ' sel' : ''}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>`;
+    return `<rect class="cv-box${b.kind === 'cable' ? ' cable' : ''}${sel ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>`;
   }
-  function boxFront(it) {
-    const b = it.b, sz = it.sz, x = it.x, y = it.y, w = it.w;
-    let o = `<g class="cv-boxg" data-box="${esc(b.key)}"><rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${G.HEAD}"/>` +
+  const boxDim = (it, opts) => !!opts.focus && !it.b.wires.some(w => opts.focus.wires.has(w.id));
+  function boxFront(it, opts) {
+    const b = it.b, sz = it.sz, x = it.x, y = it.y, w = it.w, F = opts.focus, bd = dimIf(boxDim(it, opts));
+    let o = `<g class="cv-boxg${bd}" data-box="${esc(b.key)}"><rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${G.HEAD}"/>` +
       `<text class="cv-ref" x="${f(x + w / 2)}" y="${f(y + 16)}" text-anchor="middle">${esc(b.label)}</text>`;
     o += cellRow(x, y + G.HEAD, w, G.INFO, sz.info, 'cv-t');
-    if (sz.note) o += `<text class="cv-name" x="${f(x + w / 2)}" y="${f(y + G.HEAD + G.INFO + 13)}" text-anchor="middle">${esc(U.clip(sz.note, 11, w - 16))}</text>`;
     o += '</g>';
+    if (sz.note) o += `<text class="cv-name${bd}" x="${f(x + w / 2)}" y="${f(y + G.HEAD + G.INFO + 13)}" text-anchor="middle">${esc(U.clip(sz.note, 11, w - 16))}</text>`;
     const c = sz.cols, inner = c.from + c.c + c.to + 40 + (c.t ? c.t + 18 : 0);
     const x0 = x + (w - inner) / 2;
     sz.rows.forEach((r, i) => {
       const ty = y + sz.h0 + i * G.BROW + 13;
-      o += `<g class="cv-wrow" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(x)}" y="${f(ty - 12)}" width="${f(w)}" height="${G.BROW}"/>` +
+      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(x)}" y="${f(ty - 12)}" width="${f(w)}" height="${G.BROW}"/>` +
         `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + 20 + c.c / 2)}" y="${f(ty)}" text-anchor="middle">${esc(r.color)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text>` +
         (r.tags ? `<text class="cv-tag" x="${f(x0 + inner)}" y="${f(ty)}" text-anchor="end">${esc(r.tags)}</text>` : '') + '</g>';
     });
-    o += `<rect class="cv-frame${b.kind === 'cable' ? '' : ' dashed'}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
+    o += `<rect class="cv-frame${b.kind === 'cable' ? '' : ' dashed'}${bd}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
     return o;
   }
 
@@ -306,15 +325,16 @@
     opts = opts || {};
     A = A || M.analyze(h);
     const Lo = layout(h, A);
+    opts = Object.assign({}, opts, { focus: focusOf(h, opts.sel, opts.pending) });
     let backs = '', wires = '', fronts = '', ends = '';
     Lo.items.forEach(it => {
-      if (it.kind === 'box') { backs += boxBack(it, opts); fronts += boxFront(it); }
+      if (it.kind === 'box') { backs += boxBack(it, opts); fronts += boxFront(it, opts); }
       else if (it.kind === 'conn') ends += connSvg(h, it, opts, Lo);
       else ends += spliceSvg(it, opts);
     });
     h.wires.slice().sort((a, b) => a.no - b.no).forEach(w => {
       const d = Lo.wirePath(w);
-      if (d) wires += wireSvg(w, d, opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '');
+      if (d) wires += wireSvg(w, d, (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + dimIf(opts.focus && !opts.focus.wires.has(w.id)));
     });
     return { svg: backs + wires + fronts + ends, box: Lo.box, layout: Lo };
   }
