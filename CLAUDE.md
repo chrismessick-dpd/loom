@@ -20,6 +20,23 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **The guide (2026-11-07, Chris: an interactive getting started for new users):** `assets/guide.js`,
+  `window.LoomGuide` (also `LM.guide`). 25 steps in seven chapters (Welcome, The canvas, Ends and wires,
+  Wire sets, Views and notes, The drawing, Done), each a title, what the feature is, a *Try it*
+  instruction, a `setup` (view, selection, panels shown, the How it works card closed) and a `spot`
+  (selectors, first one shown wins), ringed by `#lm-guide-spot`, moved every animation frame. The card
+  (`#lm-guide`) has Back/Next, a Contents list to jump anywhere, and drags by its top line. It sits at the
+  canvas's bottom left, or moves aside when it would cover the spot. It always runs on the demo harness:
+  started outside `?demo`, it opens `?demo&guide` in the same tab and its last step offers Back to my
+  harnesses. State is sessionStorage `loom.guide`. It opens from Guide in the menu, Take the guide on the
+  home page and the How it works card (`data-act="guide"`). It reaches the app through `LM.app.guide`
+  (`demo`, `view`, `select`, `panels`, `menu`, `help`, `wires`, `fit`) and finds demo parts by ref
+  (P1, S1) and set label (B1, TP1, C1), since ids are made fresh. Update a step when the feature it
+  describes changes. Loom also loads the suite's demo tour (`../signoff/assets/tour.js`), whose Loom step
+  has an Open Loom's guide button; the guide hides the tour's card while it runs (`body.lm-guide-on`). On a phone the card docks at the top
+  (the selection sheet rises from the bottom), and the four steps about the hidden parts pane show their
+  `phone` text instead of Try it.
+
 - **Animated mark:** `assets/mark.js` swaps the sidebar's static icon for a twisted pair that spins
   half a turn about its axis every 24 s and rests over-and-under (still with reduced motion). The
   strands shade from 15% toward the teal at the top to white at the bottom (`top`, `bottom`).

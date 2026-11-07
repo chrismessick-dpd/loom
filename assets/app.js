@@ -171,7 +171,7 @@
       <h2>Draw a harness a tech can build from</h2>
       <p>Add the ends, click pin to pin to wire them, and group wires into cables. Loom draws the wiring diagram, the connector faces, the wire list and the BOM.</p>
       <div class="actions"><button class="btn btn-primary" data-act="new">New harness</button><button class="btn" data-act="open">Open a file…</button>
-      ${DEMO ? '<button class="btn" data-act="demo">Demo harness</button>' : '<a class="btn" href="?demo">Try the demo</a>'}</div>
+      ${DEMO ? '<button class="btn" data-act="demo">Demo harness</button>' : '<a class="btn" href="?demo">Try the demo</a>'}<button class="btn" data-act="guide">Take the guide</button></div>
       <div class="drop-tiles">
         <div><b>Ends</b>Connector tables with pin labels, face views with pin 1</div>
         <div><b>Wires</b>Colors, gauges, splices, lengths</div>
@@ -787,7 +787,8 @@
         <p><i>⇧</i> Shift-click wires, then tick Twist or Shield, or pick Cable or Bundle, to make them a set. Sets nest: select a set and more wires to bundle them.</p>
         <p><i>◉</i> Click a set's badge, or inside it, to edit it. Drag a set's ends to shorten it or run it past what holds it.</p>
         <p><i>✎</i> Add › Note, then click a wire, set or connector to pin a note. Drag its bubble; click it to edit.</p>
-        <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p></div>` : '') +
+        <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p>
+        <button class="btn hp-guide" data-act="guide">Take the guide: every feature, step by step</button></div>` : '') +
       `<button class="pane-help-btn${open ? ' on' : ''}" data-act="help" title="How it works" aria-label="How it works" aria-expanded="${open}">?</button>`;
     paint($('#parts-pane'), tabs + body + help);
   }
@@ -1315,6 +1316,7 @@
       case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;
       case 'help': fold.help = fold.help === false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } renderParts(); break;
       case 'from-board': openBoards(); break;
+      case 'guide': if (LM.guide) LM.guide.start(); break;
       case 'bm-close': closeModal(); break;
       case 'bm-back': BM.step = BM.boards ? 'boards' : 'loading'; renderModal(); break;
       case 'bm-retry': if (BM.board && BM.boards) openBoard(BM.board.id); else { BM.boards = null; LM.boards.reset(); openBoards(); } break;
@@ -1391,7 +1393,7 @@
   document.addEventListener('click', e => {
     const t = e.target;
     const app = $('#app');
-    if (app.classList.contains('nav-open') && !t.closest('[data-act="nav"]') && (!t.closest('#sidebar') || t.closest('[data-open], [data-act="new"], [data-act="home"], [data-act="open"], a'))) {
+    if (app.classList.contains('nav-open') && !t.closest('[data-act="nav"]') && (!t.closest('#sidebar') || t.closest('[data-open], [data-act="new"], [data-act="home"], [data-act="open"], [data-act="guide"], a'))) {
       app.classList.remove('nav-open');
       if (!t.closest('#sidebar')) return;
     }
@@ -1582,5 +1584,21 @@
   $('#version').textContent = LM.VERSION ? 'Build ' + LM.VERSION : '';
   load();
   renderAll();
-  LM.app = { state: S, renderAll, H };
+  // guide: what assets/guide.js needs to set the page up for each of its steps.
+  LM.app = { state: S, renderAll, H, demo: DEMO,
+    guide: {
+      // The demo harness, opened in Build (rebuilt if it was deleted).
+      demo() { if (!S.store.hdemo1) S.store.hdemo1 = LM.demo.harness(); if (S.cur !== 'hdemo1') openHarness('hdemo1'); },
+      view(v) { if (!H()) return; S.view = v; S.pending = null; S.placing = null; renderAll(); },
+      // Select by kind and id (or clear, with no kind), in Build; Properties shows it.
+      select(kind, ids) { if (!H()) return; S.view = 'build'; S.pending = null; S.placing = null; select(kind, ids); },
+      // Both panels shown off phones, so the guide can point into them.
+      panels() { if (narrow() || !(fold.rail || fold.parts)) return; fold.rail = false; fold.parts = false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } if (S.view === 'build') { applyFold(); renderHud(); renderCanvas(); } },
+      menu() { if (narrow() || !fold.side) return; toggleSidebar(); },
+      // The How it works card, which would cover Properties.
+      help(open) { if ((fold.help !== false) === open) return; fold.help = open; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } if (H() && S.view === 'build') renderParts(); },
+      wires(open) { S.wiresOpen = open; renderAll(); },
+      fit() { if (H() && S.view === 'build') fitGlide(); },
+      narrow,
+    } };
 })(window.LM = window.LM || {});
