@@ -205,7 +205,7 @@ button.chip.g-chip { cursor: pointer; }
   --cv-glass-top: rgba(255, 255, 255, 0.35); --cv-glass-mid: rgba(255, 255, 255, 0); --cv-glass-bot: rgba(20, 35, 60, 0.07); --cv-conn-rim: rgba(255, 255, 255, 0.95);
   --cv-edge: rgba(29, 29, 31, 0.82); --cv-shade: rgba(30, 40, 55, 0.13); --cv-gloss: rgba(255, 255, 255, 0.6);
   --cv-sel: #00727f; --cv-sel-soft: rgba(0, 114, 127, 0.12); --cv-glow: rgba(0, 160, 180, 0.55);
-  --cv-sheath: rgba(29, 29, 31, 0.38); --cv-sheath-edge: rgba(29, 29, 31, 0.6); --cv-sheath-hi: rgba(120, 124, 132, 0.22); --cv-sheath-mid: rgba(29, 29, 31, 0.3); --cv-sheath-lo: rgba(29, 29, 31, 0.48);
+  --cv-sheath: #a2a2a5; --cv-sheath-edge: rgba(29, 29, 31, 0.6); --cv-sheath-hi: #d9dadc; --cv-sheath-mid: #b3b4b6; --cv-sheath-lo: #8d8d90;
   --cv-sheath-face: rgba(255, 255, 255, 0.55); --cv-sheath-face-lo: rgba(29, 29, 31, 0.16); --cv-halo: #f4f5f8; --cv-lace: #3a3a3e; --cv-gold: #c9a227;
   --cv-band: #2c2c2e; --cv-band-hi: rgba(255, 255, 255, 0.3); --cv-band-lo: #1c1c1f; --cv-band-hi2: #55565c;
   --cv-card-shadow: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.06)) drop-shadow(0 6px 14px rgba(25, 35, 50, 0.1));
@@ -220,7 +220,7 @@ button.chip.g-chip { cursor: pointer; }
   --cv-gd: 0.3; --cv-gd-major: 0.55;
   --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
   --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
-  --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: rgba(255, 255, 255, 0.14); --cv-sheath-mid: rgba(0, 0, 0, 0.32); --cv-sheath-lo: rgba(0, 0, 0, 0.55);
+  --cv-sheath: #111316; --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: #3e4046; --cv-sheath-mid: #16171b; --cv-sheath-lo: #0e0f12;
   --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #1f2227; --cv-lace: #d9d9df; --cv-gold: #e2bd52;
   --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); --cv-band-lo: #0c0c0e; --cv-band-hi2: #3e3f45;
   --cv-card-shadow: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
@@ -234,7 +234,7 @@ button.chip.g-chip { cursor: pointer; }
   --cv-gd: 0.3; --cv-gd-major: 0.55;
   --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
   --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
-  --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: rgba(255, 255, 255, 0.14); --cv-sheath-mid: rgba(0, 0, 0, 0.32); --cv-sheath-lo: rgba(0, 0, 0, 0.55);
+  --cv-sheath: #111316; --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: #3e4046; --cv-sheath-mid: #16171b; --cv-sheath-lo: #0e0f12;
   --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #1f2227; --cv-lace: #d9d9df; --cv-gold: #e2bd52;
   --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); --cv-band-lo: #0c0c0e; --cv-band-hi2: #3e3f45;
   --cv-card-shadow: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
@@ -291,7 +291,9 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .w:hover .w-edge { stroke-width: 6; }
 /* What holds a box's wires: a cable's sheath, a bundle's bands (conn.js holder). Over the wires, so
    the row text gets a paper halo. */
-.lm-canvas .cv-sheath { fill: var(--cv-sheath); stroke: var(--cv-sheath-edge); stroke-width: 1.4; pointer-events: none; }
+/* A cable's body is only just see-through (Chris: 90%); its colors are the tint the old smoked
+   glass showed over the stage. */
+.lm-canvas .cv-sheath { fill: var(--cv-sheath); fill-opacity: 0.9; stroke: var(--cv-sheath-edge); stroke-width: 1.4; pointer-events: none; }
 .lm-canvas .cv-sheath-face { fill: var(--cv-sheath-face); stroke: var(--cv-sheath-edge); stroke-width: 1.4; pointer-events: none; }
 .lm-canvas .cv-band rect { fill: var(--cv-band); stroke: var(--cv-sheath-edge); stroke-width: 1; }
 .lm-canvas .cv-band line { stroke: var(--cv-band-hi); stroke-width: 2; stroke-linecap: round; }
