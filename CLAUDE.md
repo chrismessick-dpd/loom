@@ -47,7 +47,7 @@ links to it so far. Before every commit:
   - The formboard renderer (`render.js`), breakouts in the UI, coverings in the UI and the
     Formboard/Wiring sheet toggle are gone. The model still has segments, breakouts and coverings,
     so a Layout view can come back.
-- **Wire sets (2026-11-06, branch `sets`, Chris):** `h.groups` became `h.sets`, a forest of nested
+- **Wire sets (2026-11-06, Chris; merged from branch `sets`):** `h.groups` became `h.sets`, a forest of nested
   sets (schema 2; `normalize` converts old groups, `fromGroups`).
   - **Model.** A set is `{ id, label, wires, sets, twist, shield, cable, bundle, length, note, pn }`.
     Its members are wires and child sets; a wire is in one set directly, and a set in one parent.
@@ -90,10 +90,6 @@ links to it so far. Before every commit:
     Covers, Set color, and a clickable **Hierarchy** tree (`setTree`). Delete on a set dissolves
     it (`dissolveSet`) and never deletes wires. A wire's chips link to its sets. The Parts tab
     lists the wire sets as trees, and its Ends list is gone.
-  - **Before merging:** the branch stores harnesses under `loom.sets.` / `loom.sets-demo.` (`NS` in
-    `app.js`) so its schema-2 data can't reach main's Loom on the same origin. Put the namespace
-    back to `loom.v1.` / `loom.demo.` in the merge. A `.loom.json` saved from the branch won't open
-    correctly in main's Loom.
 - **Diagram look (2026-11-06, Chris; the bundle, table and Wire bundle notes predate wire sets):**
   - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
     the view the drawing prints; the front when it prints both).
@@ -150,8 +146,13 @@ links to it so far. Before every commit:
       honored.
 - **Splice ports and wire-end drags (2026-11-06, Chris):**
   - A splice is a box with a port (a circle on its edge) per wire, on the side the wire comes in,
-    and lines inside from each side's ports to the ref, where they join (`spliceSvg`). Ports sit on
-    the pitch from 15 down; the box grows with the busier side. `n.ports` (`{ l, r }`, wire ids)
+    and lines inside from each side's ports to the ref, where they join (`spliceSvg`). Ports are one pitch
+    apart, so wires leave parallel into the next block, and both sides are centered on the junction
+    line, where the ref sits (Chris). A lone wire runs straight in. With an even count, the port
+    just above the middle sits on the junction (two outputs: the top runs straight through). The box
+    is centered on the junction, so it may have a spare pitch above (`spliceSize`: `port0` is the
+    junction, `dy` a port's offset from it). Drops slot in by the ports above the pointer.
+    `n.ports` (`{ l, r }`, wire ids)
     holds the order a drag left; wires not listed go on the side facing their other end, sorted
     by where their wires go (`sides` in `layout`).
   - Every wire end has a dot to drag it by: a splice's ports, loose ends, and a small dot where a
