@@ -61,6 +61,8 @@ links to it so far. Before every commit:
     side, a whole number of turns of about 40 units per wire, easing level into and out of the
     straight runs. The near-side stretches (`over`, `.w-over`) are drawn over the other wires, so
     they alternate over and under. A group wire on a row apart from the rest stays straight.
+    A bundle that is nothing but one twisted set (`b.twistOnly`) gets no bands, and its twist
+    runs nearly the box's width; a cable keeps its sheath.
 - **From a board (2026-11-06):** Add › From a board lists Signoff EE boards and reads one's stored fab
   package (`assets/boards.js`).
   - **Which package:** the latest tagged revision's package (picked as EE's `latestRevision`

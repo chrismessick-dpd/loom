@@ -240,6 +240,11 @@
       });
       runs.filter(run => run.ws.length > 1).forEach(run => run.ws.forEach((w, i) => twistOf.set(w.id, { ws: run.ws, i })));
     }));
+    // A bundle that is nothing but one twisted set needs no bands: the twist holds it together.
+    boxes.forEach(b => {
+      const t = twistOf.get(b.wires[0].id);
+      b.twistOnly = b.kind === 'bundle' && !!t && t.ws.length === b.wires.length;
+    });
 
     // Anchors: a pin row's edge facing the other end.
     function anchor(e, towardX) {
@@ -275,7 +280,7 @@
     function twist(w, b, lIn, rIn) {
       const t = twistOf.get(w.id);
       if (!t || Math.abs(rIn.x - lIn.x) < 1) return null;
-      const dir = rIn.x > lIn.x ? 1 : -1, pad = BOX_END[b.kind] + 6;
+      const dir = rIn.x > lIn.x ? 1 : -1, pad = b.twistOnly ? 8 : BOX_END[b.kind] + 6;
       const xa = lIn.x + dir * pad, xb = rIn.x - dir * pad, run = Math.abs(xb - xa), n = t.ws.length;
       const turns = Math.max(1, Math.round(run / (TURN * n)));
       if (run < TURN * n * 0.6) return null;
@@ -404,6 +409,7 @@
       const hh = bot - top - 4;
       return `<rect class="cv-sheath${cls}" x="${f(x)}" y="${f(top + 2)}" width="${f(w)}" height="${f(hh)}" rx="${f(Math.min(14, hh / 2))}" ry="${f(hh / 2)}"/>`;
     }
+    if (b.twistOnly) return '';
     const bw = 13, inset = (BOX_END.bundle - bw) / 2, hh = bot - top - 4;
     return [x + inset, x + w - inset - bw].map(bx =>
       `<g class="cv-band${cls}"><rect x="${f(bx)}" y="${f(top + 3)}" width="${bw}" height="${f(hh - 2)}" rx="3"/>` +
