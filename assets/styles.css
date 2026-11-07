@@ -392,18 +392,18 @@ button.chip.g-chip { cursor: pointer; }
 .canvas-wrap { container: cv / inline-size; }
 .canvas-wrap .board-hud { top: 12px; left: 12px; gap: 8px; align-items: center; max-width: calc(100% - 72px); }
 /* A narrow canvas (both panels open on a small window): the controls drop their labels. */
-@container cv (max-width: 560px) { .canvas-wrap .hud-ico span, .canvas-wrap .hud-grid > svg { display: none; } .canvas-wrap .hud-grid { padding-left: 4px; } .canvas-wrap .seg.glass .hud-ico { padding: 6px 9px; } }
+@container cv (max-width: 560px) { .canvas-wrap .hud-ico span, .canvas-wrap .hud-grid > svg { display: none; } .canvas-wrap .seg.glass.hud-grid { padding-left: 3px; } .canvas-wrap .seg.glass .hud-ico { padding: 6px 9px; } }
 .canvas-wrap .board-hud.right { left: auto; right: 12px; }
 .canvas-wrap .seg.glass { background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.8); backdrop-filter: blur(20px) saturate(1.8); border: 0.5px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--glass-shadow); border-radius: 980px; padding: 3px; gap: 2px; overflow: visible; }
 .canvas-wrap .seg.glass button { color: var(--text-2); border-radius: 980px; padding: 6px 12px; font-weight: 500; transition: background 0.2s var(--ease), color 0.2s, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .canvas-wrap .seg.glass button:hover { color: var(--text); background: var(--glass-on); }
 .canvas-wrap .seg.glass button:active { transform: scale(0.92); transition-duration: 0.08s; }
 .canvas-wrap .seg.glass button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.canvas-wrap .seg.glass .hud-fold { width: 32px; height: 32px; padding: 0; }
+.canvas-wrap .seg.glass .hud-fold { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; }
 .canvas-wrap .hud-ico svg { width: 14px; height: 14px; }
-.canvas-wrap .hud-grid { display: inline-flex; align-items: center; gap: 0; padding: 3px 4px 3px 12px; color: var(--text-2); font-size: 12.5px; }
+.canvas-wrap .seg.glass.hud-grid { display: inline-flex; align-items: center; gap: 0; padding: 3px 3px 3px 12px; color: var(--text-2); font-size: 12.5px; }
 .canvas-wrap .hud-grid > svg { width: 13px; height: 13px; opacity: 0.8; }
-.canvas-wrap .hud-grid select { border: none; background: transparent; color: var(--text); border-radius: 980px; padding: 6px 8px 6px 7px; font: 500 12.5px var(--sans); cursor: pointer; outline: none; }
+.canvas-wrap .hud-grid select { border: none; background: transparent; color: var(--text); border-radius: 980px; height: 26px; padding: 0 9px 0 7px; font: 500 12.5px var(--sans); cursor: pointer; outline: none; }
 .canvas-wrap .hud-grid select:hover, .canvas-wrap .hud-grid select:focus-visible { background: var(--glass-on); }
 .canvas-wrap .hud-grid select option { background: var(--bg-elev); color: var(--text); }
 .canvas-wrap .hud-br { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 8px; align-items: center; }
