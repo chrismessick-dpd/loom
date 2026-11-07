@@ -191,6 +191,8 @@ button.chip.g-chip { cursor: pointer; }
 .canvas-wrap.cv-paper {
   --cv-stage: radial-gradient(120% 95% at 50% 36%, #ffffff 0%, #f1f2f5 52%, #e2e5ea 100%);
   --cv-paper: #fff; --cv-ink: #1d1d1f; --cv-ink-2: #6e6e73; --cv-head: #f3f4f6; --cv-head-hi: #fff; --cv-rule: rgba(0, 0, 0, 0.09); --cv-card-edge: rgba(0, 0, 0, 0.1);
+  --cv-conn-edge: rgba(29, 29, 31, 0.36); --cv-conn-head-hi: #fbfcfd; --cv-conn-head: #e1e5eb; --cv-conn-shadow: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.12)) drop-shadow(0 8px 18px rgba(25, 35, 50, 0.16));
+  --cv-glass-top: rgba(255, 255, 255, 0.35); --cv-glass-mid: rgba(255, 255, 255, 0); --cv-glass-bot: rgba(20, 35, 60, 0.07); --cv-conn-rim: rgba(255, 255, 255, 0.95);
   --cv-edge: rgba(29, 29, 31, 0.82); --cv-shade: rgba(30, 40, 55, 0.13); --cv-gloss: rgba(255, 255, 255, 0.6);
   --cv-sel: #00727f; --cv-sel-soft: rgba(0, 114, 127, 0.12); --cv-glow: rgba(0, 160, 180, 0.55);
   --cv-sheath: rgba(29, 29, 31, 0.38); --cv-sheath-edge: rgba(29, 29, 31, 0.6); --cv-sheath-hi: rgba(120, 124, 132, 0.22); --cv-sheath-mid: rgba(29, 29, 31, 0.3); --cv-sheath-lo: rgba(29, 29, 31, 0.48);
@@ -203,6 +205,8 @@ button.chip.g-chip { cursor: pointer; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .canvas-wrap.cv-paper {
   --cv-stage: radial-gradient(120% 95% at 50% 34%, #272a31 0%, #1d2025 52%, #15171b 100%);
   --cv-paper: #2c3037; --cv-ink: #ececf1; --cv-ink-2: #a3a3ab; --cv-head: #343840; --cv-head-hi: #3e434c; --cv-rule: rgba(255, 255, 255, 0.09); --cv-card-edge: rgba(255, 255, 255, 0.17);
+  --cv-conn-edge: rgba(236, 236, 241, 0.3); --cv-conn-head-hi: #4b515c; --cv-conn-head: #383d46; --cv-conn-shadow: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.6));
+  --cv-glass-top: rgba(255, 255, 255, 0.07); --cv-glass-mid: rgba(255, 255, 255, 0); --cv-glass-bot: rgba(0, 0, 0, 0.22); --cv-conn-rim: rgba(255, 255, 255, 0.13);
   --cv-gd: 0.3; --cv-gd-major: 0.55;
   --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
   --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
@@ -215,6 +219,8 @@ button.chip.g-chip { cursor: pointer; }
 :root[data-theme="dark"] .canvas-wrap.cv-paper {
   --cv-stage: radial-gradient(120% 95% at 50% 34%, #272a31 0%, #1d2025 52%, #15171b 100%);
   --cv-paper: #2c3037; --cv-ink: #ececf1; --cv-ink-2: #a3a3ab; --cv-head: #343840; --cv-head-hi: #3e434c; --cv-rule: rgba(255, 255, 255, 0.09); --cv-card-edge: rgba(255, 255, 255, 0.17);
+  --cv-conn-edge: rgba(236, 236, 241, 0.3); --cv-conn-head-hi: #4b515c; --cv-conn-head: #383d46; --cv-conn-shadow: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.6));
+  --cv-glass-top: rgba(255, 255, 255, 0.07); --cv-glass-mid: rgba(255, 255, 255, 0); --cv-glass-bot: rgba(0, 0, 0, 0.22); --cv-conn-rim: rgba(255, 255, 255, 0.13);
   --cv-gd: 0.3; --cv-gd-major: 0.55;
   --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
   --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
@@ -436,6 +442,15 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-pin + .cv-pin .cv-pinrow { stroke: var(--cv-rule); }
 .lm-canvas .cv-splice .cv-bg { fill: var(--cv-paper); filter: var(--cv-card-shadow); }
 .lm-canvas .cv-splice .cv-frame { stroke: var(--cv-card-edge); stroke-width: 1; }
+/* Connectors and splices stand out from the cable drawings (Chris): a darker edge, a more solid
+   header and a stronger shadow. Hover and selection still win. */
+.lm-canvas .cv-conn .cv-frame, .lm-canvas .cv-splice .cv-frame { stroke: var(--cv-conn-edge); stroke-width: 1.3; }
+.lm-canvas .cv-conn .cv-headbg { fill: url(#lmfx-conn-head); }
+/* Glass: a faint shade down the card and a bright inner rim, over its rows but under nothing
+   that's clicked (no pointer events). */
+.lm-canvas .cv-glass { fill: url(#lmfx-glass); pointer-events: none; }
+.lm-canvas .cv-rim { fill: none; stroke: var(--cv-conn-rim); stroke-width: 1; pointer-events: none; }
+.lm-canvas .cv-conn .cv-card, .lm-canvas .cv-splice .cv-bg { filter: var(--cv-conn-shadow); }
 /* A dragged part lifts off the stage. */
 .lm-canvas .lift { transform-box: fill-box; transform-origin: center; transform: scale(1.02); filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.3)); }
 .lm-canvas .lift .cv-card { filter: none; }

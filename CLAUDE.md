@@ -160,7 +160,9 @@ links to it so far. Before every commit:
     lists the wire sets as trees, and its Ends list is gone.
 - **Diagram look (2026-11-06, Chris; the bundle, table and Wire bundle notes predate wire sets):**
   - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
-    the view the drawing prints; the front when it prints both).
+    the view the drawing prints; the front when it prints both). Under it, the info row has the
+    same two columns as the pin rows (Chris): family and gender ("JST GH receptacle") over the
+    labels, and the count ("8-pins", "2-leads") over the pin numbers (`connInfo`).
   - A cable's wire rows sit under a dark, see-through sheath drawn as a cylinder: its right end is
     a full, lighter ellipse (`sheathFace`, drawn under the wires so they come out of it) and the
     jacket over the wires stops at that ellipse's near rim (`holder`, `sheathGeom`). The sheath
@@ -197,6 +199,10 @@ links to it so far. Before every commit:
     it: rounded, lit cards (`cardOpen`, clip ids `lmfx-*`), wire shade and gloss, metal contacts
     where wires land (`.cv-contact`), and pin targets while wiring (`.can`). Without `fx` the output
     is byte-identical to before, and the sheet never passes it.
+  - **Connectors and splices stand out** from the cable drawings (Chris): a darker edge
+    (`--cv-conn-edge`, 1.3), a lit header (`lmfx-conn-head`), a stronger shadow
+    (`--cv-conn-shadow`), and glass: a faint shade down the card (`.cv-glass`, `lmfx-glass`) and a
+    bright inner rim (`.cv-rim`), in both themes.
   - **Ends and splices.** Every wire-end dot (pin ends, splice ports and loose ends) is a metal
     contact ringed in its wire's color (`ring`, `--wc`), and it glows when grabbable. A splice's
     conductors are copper and meet in a silver crimp sleeve (`.cv-crimp`). A cable's cut end is a lit

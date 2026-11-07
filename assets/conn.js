@@ -107,10 +107,13 @@
   }
 
   // Sizes of the tables and boxes.
+  // A connector's info row (Chris): two cells, like the pin rows under it. The family and gender
+  // ("JST GH receptacle") over the labels, and the count ("8-pins") over the pin numbers.
   function connInfo(n) {
     const fam = LM.library.family(n.family);
-    const cells = [fam.short || fam.name, LM.library.hasHousing(fam) ? (n.gender === 'plug' ? 'plug' : 'receptacle') : '', n.pins + (fam.style === 'flying' ? '-lead' : '-pin')].filter(Boolean);
-    return cells;
+    const kind = [fam.short || fam.name, LM.library.hasHousing(fam) ? (n.gender === 'plug' ? 'plug' : 'receptacle') : ''].filter(Boolean).join(' ');
+    const count = n.pins + (fam.style === 'flying' ? '-lead' : '-pin') + (n.pins === 1 ? '' : 's');
+    return { kind, count };
   }
   function pinLabel(h, n, p) {
     const lab = n.pinLabels && n.pinLabels[p];
@@ -129,9 +132,9 @@
     const pins = M.pinList(n);
     const labels = pins.map(p => pinLabel(h, n, p));
     const labW = Math.max(64, ...labels.map(s => tw(s))) + 22;
-    const numW = Math.max(26, ...pins.map(p => tw(p))) + 18;
     const info = connInfo(n);
-    const infoW = info.reduce((t, s) => t + tw(s) + 20, 0);
+    const numW = Math.max(26, tw(info.count), ...pins.map(p => tw(p))) + 18;
+    const infoW = tw(info.kind) + 20 + numW;
     const hasName = !!n.name;
     const sk = sketchOf(h, n, hasName ? 30 : 16);
     const textW = Math.max(tw(n.ref, 13), n.name ? tw(n.name, 11) : 0);
@@ -668,17 +671,6 @@
   // A rounded card for a table on the canvas: a clip for its square cells and a lit backing.
   const cardOpen = (id, x, y, w, hh, r) => `<defs><clipPath id="${id}"><rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(hh)}" rx="${r}"/></clipPath></defs>` +
     `<rect class="cv-card" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(hh)}" rx="${r}"/><g clip-path="url(#${id})">`;
-  const cellRow = (x, y, w, hh, cells, cls) => {
-    const tot = cells.reduce((t, s) => t + tw(s) + 20, 0);
-    let o = '', cx = x;
-    cells.forEach((s, i) => {
-      const cw = i === cells.length - 1 ? x + w - cx : (tw(s) + 20) / tot * w;
-      o += `<rect class="cv-cell" x="${f(cx)}" y="${f(y)}" width="${f(cw)}" height="${hh}"/>` +
-        `<text class="${cls}" x="${f(cx + cw / 2)}" y="${f(y + hh / 2 + 4)}" text-anchor="middle">${esc(s)}</text>`;
-      cx += cw;
-    });
-    return o;
-  };
 
   // What a selection is about: its wires, the ends they join, and the selected ends themselves.
   // Everything else is dimmed on the canvas. No dimming while a wire is being drawn, so every pin
@@ -717,9 +709,14 @@
       `<g class="cv-sketch" style="stroke-width:${f(0.9 / sk.k)}" transform="translate(${f(sx + sk.v.ox * sk.k)} ${f(y + (hh - sk.h) / 2)}) scale(${f(sk.k * 1000) / 1000})">${sk.v.svg}</g>` +
       `<text class="cv-ref" x="${f(tx)}" y="${f(y + 16)}" text-anchor="middle">${esc(n.ref)}</text>` +
       (sz.hasName ? `<text class="cv-name" x="${f(tx)}" y="${f(y + 32)}" text-anchor="middle">${esc(U.clip(n.name, 11, textW + 4))}</text>` : '') + '</g>';
-    o += cellRow(x, y + hh, w, G.INFO, sz.info, 'cv-t');
     const numX = numRight ? x + w - sz.numW : x;
     const labX = numRight ? x : x + sz.numW;
+    // The info row in the same two columns as the pin rows.
+    const iy = y + hh, ity = iy + G.INFO / 2 + 4;
+    o += `<rect class="cv-cell" x="${f(labX)}" y="${f(iy)}" width="${f(w - sz.numW)}" height="${G.INFO}"/>` +
+      `<text class="cv-t" x="${f(labX + (w - sz.numW) / 2)}" y="${f(ity)}" text-anchor="middle">${esc(U.clip(sz.info.kind, G.FS, w - sz.numW - 10))}</text>` +
+      `<rect class="cv-cell" x="${f(numX)}" y="${f(iy)}" width="${f(sz.numW)}" height="${G.INFO}"/>` +
+      `<text class="cv-t" x="${f(numX + sz.numW / 2)}" y="${f(ity)}" text-anchor="middle">${esc(sz.info.count)}</text>`;
     M.pinList(n).forEach((p, i) => {
       const ry = y + sz.h0 + i * G.ROW;
       const pend = opts.pending && opts.pending.node === n.id && opts.pending.pin === p;
@@ -735,7 +732,8 @@
         `<text class="cv-t" x="${f(labX + (w - sz.numW) / 2)}" y="${f(ry + G.ROW / 2 + 4)}" text-anchor="middle">${esc(sz.labels[i])}</text>` +
         `<text class="cv-t cv-num" x="${f(numX + sz.numW / 2)}" y="${f(ry + G.ROW / 2 + 4)}" text-anchor="middle">${esc(p)}</text></g>`;
     });
-    if (fx) o += '</g>';
+    // On the canvas the card is glass: a faint shade down it, and a bright inner rim.
+    if (fx) o += `<rect class="cv-glass" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/></g><rect class="cv-rim" x="${f(x + 1)}" y="${f(y + 1)}" width="${f(w - 2)}" height="${f(it.h - 2)}" rx="${R - 1}"/>`;
     o += `<rect class="cv-frame" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"${fx ? ` rx="${R}"` : ''}/>`;
     return o + '</g>';
   }
@@ -763,6 +761,7 @@
     // On the canvas the conductors meet in a crimp sleeve under the ref.
     const crimp = opts.fx ? `<rect class="cv-crimp" x="${f(cx - half)}" y="${f(cy - 8)}" width="${f(half * 2)}" height="16" rx="8"/>` : '';
     return `<g class="cv-splice${sel ? ' sel' : ''}${opts.pending ? ' target' : ''}${opts.drop === n.id ? ' drop' : ''}${fxCls(it, opts)}${dimIf(F && !F.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}"${fxStyle(it, opts)}><rect class="cv-bg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}" rx="6"/>` +
+      (opts.fx ? `<rect class="cv-glass" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}" rx="6"/><rect class="cv-rim" x="${f(x + 1)}" y="${f(y + 1)}" width="${f(w - 2)}" height="${f(it.h - 2)}" rx="5"/>` : '') +
       `<rect class="cv-frame" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}" rx="6"/>` + lines + crimp +
       `<text class="cv-ref" x="${f(cx)}" y="${f(cy + 4.5)}" text-anchor="middle">${esc(n.ref)}</text>${ports}</g>`;
   }

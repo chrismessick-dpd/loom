@@ -194,6 +194,9 @@
   const FX_DEFS = '<defs>' +
     '<linearGradient id="lmfx-sheath" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-sheath-hi)"/><stop offset="0.45" style="stop-color:var(--cv-sheath-mid)"/><stop offset="1" style="stop-color:var(--cv-sheath-lo)"/></linearGradient>' +
     '<linearGradient id="lmfx-band" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--cv-band-lo)"/><stop offset="0.35" style="stop-color:var(--cv-band-hi2)"/><stop offset="1" style="stop-color:var(--cv-band-lo)"/></linearGradient>' +
+    // Connector and splice cards: a lit header, and a faint shade down the body (glass, 3D).
+    '<linearGradient id="lmfx-conn-head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-conn-head-hi)"/><stop offset="1" style="stop-color:var(--cv-conn-head)"/></linearGradient>' +
+    '<linearGradient id="lmfx-glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-glass-top)"/><stop offset="0.45" style="stop-color:var(--cv-glass-mid)"/><stop offset="1" style="stop-color:var(--cv-glass-bot)"/></linearGradient>' +
     '<linearGradient id="lmfx-head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-head-hi)"/><stop offset="1" style="stop-color:var(--cv-head)"/></linearGradient>' +
     '<radialGradient id="lmfx-metal" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#fffbe8"/><stop offset="0.45" stop-color="#e3c27a"/><stop offset="1" stop-color="#9a7a3a"/></radialGradient>' +
     '<linearGradient id="lmfx-crimp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f7f9"/><stop offset="0.45" stop-color="#cfd2d8"/><stop offset="0.55" stop-color="#9fa3ab"/><stop offset="1" stop-color="#dfe2e6"/></linearGradient>' +
