@@ -182,10 +182,41 @@ p.f-hint { margin: 0 0 12px; }
 .g-chip.g-bundle { background: var(--bg-sunk); color: var(--text-2); box-shadow: inset 0 0 0 1px var(--hair-2); }
 button.chip.g-chip { cursor: pointer; }
 
-/* The connection view: a paper diagram (WireViz style). Ink and paper follow the theme; wire colors are real. */
-.canvas-wrap.cv-paper { --cv-paper: #fff; --cv-ink: #1d1d1f; --cv-ink-2: #6e6e73; --cv-head: #f2f2f4; --cv-rule: #1d1d1f; --cv-edge: #1d1d1f; --cv-sel: #00727f; --cv-sel-soft: rgba(0, 114, 127, 0.14); --cv-sheath: rgba(29, 29, 31, 0.38); --cv-sheath-edge: rgba(29, 29, 31, 0.85); --cv-band: #2c2c2e; --cv-band-hi: rgba(255, 255, 255, 0.3); background: var(--cv-paper); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .canvas-wrap.cv-paper { --cv-paper: #1c1c1e; --cv-ink: #e5e5ea; --cv-ink-2: #98989d; --cv-head: #2c2c2e; --cv-rule: #636366; --cv-edge: #aeaeb2; --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.2); --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: #8e8e93; --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); } }
-:root[data-theme="dark"] .canvas-wrap.cv-paper { --cv-paper: #1c1c1e; --cv-ink: #e5e5ea; --cv-ink-2: #98989d; --cv-head: #2c2c2e; --cv-rule: #636366; --cv-edge: #aeaeb2; --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.2); --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: #8e8e93; --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); }
+/* The connection view on the canvas: the diagram as lit cards and real wires on a stage
+   (docs/look-2026-11.md); the sheet keeps the plain WireViz look (sheet.js). Wire colors are real.
+   --cv-paper is the card, --cv-rule the hairlines inside it, --cv-edge the rim that keeps dark wires
+   visible on the dark stage and light ones on the light stage. */
+.canvas-wrap.cv-paper {
+  --cv-stage: radial-gradient(120% 95% at 50% 36%, #ffffff 0%, #f1f2f5 52%, #e2e5ea 100%);
+  --cv-paper: #fff; --cv-ink: #1d1d1f; --cv-ink-2: #6e6e73; --cv-head: #f3f4f6; --cv-head-hi: #fff; --cv-rule: rgba(0, 0, 0, 0.09); --cv-card-edge: rgba(0, 0, 0, 0.1);
+  --cv-edge: rgba(29, 29, 31, 0.82); --cv-shade: rgba(30, 40, 55, 0.13); --cv-gloss: rgba(255, 255, 255, 0.6);
+  --cv-sel: #00727f; --cv-sel-soft: rgba(0, 114, 127, 0.12); --cv-glow: rgba(0, 160, 180, 0.55);
+  --cv-sheath: rgba(29, 29, 31, 0.38); --cv-sheath-edge: rgba(29, 29, 31, 0.6); --cv-sheath-hi: rgba(120, 124, 132, 0.22); --cv-sheath-mid: rgba(29, 29, 31, 0.3); --cv-sheath-lo: rgba(29, 29, 31, 0.48);
+  --cv-band: #2c2c2e; --cv-band-hi: rgba(255, 255, 255, 0.3); --cv-band-lo: #1c1c1f; --cv-band-hi2: #55565c;
+  --cv-card-shadow: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.06)) drop-shadow(0 6px 14px rgba(25, 35, 50, 0.1));
+  --glass-bg: rgba(255, 255, 255, 0.62); --glass-edge: rgba(0, 0, 0, 0.08); --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(0, 0, 0, 0.03); --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(25, 35, 50, 0.12); --glass-on: rgba(0, 0, 0, 0.07);
+  background: var(--cv-stage);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .canvas-wrap.cv-paper {
+  --cv-stage: radial-gradient(120% 95% at 50% 34%, #1c1f25 0%, #0f1115 52%, #07080a 100%);
+  --cv-paper: #1a1c20; --cv-ink: #ececf1; --cv-ink-2: #9a9aa2; --cv-head: #222429; --cv-head-hi: #2d3036; --cv-rule: rgba(255, 255, 255, 0.07); --cv-card-edge: rgba(255, 255, 255, 0.11);
+  --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
+  --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
+  --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: rgba(255, 255, 255, 0.14); --cv-sheath-mid: rgba(0, 0, 0, 0.32); --cv-sheath-lo: rgba(0, 0, 0, 0.55);
+  --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); --cv-band-lo: #0c0c0e; --cv-band-hi2: #3e3f45;
+  --cv-card-shadow: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
+  --glass-bg: rgba(44, 46, 52, 0.55); --glass-edge: rgba(255, 255, 255, 0.12); --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.2); --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); --glass-on: rgba(255, 255, 255, 0.14);
+} }
+:root[data-theme="dark"] .canvas-wrap.cv-paper {
+  --cv-stage: radial-gradient(120% 95% at 50% 34%, #1c1f25 0%, #0f1115 52%, #07080a 100%);
+  --cv-paper: #1a1c20; --cv-ink: #ececf1; --cv-ink-2: #9a9aa2; --cv-head: #222429; --cv-head-hi: #2d3036; --cv-rule: rgba(255, 255, 255, 0.07); --cv-card-edge: rgba(255, 255, 255, 0.11);
+  --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
+  --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
+  --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: rgba(255, 255, 255, 0.14); --cv-sheath-mid: rgba(0, 0, 0, 0.32); --cv-sheath-lo: rgba(0, 0, 0, 0.55);
+  --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); --cv-band-lo: #0c0c0e; --cv-band-hi2: #3e3f45;
+  --cv-card-shadow: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
+  --glass-bg: rgba(44, 46, 52, 0.55); --glass-edge: rgba(255, 255, 255, 0.12); --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.2); --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); --glass-on: rgba(255, 255, 255, 0.14);
+}
 .lm-canvas text { font-family: var(--sans); fill: var(--cv-ink); font-size: 12px; pointer-events: none; }
 .lm-canvas .cv-bg, .lm-canvas .cv-box { fill: var(--cv-paper); }
 .lm-canvas .cv-cell { fill: transparent; stroke: var(--cv-rule); stroke-width: 1; }
@@ -255,10 +286,6 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-pin.dim { opacity: 0.3; }
 .lm-canvas .dim:hover { opacity: 0.55; }
 .lm-canvas .ghost { fill: none; stroke: var(--cv-sel); stroke-width: 2; stroke-dasharray: 6 5; pointer-events: none; }
-.canvas-wrap.cv-paper .board-hud .seg { background: var(--bg-elev); box-shadow: 0 0 0 1px var(--hair), var(--shadow); }
-.canvas-wrap.cv-paper .board-hud .seg button { color: var(--text-2); }
-.canvas-wrap.cv-paper .board-hud .seg button:hover { color: var(--text); }
-.canvas-wrap.cv-paper .coords { color: var(--text-3); background: var(--bg-elev); box-shadow: 0 0 0 1px var(--hair); }
 
 /* Face views on a dark tile */
 .lm-face text { font-family: var(--sans); }
@@ -314,6 +341,132 @@ button.chip.g-chip { cursor: pointer; }
 .pc-card-title { font: 600 14px var(--display); margin-bottom: 6px; }
 .pc-muted { color: var(--text-3); font-size: 12.5px; }
 .checks-card { padding: 6px; }
+
+/* ── The canvas finish (docs/look-2026-11.md) ─────────────────────────────────────────────────
+   Glass for the floating controls only; lit cards, insulated wires and contacts for the diagram
+   (conn.js `fx`); motion only for what is in focus. */
+
+/* Glass capsules: the HUD, the zoom control and the wiring tip. */
+.canvas-wrap { container: cv / inline-size; }
+.canvas-wrap .board-hud { top: 12px; left: 12px; gap: 8px; align-items: center; max-width: calc(100% - 72px); }
+/* A narrow canvas (both panels open on a small window): the controls drop their labels. */
+@container cv (max-width: 560px) { .canvas-wrap .hud-ico span, .canvas-wrap .hud-grid > svg { display: none; } .canvas-wrap .hud-grid { padding-left: 4px; } .canvas-wrap .seg.glass .hud-ico { padding: 6px 9px; } }
+.canvas-wrap .board-hud.right { left: auto; right: 12px; }
+.canvas-wrap .seg.glass { background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.8); backdrop-filter: blur(20px) saturate(1.8); border: 0.5px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--glass-shadow); border-radius: 980px; padding: 3px; gap: 2px; overflow: visible; }
+.canvas-wrap .seg.glass button { color: var(--text-2); border-radius: 980px; padding: 6px 12px; font-weight: 500; transition: background 0.2s var(--ease), color 0.2s, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.canvas-wrap .seg.glass button:hover { color: var(--text); background: var(--glass-on); }
+.canvas-wrap .seg.glass button:active { transform: scale(0.92); transition-duration: 0.08s; }
+.canvas-wrap .seg.glass button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.canvas-wrap .seg.glass .hud-fold { width: 32px; height: 32px; padding: 0; }
+.canvas-wrap .hud-ico svg { width: 14px; height: 14px; }
+.canvas-wrap .hud-grid { display: inline-flex; align-items: center; gap: 0; padding: 3px 4px 3px 12px; color: var(--text-2); font-size: 12.5px; }
+.canvas-wrap .hud-grid > svg { width: 13px; height: 13px; opacity: 0.8; }
+.canvas-wrap .hud-grid select { border: none; background: transparent; color: var(--text); border-radius: 980px; padding: 6px 8px 6px 7px; font: 500 12.5px var(--sans); cursor: pointer; outline: none; }
+.canvas-wrap .hud-grid select:hover, .canvas-wrap .hud-grid select:focus-visible { background: var(--glass-on); }
+.canvas-wrap .hud-grid select option { background: var(--bg-elev); color: var(--text); }
+.canvas-wrap .zoom-pill { position: absolute; right: 12px; bottom: 12px; display: inline-flex; align-items: center; color: var(--text-2); font: 500 12px var(--sans); }
+.canvas-wrap .zoom-pill button { width: 30px; height: 30px; padding: 0; justify-content: center; }
+.canvas-wrap .zoom-pill button svg { width: 14px; height: 14px; }
+.canvas-wrap .zoom-pill .zoom-val { width: auto; min-width: 54px; padding: 0 8px; font: 600 12px var(--sans); font-variant-numeric: tabular-nums; color: var(--text); }
+.canvas-wrap .tip { display: none; align-items: center; gap: 10px; bottom: 14px; max-width: min(560px, calc(100% - 180px)); color: var(--text); background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.8); backdrop-filter: blur(20px) saturate(1.8); border: 0.5px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--glass-shadow); border-radius: 980px; padding: 9px 16px 9px 12px; animation: lmfx-tip 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.canvas-wrap .tip b { color: var(--cv-sel); }
+.canvas-wrap .tip-k { background: var(--glass-on); color: var(--text-2); }
+.canvas-wrap .tip-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--cv-sel); box-shadow: 0 0 0 0 var(--cv-glow); animation: lmfx-beacon 1.6s ease-out infinite; }
+@keyframes lmfx-tip { from { opacity: 0; transform: translate(-50%, 10px) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes lmfx-beacon { 0% { box-shadow: 0 0 0 0 var(--cv-glow); } 100% { box-shadow: 0 0 0 9px transparent; } }
+/* While a part is dragged the canvas repaints every frame: the glass stops blurring. */
+.canvas-wrap:has(.lm-canvas.dragging) .glass { -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { .canvas-wrap .glass, .canvas-wrap .tip { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--bg-elev); } }
+@media (max-width: 860px) { .canvas-wrap .hud-ico span, .canvas-wrap .board-hud.right { display: none; } .canvas-wrap .tip { max-width: calc(100% - 24px); bottom: 54px; } }
+
+/* The grid recedes into the stage. */
+.lm-canvas .gd { opacity: 0.16; }
+.lm-canvas .gd.major { opacity: 0.32; }
+
+/* Cards: connector tables and box labels, rounded and lit from above. */
+.lm-canvas .cv-card { fill: var(--cv-paper); filter: var(--cv-card-shadow); }
+.lm-canvas .cv-conn .cv-frame, .lm-canvas .cv-boxg .cv-frame { stroke: var(--cv-card-edge); stroke-width: 1; }
+.lm-canvas .cv-headbg { fill: url(#lmfx-head); }
+.lm-canvas .cv-ref { font: 650 13px var(--display); letter-spacing: -0.01em; }
+.lm-canvas .cv-num { fill: var(--cv-ink-2); font-size: 11.5px; }
+.lm-canvas .cv-conn:hover .cv-frame, .lm-canvas .cv-boxg:hover .cv-frame { stroke: var(--cv-sel); stroke-opacity: 0.45; }
+.lm-canvas .cv-conn.sel .cv-frame, .lm-canvas .cv-boxg .cv-frame.sel, .lm-canvas .cv-splice.sel .cv-frame { stroke: var(--cv-sel); stroke-opacity: 1; stroke-width: 2; filter: drop-shadow(0 0 5px var(--cv-glow)); }
+.lm-canvas .cv-box { fill: transparent; }
+.lm-canvas .cv-box.sel { fill: var(--cv-sel-soft); }
+.lm-canvas .cv-pin .cv-pinrow { stroke: none; }
+.lm-canvas .cv-pin + .cv-pin .cv-pinrow { stroke: var(--cv-rule); }
+.lm-canvas .cv-splice .cv-bg { fill: var(--cv-paper); filter: var(--cv-card-shadow); }
+.lm-canvas .cv-splice .cv-frame { stroke: var(--cv-card-edge); stroke-width: 1; }
+/* A dragged part lifts off the stage. */
+.lm-canvas .lift { transform-box: fill-box; transform-origin: center; transform: scale(1.02); filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.3)); }
+.lm-canvas .lift .cv-card { filter: none; }
+
+/* Wires: insulation with a soft shadow, a dark or light rim and a highlight down the middle. */
+.lm-canvas .w-shade { fill: none; stroke: var(--cv-shade); stroke-width: 6.5; stroke-linecap: round; transform: translate(0, 3px); pointer-events: none; }
+.lm-canvas .w-edge { stroke-width: 4.9; }
+.lm-canvas .w-base, .lm-canvas .w-stripe { stroke-width: 3.3; }
+.lm-canvas .w-gloss { fill: none; stroke: var(--cv-gloss); stroke-width: 0.9; stroke-linecap: round; transform: translate(0, -0.7px); pointer-events: none; }
+.lm-canvas .w.nocolor .w-gloss { display: none; }
+.lm-canvas .w:hover .w-base { filter: drop-shadow(0 0 3px currentColor); }
+.lm-canvas .w:hover .w-edge { stroke-width: 5.6; }
+.lm-canvas .w.sel .w-edge { stroke: var(--cv-sel); stroke-width: 7.5; filter: drop-shadow(0 0 6px var(--cv-glow)); }
+.lm-canvas .w-pulse { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 0.05 0.95; pointer-events: none; filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 6px var(--cv-glow)); animation: lmfx-pulse 1.8s linear infinite; animation-delay: var(--phase, 0s); }
+@keyframes lmfx-pulse { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+/* The holders: a smoked-glass sheath and glossy shrink-tube bands. */
+.lm-canvas .cv-sheath { fill: url(#lmfx-sheath); stroke: var(--cv-sheath-edge); stroke-width: 1; }
+.lm-canvas .cv-band rect { fill: url(#lmfx-band); stroke: var(--cv-sheath-edge); }
+.lm-canvas .cv-sheath.sel, .lm-canvas .cv-band.sel rect { stroke: var(--cv-sel); stroke-width: 2; filter: drop-shadow(0 0 5px var(--cv-glow)); }
+.lm-canvas .cv-wrow text, .lm-canvas .cv-halo { stroke: var(--cv-paper); stroke-opacity: 0.85; }
+/* Contacts: where a wire lands on its pin. */
+.lm-canvas .cv-contact { fill: url(#lmfx-metal); stroke-width: 1.5; pointer-events: none; }
+
+/* Drawing a wire: free pins glow as targets, and the wire stretches to the cursor. */
+.lm-canvas .cv-pin.can .cv-pinrow { fill: var(--cv-sel-soft); animation: lmfx-breathe 1.6s ease-in-out infinite alternate; animation-delay: var(--phase, 0s); }
+.lm-canvas .cv-pin.can.used .cv-pinrow { fill-opacity: 0.4; animation: none; }
+.lm-canvas .cv-pin.can .cv-num { fill: var(--cv-sel); font-weight: 700; }
+.lm-canvas .cv-pin.can:hover .cv-pinrow { fill: var(--cv-sel); fill-opacity: 1; animation: none; }
+.lm-canvas .cv-pin.can:hover text { fill: #fff; }
+.lm-canvas .cv-pin.pend .cv-pinrow { fill: var(--cv-sel); }
+@keyframes lmfx-breathe { from { fill-opacity: 0.45; } to { fill-opacity: 1; } }
+.lm-canvas #ghost, .lm-canvas #ghost * { pointer-events: none; }
+.lm-canvas .ghost-w path { fill: none; stroke-linecap: round; }
+.lm-canvas .ghost-glow { stroke: var(--cv-glow); stroke-width: 10; opacity: 0.3; filter: blur(4px); }
+.lm-canvas .ghost-edge { stroke: var(--cv-edge); stroke-width: 4.9; }
+.lm-canvas .ghost-base { stroke: currentColor; stroke-width: 3.3; }
+.lm-canvas .ghost-flow { stroke: rgba(255, 255, 255, 0.75); stroke-width: 1.2; stroke-dasharray: 2 9; animation: lmfx-march 0.55s linear infinite; }
+.lm-canvas .ghost-end { fill: var(--cv-sel); stroke: var(--cv-paper); stroke-width: 1.5; }
+.lm-canvas .ghost-w.snapped .ghost-end { fill: var(--cv-paper); stroke: var(--cv-sel); stroke-width: 2.5; }
+.lm-canvas .ghost-w.snapped .ghost-glow { opacity: 0.55; }
+@keyframes lmfx-march { to { stroke-dashoffset: -11; } }
+
+/* New wires draw themselves in; the intro brings the parts up and draws every wire, left to right. */
+.lm-canvas .w.fresh:not(.nocolor) .w-edge, .lm-canvas .w.fresh:not(.nocolor) .w-base, .lm-canvas .w.fresh:not(.nocolor) .w-gloss { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: lmfx-draw 0.7s cubic-bezier(0.45, 0, 0.2, 1) forwards; animation-delay: calc(var(--i, 0) * 40ms); }
+.lm-canvas .w.fresh .w-stripe, .lm-canvas .w.fresh .w-shade, .lm-canvas .w-over.fresh { opacity: 0; animation: lmfx-fade 0.3s ease forwards; animation-delay: calc(var(--i, 0) * 40ms + 0.6s); }
+.lm-canvas .cv-contact.fresh { transform-box: fill-box; transform-origin: center; animation: lmfx-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; animation-delay: 0.6s; }
+.lm-canvas.intro .w.fresh:not(.nocolor) .w-edge, .lm-canvas.intro .w.fresh:not(.nocolor) .w-base, .lm-canvas.intro .w.fresh:not(.nocolor) .w-gloss { animation-delay: calc(var(--i, 0) * 40ms + 0.35s); }
+.lm-canvas.intro .w.fresh .w-stripe, .lm-canvas.intro .w.fresh .w-shade, .lm-canvas.intro .w-over.fresh { animation-delay: calc(var(--i, 0) * 40ms + 0.95s); }
+.lm-canvas.intro .cv-contact.fresh { animation-delay: 1.05s; }
+.lm-canvas.intro .cv-conn, .lm-canvas.intro .cv-splice, .lm-canvas.intro .cv-item { transform-box: fill-box; transform-origin: center; animation: lmfx-rise 0.6s cubic-bezier(0.34, 1.3, 0.64, 1) backwards; animation-delay: calc(var(--i, 0) * 55ms); }
+.lm-canvas.intro .cv-box { animation: lmfx-fade 0.4s ease backwards 0.3s; }
+@keyframes lmfx-draw { to { stroke-dashoffset: 0; } }
+@keyframes lmfx-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lmfx-pop { from { transform: scale(0); } }
+@keyframes lmfx-rise { from { opacity: 0; transform: translateY(12px) scale(0.96); } }
+@media (prefers-reduced-motion: reduce) {
+  .lm-canvas .w-pulse, .lm-canvas .ghost-flow { animation: none; display: none; }
+  .lm-canvas .cv-pin.can .cv-pinrow, .canvas-wrap .tip, .canvas-wrap .tip-dot { animation: none; }
+}
+
+/* The docked panels: a capsule segmented control for Parts and Properties, livelier buttons. */
+.pane-tabs { margin: 10px 10px 2px; padding: 3px; gap: 2px; border: none; border-radius: 980px; background: var(--bg-sunk); }
+.pane-tab { border: none; margin: 0; border-radius: 980px; padding: 6px 8px; color: var(--text-2); transition: background 0.2s var(--ease), color 0.2s, box-shadow 0.2s; }
+.pane-tab.on { color: var(--text); border: none; background: var(--bg-elev); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pane-tab.on { background: #48484c; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); } }
+:root[data-theme="dark"] .pane-tab.on { background: #48484c; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
+.lay { transition: background 0.15s; }
+.palette button { transition: background 0.15s, color 0.15s, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s; }
+.palette button:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12); }
+.palette button:active { transform: scale(0.95); transition-duration: 0.08s; }
 
 /* Print: just the sheet, landscape */
 .print-sheet { display: none; }

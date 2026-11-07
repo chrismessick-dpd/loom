@@ -291,7 +291,7 @@
       segs.push(`M${f(L0.x)} ${f(L0.y)}`, curve(L0, lIn));
       const tw = twist(w, b, lIn, rIn);
       segs.push(tw ? tw.d : `L${f(rIn.x)} ${f(rIn.y)}`, curve(rIn, R0));
-      return { d: segs.join(''), over: tw ? tw.over : [] };
+      return { d: segs.join(''), over: tw ? tw.over : [], a: L0, b: R0 };
     }
     // A twisted wire's run through its box, drawn as a helix seen from the side: past the box's ends
     // (the sheath's caps or the bundle's bands) every wire of the set swings across the set's rows,
@@ -348,18 +348,30 @@
 
   // ── SVG ───────────────────────────────────────────────────────────────────
   // The half twists a twisted wire crosses on top of, drawn after every wire (no hit area).
-  function overSvg(w, ds, cls) {
+  // On the canvas (fx) a wire also gets a soft shadow under it and a specular highlight down its
+  // middle, so it reads as insulation; a selected wire carries a pulse of light (.w-pulse), and a
+  // new one draws itself in (`draw`: path lengths of 1 for a dash animation). The sheet gets none.
+  function overSvg(w, ds, cls, fx) {
     const c = M.colorInfo(w.color);
     return ds.map(d => `<g class="w w-over${c.base ? '' : ' nocolor'}${cls || ''}"><path class="w-edge" d="${d}"/>` +
       `<path class="w-base" style="stroke:${c.base || '#9a9aa0'}" d="${d}"/>` +
-      (c.stripe ? `<path class="w-stripe" style="stroke:${c.stripe}" d="${d}"/>` : '') + '</g>').join('');
+      (c.stripe ? `<path class="w-stripe" style="stroke:${c.stripe}" d="${d}"/>` : '') +
+      (fx ? `<path class="w-gloss" d="${d}"/>` : '') + '</g>').join('');
   }
-  function wireSvg(w, d, cls) {
+  function wireSvg(w, d, cls, fx, draw, i) {
     const c = M.colorInfo(w.color);
-    return `<g class="w${c.base ? '' : ' nocolor'}${cls || ''}" data-wire="${w.id}"><path class="w-hit" d="${d}"/><path class="w-edge" d="${d}"/>` +
-      `<path class="w-base" style="stroke:${c.base || '#9a9aa0'}" d="${d}"/>` +
-      (c.stripe ? `<path class="w-stripe" style="stroke:${c.stripe}" d="${d}"/>` : '') + '</g>';
+    const pl = draw && c.base ? ' pathLength="1"' : '';
+    return `<g class="w${c.base ? '' : ' nocolor'}${cls || ''}" data-wire="${w.id}"${fx ? ` style="color:${c.base || '#9a9aa0'}${i != null ? ';--i:' + i : ''}"` : ''}><path class="w-hit" d="${d}"/>` +
+      (fx ? `<path class="w-shade" d="${d}"/>` : '') + `<path class="w-edge"${pl} d="${d}"/>` +
+      `<path class="w-base"${pl} style="stroke:${c.base || '#9a9aa0'}" d="${d}"/>` +
+      (c.stripe ? `<path class="w-stripe" style="stroke:${c.stripe}" d="${d}"/>` : '') +
+      (fx ? `<path class="w-gloss"${pl} d="${d}"/>` + (cls && cls.includes(' sel') ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : '') : '') + '</g>';
   }
+  // Canvas-only ids, kept apart from anything a sheet or print SVG defines.
+  const fxId = (kind, id) => 'lmfx-' + kind + '-' + String(id).replace(/[^\w-]/g, '_');
+  // A rounded card for a table on the canvas: a clip for its square cells and a lit backing.
+  const cardOpen = (id, x, y, w, hh, r) => `<defs><clipPath id="${id}"><rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(hh)}" rx="${r}"/></clipPath></defs>` +
+    `<rect class="cv-card" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(hh)}" rx="${r}"/><g clip-path="url(#${id})">`;
   const cellRow = (x, y, w, hh, cells, cls) => {
     const tot = cells.reduce((t, s) => t + tw(s) + 20, 0);
     let o = '', cx = x;
@@ -397,7 +409,9 @@
     const toRight = h.wires.some(wr => { const o = wr.from.node === n.id ? wr.to : wr.to.node === n.id ? wr.from : null; if (!o) return false; const ot = Lo.itemOf.get(o.node); return ot && ot.x > x; });
     const toLeft = h.wires.some(wr => { const o = wr.from.node === n.id ? wr.to : wr.to.node === n.id ? wr.from : null; if (!o) return false; const ot = Lo.itemOf.get(o.node); return ot && ot.x < x; });
     const numRight = toRight || !toLeft;
-    let o = `<g class="cv-conn${sel ? ' sel' : ''}${dimIf(F && !F.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}">`;
+    const fx = opts.fx, R = 10;
+    let o = `<g class="cv-conn${sel ? ' sel' : ''}${fxCls(it, opts)}${dimIf(F && !F.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}"${fxStyle(it, opts)}>`;
+    if (fx) o += cardOpen(fxId('c', n.id), x, y, w, it.h, R);
     o += `<rect class="cv-bg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
     const hh = G.HEAD + (sz.hasName ? 16 : 0);
     // The sketch sits left of the ref (and name), and the pair is centered in the header.
@@ -414,19 +428,27 @@
       const ry = y + sz.h0 + i * G.ROW;
       const pend = opts.pending && opts.pending.node === n.id && opts.pending.pin === p;
       const used = h.wires.some(wr => (wr.from.node === n.id && wr.from.pin === p) || (wr.to.node === n.id && wr.to.pin === p));
-      o += `<g class="cv-pin${pend ? ' pend' : ''}${used ? ' used' : ''}${dimIf(pinDim(p))}" data-node="${n.id}" data-pin="${esc(p)}">` +
+      // While a wire is being drawn, the pins on other ends are its targets (canvas only); free
+      // ones glow more.
+      const can = fx && opts.pending && opts.pending.node !== n.id;
+      o += `<g class="cv-pin${pend ? ' pend' : ''}${used ? ' used' : ''}${can ? ' can' : ''}${dimIf(pinDim(p))}" data-node="${n.id}" data-pin="${esc(p)}">` +
         `<rect class="cv-cell cv-pinrow" x="${f(x)}" y="${f(ry)}" width="${f(w)}" height="${G.ROW}"/>` +
         `<line class="cv-rule" x1="${f(numRight ? numX : labX)}" x2="${f(numRight ? numX : labX)}" y1="${f(ry)}" y2="${f(ry + G.ROW)}"/>` +
         `<text class="cv-t" x="${f(labX + (w - sz.numW) / 2)}" y="${f(ry + G.ROW / 2 + 4)}" text-anchor="middle">${esc(sz.labels[i])}</text>` +
         `<text class="cv-t cv-num" x="${f(numX + sz.numW / 2)}" y="${f(ry + G.ROW / 2 + 4)}" text-anchor="middle">${esc(p)}</text></g>`;
     });
-    o += `<rect class="cv-frame" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
+    if (fx) o += '</g>';
+    o += `<rect class="cv-frame" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"${fx ? ` rx="${R}"` : ''}/>`;
     return o + '</g>';
   }
+  // Canvas-only classes and styles on a part: lifted while dragged, and its place in the intro.
+  const fxCls = (it, opts) => (opts.fx && opts.lift === it.key ? ' lift' : '');
+  const fxStyle = (it, opts) => (opts.fx && opts.intro ? ` style="--i:${it.order || 0}"` : '');
   function spliceSvg(it, opts) {
     const n = it.n, sel = opts.sel && opts.sel.kind === 'node' && opts.sel.ids.has(n.id);
-    return `<g class="cv-splice${sel ? ' sel' : ''}${opts.pending ? ' target' : ''}${dimIf(opts.focus && !opts.focus.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}"><rect class="cv-bg" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="4"/>` +
-      `<rect class="cv-frame" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="4"/>` +
+    const rx = opts.fx ? f(it.h / 2) : 4;
+    return `<g class="cv-splice${sel ? ' sel' : ''}${opts.pending ? ' target' : ''}${fxCls(it, opts)}${dimIf(opts.focus && !opts.focus.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}"${fxStyle(it, opts)}><rect class="cv-bg" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="${rx}"/>` +
+      `<rect class="cv-frame" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="${rx}"/>` +
       `<text class="cv-ref" x="${f(it.x + it.w / 2)}" y="${f(it.y + it.h / 2 + 4.5)}" text-anchor="middle">${esc(n.ref)}</text></g>`;
   }
   function boxBack(it, opts) {
@@ -454,11 +476,13 @@
     const b = it.b, sz = it.sz, x = it.x, y = it.y, w = it.w, F = opts.focus, bd = dimIf(boxDim(it, opts));
     const ty0 = y + sz.headY;
     let o = holder(it, opts);
-    o += `<g class="cv-boxg${bd}" data-box="${esc(b.key)}"><rect class="cv-bg" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/>` +
+    const fx = opts.fx, R = 9;
+    o += `<g class="cv-boxg${fx && b.kind === 'cable' ? ' cable' : ''}${bd}" data-box="${esc(b.key)}">` + (fx ? cardOpen(fxId('b', b.key), x, ty0, w, G.HEAD + G.INFO, R) : '') +
+      `<rect class="cv-bg" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/>` +
       `<rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD}"/>` +
       `<text class="cv-ref" x="${f(x + w / 2)}" y="${f(ty0 + 16)}" text-anchor="middle">${esc(b.label)}</text>`;
     o += cellRow(x, ty0 + G.HEAD, w, G.INFO, sz.info, 'cv-t');
-    o += `<rect class="cv-frame${boxSel(it, opts) ? ' sel' : ''}" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/></g>`;
+    o += (fx ? '</g>' : '') + `<rect class="cv-frame${boxSel(it, opts) ? ' sel' : ''}" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD + G.INFO}"${fx ? ` rx="${R}"` : ''}/></g>`;
     if (sz.note) o += `<text class="cv-name cv-halo${bd}" x="${f(x + w / 2)}" y="${f(y + G.HEAD + G.INFO + 13)}" text-anchor="middle">${esc(U.clip(sz.note, 11, w - 16))}</text>`;
     const c = sz.cols, inner = c.from + c.c + c.to + 40 + (c.t ? c.t + 18 : 0);
     const x0 = x + (w - inner + sz.lead) / 2;
@@ -483,20 +507,27 @@
     A = A || M.analyze(h);
     const Lo = layout(h, A);
     opts = Object.assign({}, opts, { focus: focusOf(h, opts.sel, opts.pending) });
-    let backs = '', wires = '', overs = '', fronts = '', ends = '';
+    const fx = !!opts.fx;
+    // The intro reveals parts left to right.
+    if (fx && opts.intro) Lo.items.slice().sort((a, b) => a.x - b.x || a.y - b.y).forEach((it, i) => { it.order = i; });
+    let backs = '', wires = '', overs = '', fronts = '', ends = '', contacts = '';
     Lo.items.forEach(it => {
-      if (it.kind === 'box') { backs += boxBack(it, opts); fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts, Lo)}</g>`; }
+      if (it.kind === 'box') { backs += boxBack(it, opts); fronts += `<g${fx ? ` class="cv-item${fxCls(it, opts)}"` : ''} data-item="${esc(it.key)}"${fxStyle(it, opts)}>${boxFront(it, opts, Lo)}</g>`; }
       else if (it.kind === 'conn') ends += connSvg(h, it, opts, Lo);
       else ends += spliceSvg(it, opts);
     });
-    h.wires.slice().sort((a, b) => a.no - b.no).forEach(w => {
+    h.wires.slice().sort((a, b) => a.no - b.no).forEach((w, i) => {
       const p = Lo.wirePath(w);
       if (!p) return;
-      const cls = (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + dimIf(opts.focus && !opts.focus.wires.has(w.id));
-      wires += wireSvg(w, p.d, cls);
-      overs += overSvg(w, p.over, cls);
+      const dim = dimIf(opts.focus && !opts.focus.wires.has(w.id));
+      const fresh = fx && (opts.intro || opts.fresh === w.id);
+      const cls = (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + dim + (fresh ? ' fresh' : '');
+      wires += wireSvg(w, p.d, cls, fx, fresh, opts.intro ? i : null);
+      overs += overSvg(w, p.over, cls, fx);
+      // Where the wire lands on a pin: a small metal contact ringed in the wire's color.
+      if (fx) [p.a, p.b].forEach(a => { if (a && a.y != null) contacts += `<circle class="cv-contact${dim}${fresh ? ' fresh' : ''}" cx="${f(a.x)}" cy="${f(a.y)}" r="3.3" style="stroke:${M.colorInfo(w.color).base || '#9a9aa0'}"/>`; });
     });
-    return { svg: backs + wires + overs + fronts + ends, box: Lo.box, layout: Lo };
+    return { svg: backs + wires + overs + fronts + ends + contacts, box: Lo.box, layout: Lo };
   }
 
   LM.conn = { G, layout, render, boxesOf, pinLabel };

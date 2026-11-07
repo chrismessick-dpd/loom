@@ -41,7 +41,8 @@ links to it so far. Before every commit:
     under 860 px, where the right pane is hidden and the rail shows the selection.
   - Boxes follow option (b): one box per cable group, and other wires are bundled per end pair
     (`B1`, `B2`…).
-  - The canvas is a paper diagram that follows the theme. The drawing sheet uses the same diagram.
+  - The canvas and the drawing sheet use the same diagram. The sheet stays a plain paper diagram;
+    the canvas adds a finish (see *Canvas finish* below).
   - The formboard renderer (`render.js`), breakouts in the UI, coverings in the UI and the
     Formboard/Wiring sheet toggle are gone. The model still has segments, breakouts and coverings,
     so a Layout view can come back.
@@ -70,6 +71,23 @@ links to it so far. Before every commit:
     twist starts (`twistStart`). Boxes with twisted wires, other than a bundle that is one twisted
     set, get `LEAD` more room left of the text for it.
   - Selecting exactly one bundle's wires (a click on its label) titles Properties **Wire bundle**.
+- **Canvas finish (2026-11-06, branch `sleek-build`, not merged):** the Build canvas is meant to be
+  fun to use (Chris: Apple, liquid glass). The reference audit and the rules are in
+  `docs/look-2026-11.md`.
+  - **The diagram.** `conn.render(…, { fx: true })` adds the finish, and only `renderCanvas` passes
+    it: rounded, lit cards (`cardOpen`, clip ids `lmfx-*`), wire shade and gloss, metal contacts
+    where wires land (`.cv-contact`), and pin targets while wiring (`.can`). Without `fx` the output
+    is byte-identical to before, and the sheet never passes it.
+  - **The stage and the glass.** The stage is a lit gradient (`--cv-stage`). Glass capsules (`.glass`)
+    hold the HUD, the zoom pill (`#coords`, `#zoom-val`) and the wiring tip.
+  - **Motion:**
+    - The camera only changes the viewBox (`setView`), and Fit and zoom glide (`glide`).
+    - The intro runs once per harness.
+    - A new wire draws itself in (`S.fresh`), and a dragged part lifts (`S.lift`).
+    - A selected wire carries a pulse, phase-locked by `--phase` so a re-render doesn't restart it.
+    - The wire being drawn is an elastic curve that snaps to the pin under the cursor (`drawGhost`).
+    - Keys: F fits, + and − zoom, 0 shows actual size. Reduce Motion and Reduce Transparency are
+      honored.
 - **From a board (2026-11-06):** Add › From a board lists Signoff EE boards and reads one's stored fab
   package (`assets/boards.js`).
   - **Which package:** the latest tagged revision's package (picked as EE's `latestRevision`

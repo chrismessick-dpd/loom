@@ -42,6 +42,8 @@
     trash: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.5h11M6.5 4.5V3h3v1.5M4 4.5l.7 9h6.6l.7-9"/></svg>',
     board: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="4" width="15" height="12" rx="2"/><rect x="5.5" y="7" width="5" height="4" rx="0.8"/><path d="M13 7.5h2M13 10h2M13 12.5h2"/></svg>',
     fit: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>',
+    relayout: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="4.5" height="4" rx="1.2"/><rect x="9.5" y="9.5" width="4.5" height="4" rx="1.2"/><path d="M6.5 4.5h2.2c1.5 0 2.3.8 2.3 2.3v2.7"/></svg>',
+    grid: '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="3.5" r="1.1"/><circle cx="8" cy="3.5" r="1.1"/><circle cx="12.5" cy="3.5" r="1.1"/><circle cx="3.5" cy="8" r="1.1"/><circle cx="8" cy="8" r="1.1"/><circle cx="12.5" cy="8" r="1.1"/><circle cx="3.5" cy="12.5" r="1.1"/><circle cx="8" cy="12.5" r="1.1"/><circle cx="12.5" cy="12.5" r="1.1"/></svg>',
   };
 
   // ── Storage ──
@@ -169,35 +171,84 @@
   // end (or a splice), to run a wire. Click a box header to select its cable or wires.
   const svgEl = () => $('#canvas');
   let lastBox = null, lastLayout = null;
+  // The canvas finish (docs/look-2026-11.md): the diagram drawn with `fx` (cards, wire gloss,
+  // contacts), the gradients it uses, an intro the first time a harness is shown, a draw-in for a new
+  // wire and a lift for a dragged part. The selection's pulse is phase-locked to the clock (--phase),
+  // so a re-render mid-pulse doesn't restart it.
+  const FX_DEFS = '<defs>' +
+    '<linearGradient id="lmfx-sheath" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-sheath-hi)"/><stop offset="0.45" style="stop-color:var(--cv-sheath-mid)"/><stop offset="1" style="stop-color:var(--cv-sheath-lo)"/></linearGradient>' +
+    '<linearGradient id="lmfx-band" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--cv-band-lo)"/><stop offset="0.35" style="stop-color:var(--cv-band-hi2)"/><stop offset="1" style="stop-color:var(--cv-band-lo)"/></linearGradient>' +
+    '<linearGradient id="lmfx-head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-head-hi)"/><stop offset="1" style="stop-color:var(--cv-head)"/></linearGradient>' +
+    '<radialGradient id="lmfx-metal" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#fffbe8"/><stop offset="0.45" stop-color="#e3c27a"/><stop offset="1" stop-color="#9a7a3a"/></radialGradient>' +
+    '</defs>';
+  const reduceMotion = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   function renderCanvas() {
     const h = H(), svg = svgEl();
-    const r = C.render(h, M.analyze(h), { sel: S.sel, pending: S.pending });
+    const intro = !reduceMotion() && S.introFor !== h.id;
+    if (intro) { S.introFor = h.id; clearTimeout(S.introT); S.introT = setTimeout(() => { S.introT = null; if (S.view === 'build') renderCanvas(); }, 1700); }
+    const r = C.render(h, M.analyze(h), { sel: S.sel, pending: S.pending, fx: true, intro: intro || !!S.introT, fresh: S.fresh, lift: S.lift });
     lastBox = r.box; lastLayout = r.layout;
     const wrap = $('#canvas-wrap');
     const w = wrap.clientWidth || 800, hh = wrap.clientHeight || 600;
     if (!S.cam) fit(r.box, w, hh);
-    svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${w / S.cam.k} ${hh / S.cam.k}`);
     // The grid parts snap to: a dot at every step and a stronger one every fifth.
     const gs = gridOf(h);
     const grid = gs ? `<defs><pattern id="cv-grid" width="${gs * 5}" height="${gs * 5}" patternUnits="userSpaceOnUse">` +
       [...Array(25)].map((_, i) => `<circle class="${i % 5 || Math.floor(i / 5) % 5 ? 'gd' : 'gd major'}" cx="${(i % 5) * gs}" cy="${Math.floor(i / 5) * gs}" r="${i ? 0.9 : 1.4}"/>`).join('') +
       `</pattern></defs>` : '';
-    svg.innerHTML = grid + `<rect class="bg" data-bg="1" x="-20000" y="-20000" width="40000" height="40000" fill="${gs ? 'url(#cv-grid)' : 'transparent'}"/>` +
+    svg.classList.toggle('intro', intro);
+    svg.classList.toggle('wiring', !!S.pending);
+    svg.style.setProperty('--phase', -(performance.now() % 1800).toFixed(0) + 'ms');
+    svg.innerHTML = FX_DEFS + grid + `<rect class="bg" data-bg="1" x="-20000" y="-20000" width="40000" height="40000" fill="${gs ? 'url(#cv-grid)' : 'transparent'}"/>` +
       `<g id="world">${r.svg}</g><g id="ghost"></g>`;
-    $('#coords').textContent = Math.round(S.cam.k * 100) + '%';
+    setView();
     const tip = $('#tip');
     if (S.pending) {
-      tip.style.display = 'block';
-      tip.innerHTML = `Wiring from <b>${esc(M.endText(h, S.pending))}</b>. Click a pin on another end, or a splice. <span class="tip-k">Esc</span> cancels.`;
+      tip.style.display = 'flex';
+      tip.innerHTML = `<span class="tip-dot"></span><span>Wiring from <b>${esc(M.endText(h, S.pending))}</b>. Click a glowing pin or a splice. <span class="tip-k">Esc</span> cancels.</span>`;
     } else tip.style.display = 'none';
   }
-  function fit(box, w, hh) {
+  // The camera only moves the viewBox: zoom, pan and Fit never redraw the diagram.
+  function setView() {
+    const svg = svgEl(), wrap = $('#canvas-wrap');
+    const w = wrap.clientWidth || 800, hh = wrap.clientHeight || 600;
+    svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${w / S.cam.k} ${hh / S.cam.k}`);
+    const z = $('#zoom-val');
+    if (z) z.textContent = Math.round(S.cam.k * 100) + '%';
+  }
+  function fitCam(box, w, hh) {
     const wrap = $('#canvas-wrap');
     w = w || wrap.clientWidth || 800; hh = hh || wrap.clientHeight || 600;
     box = box || lastBox || { x0: 0, y0: 0, x1: 800, y1: 500 };
-    const pad = 32, top = 56; // room for the HUD above
-    const k = Math.max(0.25, Math.min(1.25, (w - pad * 2) / (box.x1 - box.x0 || 1), (hh - pad - top) / (box.y1 - box.y0 || 1)));
-    S.cam = { k, x: (box.x0 + box.x1) / 2 - w / k / 2, y: (box.y0 + box.y1) / 2 - (hh + top - pad) / k / 2 };
+    const pad = 36, top = 60, bot = 56; // room for the HUD above and the zoom control below
+    const k = Math.max(0.25, Math.min(1.25, (w - pad * 2) / (box.x1 - box.x0 || 1), (hh - top - bot) / (box.y1 - box.y0 || 1)));
+    return { k, x: (box.x0 + box.x1) / 2 - w / k / 2, y: (box.y0 + box.y1) / 2 - (hh + top - bot) / k / 2 };
+  }
+  function fit(box, w, hh) { S.cam = fitCam(box, w, hh); }
+  // Glide the camera to `to`, fast at first and settling softly. Reduce Motion jumps.
+  let glideRaf = 0;
+  function glide(to) {
+    cancelAnimationFrame(glideRaf);
+    if (!S.cam || reduceMotion()) { S.cam = to; setView(); return; }
+    const from = Object.assign({}, S.cam), t0 = performance.now(), T = 480;
+    const ease = t => 1 - Math.pow(1 - t, 4);
+    const step = now => {
+      const t = Math.min(1, (now - t0) / T), e = ease(t);
+      // Zoom in log space, so the speed feels even.
+      const k = Math.exp(Math.log(from.k) + (Math.log(to.k) - Math.log(from.k)) * e);
+      S.cam = { k, x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e };
+      setView();
+      if (t < 1) glideRaf = requestAnimationFrame(step);
+    };
+    glideRaf = requestAnimationFrame(step);
+  }
+  function fitGlide() { glide(fitCam()); }
+  // Zoom by a factor about the middle of the canvas.
+  function zoomBy(m) {
+    const wrap = $('#canvas-wrap'), w = wrap.clientWidth, hh = wrap.clientHeight;
+    const c = { x: S.cam.x + w / S.cam.k / 2, y: S.cam.y + hh / S.cam.k / 2 };
+    const k = Math.max(0.2, Math.min(4, m === 0 ? 1 : S.cam.k * m));
+    glide({ k, x: c.x - w / k / 2, y: c.y - hh / k / 2 });
   }
   function toWorld(e) {
     const rc = svgEl().getBoundingClientRect();
@@ -225,11 +276,12 @@
   }
   function renderHud() {
     const h = H(), gs = gridOf(h), placed = h && h.place && Object.keys(h.place).length;
-    $('#hud-right').innerHTML = `<div class="seg"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
-    $('#hud').innerHTML = `<div class="seg"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
-      `<div class="seg"><button data-act="fit" title="Fit the diagram (F)">Fit</button></div>` +
-      `<label class="seg hud-grid" title="Parts snap to the grid as you drag them. Hold Ctrl to place one anywhere.">Grid <select data-hud="grid">${GRIDS.map(g => `<option value="${g}"${g === gs ? ' selected' : ''}>${g ? g : 'Off'}</option>`).join('')}</select></label>` +
-      (placed ? `<div class="seg"><button data-act="auto-layout" title="Forget the positions you dragged and lay the diagram out again">Auto layout</button></div>` : '');
+    // Glass capsules, one per kind of control (docs/look-2026-11.md): the panel, the view, the grid.
+    $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
+    $('#hud').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel" aria-label="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
+      `<div class="seg glass"><button class="hud-ico" data-act="fit" title="Fit the diagram (F)">${ICON.fit}<span>Fit</span></button>` +
+      (placed ? `<button class="hud-ico" data-act="auto-layout" title="Forget the positions you dragged and lay the diagram out again">${ICON.relayout}<span>Auto layout</span></button>` : '') + `</div>` +
+      `<label class="seg glass hud-grid" title="Parts snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${ICON.grid}<select data-hud="grid" aria-label="Grid">${GRIDS.map(g => `<option value="${g}"${g === gs ? ' selected' : ''}>${g ? 'Grid ' + g : 'Grid off'}</option>`).join('')}</select></label>`;
   }
 
   // Pointer: drag a connector, splice or box to move it (snapping to the grid; Ctrl places it
@@ -250,7 +302,7 @@
     if (!g.moved && g.item) {
       const it = lastLayout && lastLayout.items.find(i => i.key === g.item);
       if (!it) g.item = null;
-      else { snapshot(); g.start = { x: it.x, y: it.y }; g.port0 = it.sz.port0 || 0; svgEl().classList.add('dragging'); }
+      else { snapshot(); g.start = { x: it.x, y: it.y }; g.port0 = it.sz.port0 || 0; S.lift = g.item; svgEl().classList.add('dragging'); }
     }
     g.moved = true;
     if (g.item) {
@@ -264,12 +316,14 @@
     }
     if (g.button === 0) return; // a left drag on empty canvas does nothing; the right or middle button pans
     svgEl().classList.add('dragging');
+    cancelAnimationFrame(glideRaf);
     S.cam.x = g.cam0.x - dx / S.cam.k; S.cam.y = g.cam0.y - dy / S.cam.k;
-    svgEl().setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${svgEl().clientWidth / S.cam.k} ${svgEl().clientHeight / S.cam.k}`);
+    setView();
   }
   function onUp() {
     const g = gesture;
     gesture = null;
+    S.lift = null;
     svgEl().classList.remove('dragging');
     if (g && g.item && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && !g.moved && g.button === 0) click(g.t, g.shift);
@@ -310,20 +364,42 @@
     const from = S.pending;
     S.pending = null;
     const w = change(h => M.addWire(h, from, end));
+    // The new wire draws itself in from end to end (canvas only; Reduce Motion skips it in CSS).
+    if (w && !reduceMotion()) { S.fresh = w.id; clearTimeout(S.freshT); S.freshT = setTimeout(() => { S.fresh = null; }, 900); }
+    $('#ghost') && ($('#ghost').innerHTML = '');
     if (w) { S.sel = { kind: 'wire', ids: new Set([w.id]) }; renderAll(); toast(`${M.wireName(w)} added: ${M.endText(H(), w.from)} → ${M.endText(H(), w.to)}`); }
   }
+  // The wire being drawn: an elastic curve from the pin to the cursor, in the color new wires get.
+  // Over a free pin on another end (or a splice) it snaps onto it.
   function drawGhost(e) {
     if (!lastLayout) return;
-    const p = toWorld(e), a = lastLayout.anchor(S.pending, p.x);
+    let p = toWorld(e), snapped = false;
+    const pin = e.target.closest && e.target.closest('[data-pin]'), nodeEl = e.target.closest && e.target.closest('[data-node]');
+    if (pin && !(pin.dataset.node === S.pending.node && pin.dataset.pin === S.pending.pin)) {
+      const a2 = lastLayout.anchor({ node: pin.dataset.node, pin: pin.dataset.pin }, lastLayout.anchor(S.pending, p.x).x);
+      if (a2.y != null) { p = a2; snapped = true; }
+    } else if (nodeEl && !pin) {
+      const it = lastLayout.itemOf.get(nodeEl.dataset.node);
+      if (it && it.kind === 'splice') { p = { x: it.x + it.w / 2, y: it.y + it.h / 2 }; snapped = true; }
+    }
+    const a = lastLayout.anchor(S.pending, p.x);
     if (a.y == null) return;
-    $('#ghost').innerHTML = `<path class="ghost" d="M${a.x} ${a.y}L${p.x} ${p.y}"/>`;
+    const dx = Math.max(40, Math.abs(p.x - a.x) * 0.5), s = p.x >= a.x ? 1 : -1;
+    // The curve leaves the pin level, as a wire would, and sags a little under its own weight.
+    const sag = Math.min(60, Math.abs(p.x - a.x) * 0.08 + Math.abs(p.y - a.y) * 0.05);
+    const d = `M${a.x} ${a.y}C${a.x + s * dx} ${a.y + sag} ${p.x - s * dx} ${p.y + sag} ${p.x} ${p.y}`;
+    const c = M.colorInfo((H().defaults && H().defaults.color) || 'BK');
+    $('#ghost').innerHTML = `<g class="ghost-w${snapped ? ' snapped' : ''}" style="color:${c.base || 'var(--cv-sel)'}"><path class="ghost-glow" d="${d}"/><path class="ghost-edge" d="${d}"/><path class="ghost-base" d="${d}"/><path class="ghost-flow" d="${d}"/>` +
+      `<circle class="ghost-end" cx="${p.x}" cy="${p.y}" r="${snapped ? 5 : 3.5}"/></g>`;
   }
+  // Wheel zoom about the cursor: only the viewBox changes.
   function onWheel(e) {
     e.preventDefault();
+    cancelAnimationFrame(glideRaf);
     const p = toWorld(e), rc = svgEl().getBoundingClientRect();
     const k = Math.max(0.2, Math.min(4, S.cam.k * Math.exp(-e.deltaY * 0.0015)));
     S.cam = { k, x: p.x - (e.clientX - rc.left) / k, y: p.y - (e.clientY - rc.top) / k };
-    renderCanvas();
+    setView();
   }
   function addEnd(kind) {
     change(h => {
@@ -796,7 +872,10 @@
       case 'save': if (h) U.download(baseName(h) + '.loom.json', JSON.stringify(h, null, 2), 'application/json'); break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
-      case 'fit': fit(); renderCanvas(); break;
+      case 'fit': fitGlide(); break;
+      case 'zoom-in': zoomBy(1.25); break;
+      case 'zoom-out': zoomBy(0.8); break;
+      case 'zoom-reset': zoomBy(0); break;
       case 'fold-rail': toggleFold('rail'); break;
       case 'fold-parts': toggleFold('parts'); break;
       case 'pane-tab': S.paneTab = el.dataset.tab; renderParts(); break;
@@ -894,7 +973,10 @@
     if (S.view !== 'build') return;
     if (e.key === 'Escape') { S.pending ? (S.pending = null) : (S.sel = null); $('#ghost') && ($('#ghost').innerHTML = ''); renderAll(); }
     else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); }
-    else if (e.key === 'f' || e.key === 'F') { fit(); renderCanvas(); }
+    else if (e.key === 'f' || e.key === 'F') fitGlide();
+    else if (e.key === '+' || e.key === '=') zoomBy(1.25);
+    else if (e.key === '-' || e.key === '_') zoomBy(0.8);
+    else if (e.key === '0') zoomBy(0);
     else if (e.key === 'c' || e.key === 'C') addEnd('connector');
   });
   const svg = svgEl();
