@@ -698,10 +698,13 @@
   }
 
   // ── Build: the right pane, with a Parts tab and a Properties tab ──
-  // A new selection switches it to Properties; clearing the selection goes back to Parts.
+  // A new selection switches it to Properties; clearing the selection goes back to Parts. A set
+  // picked in the Parts tab's tree stays in Parts (S.keepTab), and its row's Edit button opens
+  // Properties (Chris, 2026-11-07).
   function renderParts() {
     const sel = S.sel, key = sel ? sel.kind + ':' + [...sel.ids].sort().join(',') : '';
-    if (key !== S.paneSelKey) { S.paneSelKey = key; S.paneTab = key ? 'props' : 'parts'; }
+    if (key !== S.paneSelKey) { S.paneSelKey = key; S.paneTab = key && !S.keepTab ? 'props' : 'parts'; }
+    S.keepTab = false;
     const tab = S.paneTab === 'props' ? 'props' : 'parts';
     const tabs = `<div class="pane-tabs" role="tablist">${[['parts', 'Parts'], ['props', 'Properties']].map(([k, t]) =>
       `<button role="tab" class="pane-tab${k === tab ? ' on' : ''}" aria-selected="${k === tab}" data-act="pane-tab" data-tab="${k}">${t}</button>`).join('')}</div>`;
@@ -747,7 +750,7 @@
     const roots = M.roots(h);
     if (roots.length) {
       o += `<div class="side-head"><span class="side-label">Wire sets</span><span class="side-count">${h.sets.length}</span></div>`;
-      o += roots.map(r => setTree(h, r, S.sel && S.sel.kind === 'set' ? [...S.sel.ids][0] : null)).join('');
+      o += roots.map(r => setTree(h, r, S.sel && S.sel.kind === 'set' ? [...S.sel.ids][0] : null, true)).join('');
     }
     o += `<div class="side-head"><span class="side-label">Add</span></div><div class="palette">
       <button data-act="add-conn">${ICON.conn}<span>Connector</span></button>
@@ -997,10 +1000,12 @@
   const setKind = st => (st.cable ? 'cable' : st.bundle ? 'bundle' : st.twist ? 'twist' : 'shield');
   // A set and the sets inside it, as an indented tree; each line selects its set. on: the line to
   // mark.
-  function setTree(h, root, on) {
+  // edit: the Parts tab's tree, where the selected set's row has an Edit button for its properties.
+  function setTree(h, root, on, edit) {
     const line = (st, d) => `<button class="st-row${st.id === on ? ' on' : ''}" data-pick="set:${st.id}" style="--d:${d}">` +
       `<span class="g-chip g-${setKind(st)}">${esc(st.label)}</span><span class="st-name">${esc(M.setWord(st))}${M.setTraits(st) ? ', ' + esc(M.setTraits(st)) : ''}</span>` +
-      `<span class="st-n">${M.wiresIn(h, st).length} wires</span></button>` +
+      `<span class="st-n">${M.wiresIn(h, st).length} wires</span>` +
+      (edit && st.id === on ? `<span class="st-edit" role="button" data-act="edit-set" title="Edit ${esc(st.label)} in Properties">Edit</span>` : '') + `</button>` +
       st.sets.map(id => M.set(h, id)).filter(Boolean).map(c => line(c, d + 1)).join('');
     return `<div class="set-tree">${line(root, 0)}</div>`;
   }
@@ -1234,6 +1239,7 @@
       case 'nav': toggleSidebar(); break;
       case 'fold-parts': toggleFold('parts'); break;
       case 'pane-tab': S.paneTab = el.dataset.tab; renderParts(); break;
+      case 'edit-set': S.paneTab = 'props'; renderParts(); break;
       case 'auto-layout': change(x => { if (fold.prop) delete x.propY; else { x.place = {}; x.wires.forEach(w => { delete w.labelAt; }); } }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
@@ -1329,7 +1335,7 @@
     const sf = t.closest('[data-setf]');
     if (sf) { setField(sf.dataset.setf, sf.dataset.v); return; }
     const p = t.closest('[data-pick]');
-    if (p) { const [kind, id] = p.dataset.pick.split(':'); select(kind, id); return; }
+    if (p) { const [kind, id] = p.dataset.pick.split(':'); if (kind === 'set' && p.closest('.pane-body')) S.keepTab = true; select(kind, id); return; }
     const c = t.closest('[data-check]');
     if (c) goToCheck(+c.dataset.check);
   });

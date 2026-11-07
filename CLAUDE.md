@@ -229,7 +229,9 @@ links to it so far. Before every commit:
     each end's overhang with the total (`coversField`), Set color, and a clickable **Hierarchy**
     tree (`setTree`). Delete on a set dissolves
     it (`dissolveSet`) and never deletes wires. A wire's chips link to its sets. The Parts tab
-    lists the wire sets as trees, and its Ends list is gone.
+    lists the wire sets as trees, and its Ends list is gone. A set clicked in that tree is selected without
+    leaving Parts (`S.keepTab`), and its row shows an Edit chip (`.st-edit`, `edit-set`) that opens
+    Properties (2026-11-07, Chris).
 - **Diagram look (2026-11-06, Chris; the bundle, table and Wire bundle notes predate wire sets):**
   - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
     the view the drawing prints; the front when it prints both). A circular connector's sketch is twice as tall, and its header grows to hold it (`sz.hh`; 2026-11-07). Chris tried the header as a band
