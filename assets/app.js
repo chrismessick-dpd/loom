@@ -441,7 +441,7 @@
       if (g.lo) previewEnd(g, e);
       return;
     }
-    if (g.setEnd) { dragSetEnd(g, dx); return; }
+    if (g.setEnd) { dragSetEnd(g, e); return; }
     if (g.label) { slideLabel(g, e); return; }
     if (g.note) {
       const c = M.note(H(), g.note);
@@ -483,51 +483,40 @@
     S.cam.x = g.cam0.x - dx / S.cam.k; S.cam.y = g.cam0.y - dy / S.cam.k;
     setView();
   }
-  // Drag a set's end: everything is measured from the drag's start (the layout then, its scale and
-  // the end of what holds it: the parent's end, or the wire ends for an outermost set), so the value
-  // follows the pointer even as the box grows. Past that end by OUT, the overhang is the distance
-  // times the scale; within NEST of it (0 for an outermost set), 0; further in, negative. Snapped to
-  // 5 mm. The drag isn't limited by lengths (Chris; Checks says when a set runs past its wires'
-  // ends), only where the drawing would distort: an end stays MIN_W from the set's other end, and
-  // CLEAR from the parts its box's wires run to on that side, so the wires keep room to curve in.
-  // The sets inside it stay put (M.setEnd). One snapshot, so one undo puts it back. The tip reads
-  // the overhang and the total.
-  const OUT = 6, NEST = 24, MIN_W = 60, CLEAR = 60;
-  function dragSetEnd(g, dx) {
+  // Drag a set's end along its box's path (conn.js it.path: the straight run across the box and
+  // the leads off its sides toward the connectors). The pointer, less where the end was grabbed, is
+  // projected onto the path, and how far in from the wire ends that is (at the box's scale sz.k,
+  // mm per unit; in Real proportions through sz.prop) sets that end's overhang, measured from what
+  // holds it (M.setEnd; the sets inside stay put). Snapped to 5 mm, and onto the end of what holds
+  // it within SNAP units, so ending with it is easy to hit. It isn't limited by lengths (Chris), only
+  // by the wire ends (the path's ends) and MIN_W from the set's other end; a set with no cable,
+  // shield or bundle stays on the straight part, as only packed wires ride the leads. One snapshot,
+  // so one undo puts it back. The tip reads the overhang and the total.
+  const MIN_W = 12, SNAP = 10;
+  function dragSetEnd(g, e) {
     const h = H(), d = g.setEnd;
     if (!g.moved) {
       const st = M.set(h, d.id), p = st && M.parentOf(h, d.id);
-      const it = st && lastLayout && lastLayout.items.find(i => i.kind === 'box' && i.sz.ext && i.sz.ext.has(d.id));
+      const it = st && lastLayout && lastLayout.items.find(i => i.kind === 'box' && i.path && i.sz.arc && i.sz.arc.has(d.id));
       if (!it) { gesture = null; return; }
-      const A = M.analyze(h), ce = it.sz.ext.get(d.id);
-      const pe = p ? it.sz.ext.get(p.id) : { x0: it.sz.lx, x1: it.sz.lx + it.sz.rootW };
+      const A = M.analyze(h), a = it.sz.arc.get(d.id), P = it.path, side = d.side === 'r';
+      const at = C.pathAt(P, side ? a.u1 : a.u0), q0 = toWorld({ clientX: g.x, clientY: g.y });
+      const packs = !!(st.cable || st.shield || st.bundle), lo = packs ? 0 : P.aL, hi = packs ? P.S : P.aL + P.Ls;
       snapshot();
       g.moved = true;
-      // The parts the box's wires run to on the dragged side: the nearest one's edge is the limit.
-      const cx = it.x + it.w / 2, ends = it.b.wires.flatMap(w => [w.from, w.to]).map(e => lastLayout.itemOf.get(e.node)).filter(Boolean);
-      const lim = d.side === 'r' ? Math.min(Infinity, ...ends.filter(e => e.x + e.w / 2 > cx).map(e => e.x)) - CLEAR
-        : Math.max(-Infinity, ...ends.filter(e => e.x + e.w / 2 < cx).map(e => e.x + e.w)) + CLEAR;
-      const otherX = it.x + (d.side === 'r' ? ce.x0 : ce.x1);
-      // In the real-proportions view the end goes where the pointer is, to the box's scale
-      // (sz.prop), between the set's other end and the wire ends.
-      if (it.sz.prop) Object.assign(g, { prop: it.sz.prop, boxX: it.x, pr: p ? M.reach(h, p) : { l: 0, r: 0 },
-        plo: d.side === 'r' ? otherX + 12 : it.x, phi: d.side === 'r' ? it.x + it.w : otherX - 12 });
-      Object.assign(g, { k: it.sz.k, nest: p ? NEST : 0, parentX: it.x + (d.side === 'r' ? pe.x1 : pe.x0), endX: it.x + (d.side === 'r' ? ce.x1 : ce.x0),
-        // ...and no further than the wire ends, the box's frame.
-        lo: d.side === 'r' ? otherX + MIN_W : Math.max(lim, it.x + it.sz.lx), hi: d.side === 'r' ? Math.min(lim, it.x + it.sz.lx + it.sz.rootW) : otherX - MIN_W,
-        PL: p ? M.setLength(h, A, p) : M.setRun(A, st), other: M.ov(st)[d.side === 'r' ? 'l' : 'r'], parent: p ? p.label : null });
+      Object.assign(g, { it, P, off: { x: q0.x - at.x, y: q0.y - at.y }, pr: p ? M.reach(h, p) : { l: 0, r: 0 }, pa: p ? it.sz.arc.get(p.id) : null,
+        lo: side ? a.u0 + MIN_W : lo, hi: side ? hi : a.u1 - MIN_W,
+        PL: p ? M.setLength(h, A, p) : M.setRun(A, st), other: M.ov(st)[side ? 'l' : 'r'], parent: p ? p.label : null });
       S.sel = { kind: 'set', ids: new Set([d.id]) };
       svgEl().classList.add('dragging');
     }
-    let v;
-    if (g.prop) {
-      const at = Math.min(g.phi, Math.max(g.plo, g.endX + dx / S.cam.k)), mm = g.prop.inv(at - g.boxX);
-      v = Math.round((d.side === 'r' ? g.pr.r - (g.prop.L - mm) : g.pr.l - mm) / 5) * 5;
-    } else {
-      const at = Math.min(g.hi, Math.max(g.lo, g.endX + dx / S.cam.k)), rel = d.side === 'r' ? at - g.parentX : g.parentX - at;
-      v = rel > OUT ? (rel - OUT) * g.k : rel >= -g.nest ? 0 : (rel + g.nest) * g.k;
-      v = Math.round(v / 5) * 5;
-    }
+    const q = toWorld(e), side = d.side === 'r', sz = g.it.sz;
+    let u = Math.min(g.hi, Math.max(g.lo, C.project(g.P, { x: q.x - g.off.x, y: q.y - g.off.y })));
+    let snapped = false;
+    if (g.pa) { const pu = side ? g.pa.u1 : g.pa.u0; if (Math.abs(u - pu) < SNAP) { u = pu; snapped = true; } }
+    // How far in from its side's wire end the pointer is, in mm.
+    const reach = sz.prop ? (side ? sz.prop.L - sz.prop.inv(u) : sz.prop.inv(u)) : (side ? g.P.S - u : u) * sz.k;
+    const v = snapped ? 0 : Math.round((g.pr[d.side] - reach) / 5) * 5 || 0;
     const st = M.set(h, d.id);
     M.setEnd(h, d.id, d.side, v);
     renderCanvas();
@@ -535,7 +524,7 @@
     tip.style.display = 'block';
     const what = g.parent ? (v > 0 ? `runs ${v} mm past ${esc(g.parent)}` : v < 0 ? `stops ${-v} mm inside ${esc(g.parent)}` : `ends with ${esc(g.parent)}`)
       : (v < 0 ? `stops ${-v} mm short of the wire ends` : v > 0 ? `runs ${v} mm past the wire ends` : 'reaches the wire ends');
-    tip.innerHTML = `<b>${esc(st.label)}</b> ${what} on the ${d.side === 'r' ? 'right' : 'left'}` + (total != null ? ` · ${U.fmtLen(total)} in all` : '');
+    tip.innerHTML = `<b>${esc(st.label)}</b> ${what} on the ${side ? 'right' : 'left'}` + (total != null ? ` · ${U.fmtLen(total)} in all` : '');
   }
   // A finger lifting ends a pinch; the one left down does nothing until it lifts too.
   function endTouch(e) {

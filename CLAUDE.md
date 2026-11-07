@@ -97,52 +97,70 @@ links to it so far. Before every commit:
     old Covers value (`s.length`) converts in `normalize` to an overhang on the right, or stays
     while the run isn't known. The BOM uses `setLength`: a cable shorter than its wires leaves
     the rest as loose wire, and a shield braid is listed only outside any cable. The demo
-    (`VERSION` 12): B1 covers 150 mm of the 250 mm run, 15 mm in from the left end and 85 mm
+    (`VERSION` 14): B1 covers 150 mm of the 250 mm run, 15 mm in from the left end and 85 mm
     from the right, and TP1 runs past it to both ends. The demo also places P2's left side at
-    P3's right side, S1's middle at TP1's right end, and the S1 → P2 labels' left sides a fifth
+    P3's right side, S1's middle at B1's right end (`Lo.setEndAt`), and the S1 → P2 labels' left sides a fifth
     of the way from S1 to P2 (by placing their stack's box), level with S1's output ports, taken
     from the auto layout (`demo.js`).
+  - **Leads: sets along the curves** (2026-11-07, Chris; branch `curves`, the second try after
+    `sets`). Every set box has a path (`it.path`): its straight run across the box at its rows'
+    middle (`cy`) and, in the arranged view, a lead off each side toward the one part its wires run
+    to there, ending a breakout (`BREAKOUT` 40, more for a tall spread of pins) short of it. `u` is
+    the distance along the path. The wires' run maps onto the whole path at one scale (`sz.k`, mm
+    per unit), and each set's ends sit where `M.reach` puts them (`sz.arc`: `u0`, `u1`), so a set
+    reaching its wire ends is drawn out to the end of each lead. Its wires fan to their pins from
+    wherever it ends, arriving along the lead's tangent (`joins`, `tanAt`). A box whose sets have no
+    cable, shield or bundle (a twist alone) has no leads, and such sets stay on the straight part.
+    Twists are drawn only on the straight part. In Real proportions the path is the box.
+    - Lessons from `sets` (Chris: glitchy once ends crossed or parts moved): only packed wires ride
+      a lead; there's no fixed breakout point the wires must meet; a lead is two circular arcs
+      level at both ends, with a straight between when it climbs further than it runs (`biarc`),
+      so its tightest radius is known. A lead bending tighter than its band needs first brings its
+      breakout in toward the part (to `MIN_BRK`), and else that side has none (`leadSide`). Sets
+      are placed by absolute reach, not relative to their parents (no `NEST`/`OUT` dead zones), so
+      ends pass each other cleanly.
+    - Leads leaving one part's side the same way nest: the one going furthest turns first and each
+      next one's breakout is further out by both bands' widths (`stagger`), so they don't cross.
+    - Every set drawing comes from its band along the path (`band`, `it.band(sp)`: samples with
+      normals and edge offsets, `at(u)`): the sheath (`jacket`, `capOf`), braid, lacing, set
+      areas (paths), end grips (square to the path) and badge leaders. Notes on a set use its band's
+      bounds (`setGeom`).
+    - A check moving P1 to 30 spots round its cables found no wire or band edge doubling back.
   - **Dragging a set's ends** (Chris). Every set has a grip at each end (`setEnds`,
-    `data-setend`; it shows on hover and while selected), outermost sets included (cables,
-    twisted pairs, bundles). Dragging it sets that overhang (`dragSetEnd` in `app.js`): measured
-    from the drag's start, to the box's scale (`sz.k`, mm per unit: the wires' run over the
-    frame's width `rootW`, or 2 when unknown), snapped to 5 mm. It isn't limited by lengths (Chris;
-    Checks warns past the wire ends), only where the drawing would distort: an end stays `MIN_W`
-    from the set's other end and `CLEAR` from the parts the box's wires run to on that side. `#tip`
-    reads the overhang and the total, and one undo reverts it. Nothing drags or is drawn past the
-    wire ends (the box's frame); a value stored past them stops there and Checks warns.
+    `data-setend`; it shows on hover and while selected). Dragging it slides that end along its
+    box's path (`dragSetEnd` in `app.js`): the pointer, less where the end was grabbed, is
+    projected onto the path (`conn.project`, `conn.pathAt`), and the reach there (at `sz.k`, or
+    through `sz.prop` in Real proportions) sets the overhang from what holds it, snapped to 5 mm,
+    and onto the parent's end within `SNAP` (10) units. Limits: the wire ends and `MIN_W` (12) from
+    the set's other end. `#tip` reads the overhang and the total, and one undo reverts it.
   - **A set's box follows its parts** when they're moved so it no longer sits between them: it
     re-centers between them horizontally, even if it was dragged (Chris: P4 dragged past TP2's box
-    made its wires loop back). Between them, it stays where it was put. For a nested
-    set, within `NEST` of the parent's end is 0 and past it by `OUT` is positive. In the box
-    (`sz.ext`), the frame (`lx` to `lx + rootW`) is the wires' run: an outermost set at 0 spans
-    it and moves in by its overhang; a nested set at 0 sits `NEST` inside its parent, one running
-    past is drawn `OUT` past the parent's end plus its overhang to scale (at most `OVER_MAX`), and
-    the box grows to hold it (`sz.lx` on the left). A box's `h.place` x is the frame's left end,
-    so a left overhang doesn't move the wires. The diagram is still schematic; where along the run
-    a set sits needs a layout (formboard) view.
+    made its wires loop back). Between them, it stays where it was put. The diagram is still
+    schematic; where along the run a set sits needs a layout (formboard) view.
   - **Drawing** (`conn.js`). `arrange` orders a box's rows by the set tree, so each set's rows are
     contiguous (`sz.spans`, outermost first). Neighboring sets whose drawings would touch get an
-    empty row on the pitch. Each level in is inset `NEST` at both ends, and reaches `R` above its
-    first wire and below its last. Each set draws its parts outermost first: lacing for a bundle
+    empty row on the pitch. Each set reaches `R` above its first wire and below its last. Each set draws its parts outermost first: lacing for a bundle
     (`lacing`), the sheath for a cable, and a crosshatch braid for a shield (`holders`; the braid
     goes over the sheath). The pattern ids are `lm-braid-canvas` and `lm-braid-sheet`. A twisted
     set's wires twist inside its stretch. The box's label table is gone. A shield's braid and a
     cable's sheath reach `SET_R` (6) past their outer wires, and a bundle `BUNDLE_R` (12).
-  - **Cables pack their wires** (2026-11-07, Chris: look more like a cable). Across a cable's
-    stretch its wires run `PACK` (5) apart, edges touching, round its middle, so the sheath is as
+  - **Cables, shields and bundles pack their wires** (2026-11-07, Chris: look more like a cable;
+    shields and bundles from branch `curves`). Each wire eases into every packing set that holds
+    it (its chain, `chainOf`, `packAt`), so a shielded pair running past its bundle stays packed.
+    Across a cable's stretch its wires run `PACK` (5) apart, edges touching, round its middle, so the sheath is as
     thick as its conductors need (`SET_R` past the outer ones, more when it holds sets). Before it
     they fan in from grid spacing and after it back out, each over `fanLen` (24 to 90, longer for
-    more wires; a smoothstep, `packY`). A cable inside another packs with it (`packSpans`; nested cables can't be made any more).
+    more wires; a smoothstep, `cover`). A cable inside another packs with it (`packSpans`; nested cables can't be made any more).
     - The box makes room (`sizeBox`): the fan-in before the cable (in `lx`, so the frame and a
       placed box's wires stay put), and after it the fan-out plus a straight run at grid spacing
       for the labels (`LABEL_PAD` either side). The labels default there (`labelX0`). In Real
       proportions a cable can fill its box; then its labels go before it if they fit, else they
-      keep their rows at grid spacing over it until slid (`offLane`).
-    - Wire paths, lanes, twist leaders and `wireAt` all go through the packing (`packPts`). A set
-      inside a cable is drawn round the packed wires (`spanGeom`); one that runs past the cable
-      (TP1 past a cabled B1) narrows inside it and widens with its wires as they fan out (`vary`,
-      `edge(x)`; `jacket`, `capOf`, lacing ties, grips and badge leaders follow its edges).
+      split round it until slid: rows above its middle sit just above it, rows below just under it,
+      and the badges move down with them (`offLane`, `it.labelDrop`). That's also what happens
+      when a packed set runs out along both leads.
+    - Wire paths (`runPts`), lanes, twist leaders and `wireAt` all go through the packing
+      (`packAt`), and every set's band is drawn round its packed wires, so a set running past its
+      parent narrows inside it and widens as its wires fan out.
     - The canvas draws the sheath only just see-through (Chris: 90%): opaque colors at the tint the
       old smoked glass showed, at `fill-opacity` 0.9. The sheet keeps its see-through gray.
   - **Badges** (`badgeRow`, `badges`, `badgeLeaders`; Chris). Every set in a box gets a badge, in a
@@ -256,7 +274,7 @@ links to it so far. Before every commit:
     straight runs. The near-side stretches (`over`, `.w-over`) are drawn over the other wires, so
     they alternate over and under. A group wire on a row apart from the rest stays straight.
     A bundle of more than two wires (not one twisted set) is laced instead of banded (`lacing`):
-    at each end a tie loops round the wires, a lens knotted at the top with two short tails, its
+    at each end a tie loops round the wires, with more ties between about every `LACE_GAP` (75; Chris), a lens knotted at the top with two short tails, its
     far side drawn under the wires (in `boxBack`) and its near side, knot and tails over them.
     A bundle that is nothing but one twisted set (`b.twistOnly`) gets no bands, and its twist
     runs nearly the box's width; a cable keeps its sheath.

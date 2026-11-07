@@ -4,7 +4,7 @@
 (function (LM) {
   'use strict';
   const M = LM.model;
-  const VERSION = 13; // bump when the demo changes, so stored copies rebuild
+  const VERSION = 14; // bump when the demo changes, so stored copies rebuild
 
   function harness() {
     const h = M.blank('Display & Sensor Harness');
@@ -42,7 +42,7 @@
     M.makeSet(h, [ntc.id, rtn.id], { cable: true, note: '2 x 26 AWG, PVC jacket' });
     M.makeSet(h, [r.id, cm.id], { twist: true });
 
-    // Placed by hand (Chris): P2's left side at P3's right side, S1's middle at TP1's right end,
+    // Placed by hand (Chris): P2's left side at P3's right side, S1's middle at B1's right end,
     // and the S1 → P2 labels' left side a fifth of the way from S1's right side to P2's left, their
     // rows level with S1's output ports so the wires leave S1 parallel. The labels sit in the middle
     // of their stack's box until slid, so the box goes where that puts them.
@@ -53,8 +53,7 @@
     const at = n => lo.items.find(i => i.n && i.n.id === n.id);
     h.place = { ['n:' + p2.id]: { x: up(at(p3).x + at(p3).w), y: at(p2).y, v: 3 } };
     lo = lay();
-    const box = lo.items.find(i => i.kind === 'box' && i.b.set && i.b.set.id === bundle.id);
-    h.place['n:' + s1.id] = { x: near(box.x + box.sz.ext.get(pair.id).x1 - at(s1).w / 2), y: at(s1).y, v: 3 };
+    h.place['n:' + s1.id] = { x: near(lo.setEndAt(bundle.id, 'r').x - at(s1).w / 2), y: at(s1).y, v: 3 };
     lo = lay();
     const key = 'b:p:' + [s1.id, p2.id].sort().join('|'), labels = lo.items.find(i => i.key === key);
     const s1R = at(s1).x + at(s1).w;
