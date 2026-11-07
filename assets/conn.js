@@ -27,9 +27,10 @@
   // the same scale, but no run longer than MAX_RUN; a longer one gets a break (BREAK_W wide). A run
   // with no length is NOMINAL long. Inside a box, wires fan from their pins to their rows over FAN.
   const MIN_RUN = 170, MAX_RUN = 900, NOMINAL = 220, BREAK_W = 26, FAN = 40;
-  // A cable reaches CABLE_R above its first wire and below its last, so its sheath clears the
-  // first row's text (Chris).
-  const CABLE_R = 18;
+  // A shield's braid and a cable's sheath reach SET_R above their first wire and below their last,
+  // snug round the wires; a cable is as thick as a shield (Chris, 2026-11-07). A set holding sets
+  // reaches 3 past them, and a bundle keeps room for its lacing knots (BUNDLE_R).
+  const SET_R = 6, BUNDLE_R = 12;
   // The badges: one per set, in a row under the box, left-aligned (Chris).
   const BADGE_H = 22, BADGE_GAP = 8;
   const badgeW = label => Math.max(34, tw(label, 11) + 30);
@@ -223,7 +224,7 @@
       const kids = st.sets.map(id => M.set(h, id)).filter(Boolean).map(c => unit(c, depth + 1)).filter(u => u.rows.length);
       parts = parts.concat(kids).sort(byKey);
       const height = kids.length ? 1 + Math.max(...kids.map(u => u.height)) : 0;
-      const R = Math.max(st.cable ? CABLE_R : 8, ...kids.map(u => u.R + 3));
+      const R = Math.max(st.bundle ? BUNDLE_R : SET_R, ...kids.map(u => u.R + 3));
       const rows = [], spans = [];
       let prev = null;
       parts.forEach(pt => {
@@ -239,9 +240,8 @@
       return { kind: 'set', rows, spans, height, R, key: mean(live.map(r => key(r.w))), no: Math.min(...live.map(r => r.w.no)) };
     }
     const u = unit(b.set, 0), root = u.spans[0];
-    // The outermost set has the box to itself: a cable's sheath leaves as much room under its last
-    // wire as over its first.
-    root.R = b.set.cable ? Math.max(CABLE_R + 1, root.R) : Math.max(12, root.R);
+    // The outermost set has the box to itself; a bundle's lacing keeps BUNDLE_R.
+    root.R = Math.max(b.set.bundle ? BUNDLE_R : SET_R, root.R);
     sz.rows = u.rows; sz.spans = u.spans; sz.R0 = root.R;
     // The first wire stays 23 below the box's top (where dragged positions expect it) unless the
     // outermost set reaches higher than that.

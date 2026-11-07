@@ -570,7 +570,7 @@ button.chip.g-chip { cursor: pointer; }
    and Properties is a sheet that pops up over the canvas: from the bottom upright, from the side
    held sideways. The parts pane is hidden. */
 @media (max-width: 860px), (max-height: 500px) {
-  .build-view, .build-view.fold-rail { grid-template-columns: 1fr; grid-template-rows: 1fr; grid-template-areas: "canvas"; position: relative; overflow: hidden; min-height: 0; }
+  .build-view, .build-view.fold-rail { grid-template-columns: 1fr; grid-template-rows: 1fr; grid-template-areas: "canvas"; position: relative; overflow: hidden; overflow: clip; min-height: 0; }
   .parts-pane, .hud-fold[data-act="fold-parts"] { display: none; }
   .drop-tiles { grid-template-columns: repeat(2, 1fr); }
   .build-view .rail, .build-view.fold-rail .rail { grid-area: auto; visibility: visible; position: absolute; z-index: 30; left: 0; right: 0; bottom: 0; height: min(62%, 560px);
