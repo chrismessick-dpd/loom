@@ -37,6 +37,9 @@
 
   // ── Building ──────────────────────────────────────────────────────────────
   const isConn = n => n && n.kind === 'connector';
+  // A loose end: where a wire end dragged off into space waits, drawn as a dot. It has no ref and
+  // goes as soon as no wire ends on it (tidyLoose).
+  const isLoose = n => !!n && n.kind === 'loose';
   const node = (h, id) => h.nodes.find(n => n.id === id);
   const seg = (h, id) => h.segments.find(s => s.id === id);
   const wire = (h, id) => h.wires.find(w => w.id === id);
@@ -112,6 +115,45 @@
     h.wires = h.wires.filter(w => w.from.node !== id && w.to.node !== id);
     h.nodes = h.nodes.filter(x => x !== n);
     tidyGroups(h);
+    tidyLoose(h);
+  }
+  function tidyLoose(h) {
+    const used = new Set(h.wires.flatMap(w => [w.from.node, w.to.node]));
+    const gone = new Set(h.nodes.filter(n => isLoose(n) && !used.has(n.id)).map(n => n.id));
+    if (!gone.size) return;
+    h.nodes = h.nodes.filter(n => !gone.has(n.id));
+    h.segments = h.segments.filter(s => !gone.has(s.a) && !gone.has(s.b));
+    if (h.place) gone.forEach(id => delete h.place['n:' + id]);
+  }
+  const setPlace = (h, id, p) => { h.place = h.place || {}; h.place['n:' + id] = { x: Math.round(p.x), y: Math.round(p.y), v: 2 }; };
+  // Move one end ('from' or 'to') of a wire: to a pin ({ node, pin }), to a splice ({ node, order:
+  // { l: [wire ids], r: [...] } with this wire in place, as the drop saw the ports; or without an
+  // order to let the diagram pick a side), or off to a loose end
+  // ({ loose: true, x, y }). A splice keeps its ports' order in n.ports. The new end is joined to
+  // the wire's other end by a segment when no route exists. Behind the old end, segments that no
+  // wire uses and that have no length go, and so does a loose end left with no wires.
+  // Returns false when nothing changed (an end can't move onto the wire's other end).
+  function moveEnd(h, wireId, which, to) {
+    const w = wire(h, wireId);
+    if (!w || !to) return false;
+    const oth = which === 'from' ? 'to' : 'from', old = w[which], oldN = node(h, old.node);
+    if (to.node && to.node === w[oth].node) return false;
+    if (to.loose && isLoose(oldN)) { setPlace(h, oldN.id, to); return true; }
+    let target;
+    if (to.loose) { target = addNode(h, 'loose', to.x, to.y); setPlace(h, target.id, to); }
+    else target = node(h, to.node);
+    if (!target) return false;
+    if (oldN && oldN.ports) ['l', 'r'].forEach(k => { oldN.ports[k] = (oldN.ports[k] || []).filter(id => id !== w.id); });
+    w[which] = { node: target.id, pin: isConn(target) ? to.pin || null : null };
+    if (target.kind === 'splice' && to.order) target.ports = { l: to.order.l.slice(), r: to.order.r.slice() };
+    if (target.id !== old.node) {
+      if (!analyze(h).route(w[oth].node, target.id)) connect(h, w[oth].node, target.id, null);
+      const used = new Set();
+      analyze(h).routes.forEach(r => r && r.segs.forEach(sg => used.add(sg.id)));
+      h.segments = h.segments.filter(sg => used.has(sg.id) || sg.length != null || (sg.a !== old.node && sg.b !== old.node));
+      tidyLoose(h);
+    }
+    return true;
   }
   function removeSegment(h, id) { h.segments = h.segments.filter(s => s.id !== id); }
   // A wire needs a path through the harness; ends not yet joined get a direct segment (length unset).
@@ -126,6 +168,7 @@
   function removeWires(h, ids) {
     h.wires = h.wires.filter(w => !ids.includes(w.id));
     tidyGroups(h);
+    tidyLoose(h);
   }
   // A wire is in at most one group of each kind.
   function addGroup(h, kind, wireIds) {
@@ -160,7 +203,7 @@
     for (let i = 1; i <= (n.pins || 0); i++) out.push(String(i));
     return out;
   }
-  const label = n => (!n ? '?' : n.ref || (n.kind === 'breakout' ? 'breakout' : n.kind));
+  const label = n => (!n ? '?' : n.ref || (n.kind === 'breakout' ? 'breakout' : isLoose(n) ? 'loose end' : n.kind));
   const wireName = w => 'W' + w.no;
   function endText(h, e) {
     const n = node(h, e.node);
@@ -237,6 +280,7 @@
     });
     h.nodes.forEach(n => {
       const ref = { kind: 'node', id: n.id };
+      if (isLoose(n)) return;
       if (!A.adj.get(n.id).length) add('warn', `${label(n)} isn't joined to the harness yet.`, ref);
       if (n.kind === 'breakout' && A.adj.get(n.id).length === 1) add('info', 'A breakout leads nowhere. Remove it or add a branch.', ref);
       if (n.kind === 'splice') {
@@ -265,12 +309,13 @@
     });
     h.wires.forEach(w => {
       const ref = { kind: 'wire', id: w.id };
-      if (!A.routes.get(w.id)) add('error', `${wireName(w)} has no path from ${endText(h, w.from)} to ${endText(h, w.to)} through the harness.`, ref);
+      if ([w.from, w.to].some(e => isLoose(A.byId.get(e.node)))) add('warn', `${wireName(w)} has a loose end. Drag it onto a pin or a splice.`, ref);
+      else if (!A.routes.get(w.id)) add('error', `${wireName(w)} has no path from ${endText(h, w.from)} to ${endText(h, w.to)} through the harness.`, ref);
       if (!w.color) add('warn', `${wireName(w)} has no color.`, ref);
       if (!w.gauge) add('warn', `${wireName(w)} has no gauge.`, ref);
     });
     h.segments.forEach(s => {
-      if (s.length == null) add('warn', `The wires from ${label(A.byId.get(s.a))} to ${label(A.byId.get(s.b))} have no length.`, { kind: 'seg', id: s.id });
+      if (s.length == null && !isLoose(A.byId.get(s.a)) && !isLoose(A.byId.get(s.b))) add('warn', `The wires from ${label(A.byId.get(s.a))} to ${label(A.byId.get(s.b))} have no length.`, { kind: 'seg', id: s.id });
     });
     h.groups.forEach(g => {
       if (!(A.spans.get(g.id) || []).length) add('warn', `${g.label}'s wires share no segment, so it covers nothing.`, { kind: 'group', id: g.id });
@@ -344,7 +389,7 @@
 
   LM.model = {
     SCHEMA, COLORS, AWG, GAUGES, COVERS, GROUP_KINDS, DEFAULT_NOTES, colorInfo, gaugeText,
-    isConn, node, seg, wire, group, other, nextRef, blank, addConnector, addNode, connect, splitSegment, removeNode, removeSegment,
+    isConn, isLoose, node, seg, wire, group, other, nextRef, blank, addConnector, addNode, connect, splitSegment, removeNode, removeSegment, moveEnd,
     addWire, removeWires, addGroup, removeGroup, wireStraight, pinList, label, wireName, endText, parseEnd,
     analyze, spanLength, checks, fromTo, bom, qtyText, normalize,
   };

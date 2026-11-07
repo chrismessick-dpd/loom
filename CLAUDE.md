@@ -70,6 +70,21 @@ links to it so far. Before every commit:
     twist starts (`twistStart`). Boxes with twisted wires, other than a bundle that is one twisted
     set, get `LEAD` more room left of the text for it.
   - Selecting exactly one bundle's wires (a click on its label) titles Properties **Wire bundle**.
+- **Splice ports and wire-end drags (2026-11-06, Chris):**
+  - A splice is a box with a port (a circle on its edge) per wire, on the side the wire comes in,
+    and lines inside from each side's ports to the ref, where they join (`spliceSvg`). Ports sit on
+    the pitch from 15 down; the box grows with the busier side. `n.ports` (`{ l, r }`, wire ids)
+    holds the order a drag left; wires not listed go on the side facing their other end, sorted
+    by where their wires go (`sides` in `layout`).
+  - Every wire end has a dot to drag it by: a splice's ports, loose ends, and a small dot where a
+    wire meets a pin (canvas only, `.cv-end`), each with an invisible r 9 grab circle (`.cv-hitend`). Drop it on a splice (side and slot under the
+    pointer; the box grows), on a pin row, or on empty canvas, which leaves a **loose end**
+    (`kind: 'loose'`, a dot snapped to the grid; the wire curves to it, in no box, and Checks warns).
+    Dragging a splice port up or down reorders its side. The canvas previews the drop on a copy of
+    the harness (`previewEnd`); hit tests use the layout from the drag's start (`dropTarget`).
+  - `M.moveEnd(h, wireId, which, to)` does every end move, field edits included: it joins the new
+    end with a segment when no route exists, drops unused segments without a length behind the old
+    end, and removes a loose end no wire uses (`tidyLoose`, also on deleting wires).
 - **From a board (2026-11-06):** Add › From a board lists Signoff EE boards and reads one's stored fab
   package (`assets/boards.js`).
   - **Which package:** the latest tagged revision's package (picked as EE's `latestRevision`

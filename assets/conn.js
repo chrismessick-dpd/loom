@@ -31,17 +31,19 @@
   const lenText = mm => (mm == null ? 'length not set' : Math.round(mm) + ' mm');
 
   // The boxes: cables first, then bundles by end pair, in wire order.
+  // A wire with a loose end is in no box: it's drawn as a curve to its loose end's dot.
+  const looseWire = (h, w) => M.isLoose(M.node(h, w.from.node)) || M.isLoose(M.node(h, w.to.node));
   function boxesOf(h, A) {
     const out = [], taken = new Set();
     h.groups.filter(g => g.kind === 'cable').forEach(g => {
-      const ws = g.wires.map(id => M.wire(h, id)).filter(Boolean);
+      const ws = g.wires.map(id => M.wire(h, id)).filter(w => w && !looseWire(h, w));
       if (!ws.length) return;
       ws.forEach(w => taken.add(w.id));
       out.push({ key: 'g:' + g.id, kind: 'cable', group: g, label: g.label, wires: ws });
     });
     const pairs = new Map();
     h.wires.slice().sort((a, b) => a.no - b.no).forEach(w => {
-      if (taken.has(w.id)) return;
+      if (taken.has(w.id) || looseWire(h, w)) return;
       const k = [w.from.node, w.to.node].sort().join('|');
       if (!pairs.has(k)) pairs.set(k, []);
       pairs.get(k).push(w);
@@ -54,7 +56,7 @@
   // Columns: breadth-first distance from the busiest connector orients each joined pair, then each end
   // goes one column past the furthest end that feeds it.
   function ranks(h, boxes) {
-    const nodes = h.nodes.filter(n => M.isConn(n) || n.kind === 'splice');
+    const nodes = h.nodes.filter(n => M.isConn(n) || n.kind === 'splice' || M.isLoose(n));
     const ids = new Set(nodes.map(n => n.id));
     const adj = new Map(nodes.map(n => [n.id, new Set()]));
     h.wires.forEach(w => {
@@ -160,11 +162,48 @@
     const R = ranks(h, boxes);
     const items = [];
     const itemOf = new Map();
-    h.nodes.filter(n => M.isConn(n) || n.kind === 'splice').forEach(n => {
-      const sz = M.isConn(n) ? sizeConn(h, n) : { w: 46, h: 30, h0: 0, port0: 15 };
-      const it = { kind: M.isConn(n) ? 'conn' : 'splice', n, col: R.rank.get(n.id) * 2, sz };
+    const place = h.place || {};
+    // Splice ports: one per wire, on the side it comes from (l or r). The order a drag left in
+    // n.ports wins; the rest go on the side facing their other end and are sorted later.
+    const sides = new Map();
+    h.nodes.filter(n => n.kind === 'splice').forEach(n => {
+      const at = h.wires.filter(w => w.from.node === n.id || w.to.node === n.id);
+      const st = n.ports || {}, seen = new Set(), S = { l: [], r: [], fixed: { l: 0, r: 0 } };
+      ['l', 'r'].forEach(k => (st[k] || []).forEach(id => {
+        const w = at.find(x => x.id === id);
+        if (w && !seen.has(id)) { seen.add(id); S[k].push(w); S.fixed[k]++; }
+      }));
+      at.filter(w => !seen.has(w.id)).sort((a, b) => a.no - b.no).forEach(w => {
+        const o = w.from.node === n.id ? w.to.node : w.from.node;
+        const po = place['n:' + o], ps = place['n:' + n.id];
+        const left = po && ps ? po.x < ps.x : R.rank.get(o) < R.rank.get(n.id);
+        S[left ? 'l' : 'r'].push(w);
+      });
+      sides.set(n.id, S);
+    });
+    const SP_W = 64;
+    const spliceSize = n => {
+      const S = sides.get(n.id), k = Math.max(1, S.l.length, S.r.length);
+      return { w: SP_W, h: 10 + k * PITCH, h0: 0, port0: 15, k };
+    };
+    h.nodes.filter(n => M.isConn(n) || n.kind === 'splice' || M.isLoose(n)).forEach(n => {
+      const kind = M.isConn(n) ? 'conn' : n.kind === 'splice' ? 'splice' : 'loose';
+      const sz = kind === 'conn' ? sizeConn(h, n) : kind === 'splice' ? spliceSize(n) : { w: 0, h: 0, h0: 0, port0: 0 };
+      const it = { kind, n, col: R.rank.get(n.id) * 2, sz };
       items.push(it); itemOf.set(n.id, it);
     });
+    // Which wire an end object belongs to, for a splice end's port.
+    const endOf = new Map();
+    h.wires.forEach(w => { endOf.set(w.from, { w, which: 'from' }); endOf.set(w.to, { w, which: 'to' }); });
+    function portOf(e) {
+      const S = sides.get(e.node), o = endOf.get(e);
+      if (!S || !o) return null;
+      for (const k of ['l', 'r']) {
+        const i = S[k].indexOf(o.w);
+        if (i >= 0) return { side: k, i, off: Math.floor((Math.max(1, S.l.length, S.r.length) - S[k].length) / 2) };
+      }
+      return null;
+    }
     // A wire's left end is the one in the earlier column.
     const leftFirst = w => (R.before(w.from.node, w.to.node) ? [w.from, w.to] : [w.to, w.from]);
     boxes.forEach(b => {
@@ -188,7 +227,8 @@
     const endY = e => {
       const it = itemOf.get(e.node);
       if (!it || it.y == null) return null;
-      if (it.kind === 'splice') return it.y + it.h / 2;
+      if (it.kind === 'loose') return it.y;
+      if (it.kind === 'splice') { const pt = portOf(e); return it.y + it.sz.port0 + PITCH * (pt ? pt.off + pt.i : 0); }
       return it.y + it.sz.h0 + G.ROW * (pinIdx(it.n, e.pin) + 0.5);
     };
     const rowY = (it, i) => it.y + it.sz.port0 + G.BROW * i;
@@ -228,7 +268,6 @@
     items.forEach(i => { i.y -= minY; });
     // Positions dragged by hand (`h.place`, keyed n:<node id> or b:<box key>) win over the auto
     // layout. Then each box's rows are re-sorted by where their wires now come from.
-    const place = h.place || {};
     items.forEach(i => {
       i.key = i.kind === 'box' ? 'b:' + i.b.key : 'n:' + i.n.id;
       const p = place[i.key];
@@ -236,7 +275,17 @@
         i.x = p.x; i.y = p.y + (i.kind === 'box' && i.b.kind === 'bundle' && p.v !== 2 ? BUNDLE_SHIFT : 0); i.placed = true;
       }
     });
-    if (items.some(i => i.placed)) boxes.forEach(b => {
+    // Splice ports nobody arranged follow the wires they lead to, so the wires don't cross.
+    const yOfWire = w => {
+      if (boxRowY.has(w.id)) return boxRowY.get(w.id);
+      const lo = [w.from, w.to].map(e => itemOf.get(e.node)).find(it => it && it.kind === 'loose');
+      return lo ? lo.y : 0;
+    };
+    sides.forEach(S => ['l', 'r'].forEach(k => {
+      const rest = S[k].slice(S.fixed[k]).sort((a, b) => yOfWire(a) - yOfWire(b) || a.no - b.no);
+      S[k] = S[k].slice(0, S.fixed[k]).concat(rest);
+    }));
+    if (items.some(i => i.placed) || sides.size) boxes.forEach(b => {
       const it = b.item, cx = it.x + it.w / 2;
       const yOf = w => { const e = [w.from, w.to].map(x => ({ e: x, it: itemOf.get(x.node) })).filter(o => o.it).sort((a, c) => Math.abs(a.it.x - cx) - Math.abs(c.it.x - cx))[0]; return e ? endY(e.e) : 0; };
       it.sz.rows.sort((a, c) => yOf(a.w) - yOf(c.w) || a.w.no - c.w.no);
@@ -266,6 +315,8 @@
     function anchor(e, towardX) {
       const it = itemOf.get(e.node);
       if (!it) return { x: 0, y: 0 };
+      if (it.kind === 'loose') return { x: it.x, y: it.y };
+      if (it.kind === 'splice') { const pt = portOf(e); if (pt) return { x: pt.side === 'l' ? it.x : it.x + it.w, y: endY(e) }; }
       const right = towardX > it.x + it.w / 2;
       return { x: right ? it.x + it.w : it.x, y: endY(e) };
     }
@@ -281,17 +332,26 @@
       const rIn = { x: rit.x + rit.w / 2 > it.x + it.w ? it.x + it.w : it.x, y };
       return { b, it, l, r, lIn, rIn };
     }
+    const curve = (p, q) => { const dx = Math.max(30, Math.abs(q.x - p.x) * 0.5); const s = q.x > p.x ? 1 : -1; return `C${f(p.x + s * dx)} ${f(p.y)} ${f(q.x - s * dx)} ${f(q.y)} ${f(q.x)} ${f(q.y)}`; };
+    const whichOf = (w, e) => (e === w.from ? 'from' : 'to');
+    // A wire's path, plus its two ends (where each meets its pin, port or loose end) for the drag
+    // handles. A wire with a loose end curves straight to it.
     function wirePath(w) {
+      const lo = [w.from, w.to].find(e => { const it = itemOf.get(e.node); return it && it.kind === 'loose'; });
+      if (lo) {
+        const o = lo === w.from ? w.to : w.from, L = itemOf.get(lo.node);
+        const p = anchor(o, L.x), q = { x: L.x, y: L.y };
+        return { d: `M${f(p.x)} ${f(p.y)}` + curve(p, q), over: [], ends: [{ which: whichOf(w, o), at: p, e: o }, { which: whichOf(w, lo), at: q, e: lo }] };
+      }
       const e = entry(w);
       if (!e) return '';
       const { b, it, l, r, lIn, rIn } = e;
       const segs = [];
-      const curve = (p, q) => { const dx = Math.max(30, Math.abs(q.x - p.x) * 0.5); const s = q.x > p.x ? 1 : -1; return `C${f(p.x + s * dx)} ${f(p.y)} ${f(q.x - s * dx)} ${f(q.y)} ${f(q.x)} ${f(q.y)}`; };
       const L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
       segs.push(`M${f(L0.x)} ${f(L0.y)}`, curve(L0, lIn));
       const tw = twist(w, b, lIn, rIn);
       segs.push(tw ? tw.d : `L${f(rIn.x)} ${f(rIn.y)}`, curve(rIn, R0));
-      return { d: segs.join(''), over: tw ? tw.over : [] };
+      return { d: segs.join(''), over: tw ? tw.over : [], ends: [{ which: whichOf(w, l), at: L0, e: l }, { which: whichOf(w, r), at: R0, e: r }] };
     }
     // A twisted wire's run through its box, drawn as a helix seen from the side: past the box's ends
     // (the sheath's caps or the bundle's bands) every wire of the set swings across the set's rows,
@@ -343,7 +403,9 @@
     }
     const box = { x0: Math.min(0, ...items.map(i => i.x)), y0: Math.min(0, ...items.map(i => i.y)),
       x1: Math.max(200, ...items.map(i => i.x + i.w)), y1: Math.max(120, ...items.map(i => i.y + i.h)) };
-    return { items, itemOf, boxes, wirePath, twistStart, anchor, endY, box };
+    // The wires on each side of a splice, in port order (for drawing and for drops).
+    const portsOf = id => { const S = sides.get(id); return S ? { l: S.l.slice(), r: S.r.slice() } : { l: [], r: [] }; };
+    return { items, itemOf, boxes, wirePath, twistStart, anchor, endY, portsOf, portOf, box };
   }
 
   // ── SVG ───────────────────────────────────────────────────────────────────
@@ -423,12 +485,29 @@
     o += `<rect class="cv-frame" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
     return o + '</g>';
   }
-  function spliceSvg(it, opts) {
+  // A splice: a box with a port on its edge for each wire, on the side the wire comes in, and lines
+  // inside from the ports on each side to the ref in the middle, where they're joined.
+  const PORT_R = 4.5;
+  // A bigger, invisible circle around each end's dot on the canvas, so it's easy to grab.
+  const hitEnd = (x, y, id, which, opts) => (opts.sheet ? '' : `<circle class="cv-hitend" cx="${f(x)}" cy="${f(y)}" r="9" data-end="${id}|${which}" data-wire="${id}"/>`);
+  function spliceSvg(it, opts, Lo) {
     const n = it.n, sel = opts.sel && opts.sel.kind === 'node' && opts.sel.ids.has(n.id);
-    return `<g class="cv-splice${sel ? ' sel' : ''}${opts.pending ? ' target' : ''}${dimIf(opts.focus && !opts.focus.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}"><rect class="cv-bg" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="4"/>` +
-      `<rect class="cv-frame" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}" rx="4"/>` +
-      `<text class="cv-ref" x="${f(it.x + it.w / 2)}" y="${f(it.y + it.h / 2 + 4.5)}" text-anchor="middle">${esc(n.ref)}</text></g>`;
+    const x = it.x, y = it.y, w = it.w, cx = x + w / 2, cy = y + it.h / 2, half = Math.max(9, tw(n.ref, 13) / 2) + 5;
+    const P = Lo.portsOf(n.id), F = opts.focus;
+    let lines = '', ports = '';
+    ['l', 'r'].forEach(k => P[k].forEach(wr => {
+      const e = wr.from.node === n.id ? wr.from : wr.to, py = Lo.endY(e), px = k === 'l' ? x : x + w;
+      const hx = k === 'l' ? cx - half : cx + half, dim = dimIf(F && !F.wires.has(wr.id));
+      lines += `<path class="cv-sp-line${dim}" d="M${f(px)} ${f(py)}C${f((px + hx) / 2)} ${f(py)} ${f((px + hx) / 2)} ${f(cy)} ${f(hx)} ${f(cy)}"/>`;
+      ports += `<circle class="cv-port${dim}" cx="${f(px)}" cy="${f(py)}" r="${PORT_R}" data-end="${wr.id}|${e === wr.from ? 'from' : 'to'}" data-wire="${wr.id}"/>` +
+        hitEnd(px, py, wr.id, e === wr.from ? 'from' : 'to', opts);
+    }));
+    return `<g class="cv-splice${sel ? ' sel' : ''}${opts.pending ? ' target' : ''}${opts.drop === n.id ? ' drop' : ''}${dimIf(F && !F.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}"><rect class="cv-bg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}" rx="6"/>` +
+      `<rect class="cv-frame" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}" rx="6"/>` + lines +
+      `<text class="cv-ref" x="${f(cx)}" y="${f(cy + 4.5)}" text-anchor="middle">${esc(n.ref)}</text>${ports}</g>`;
   }
+  // A loose end's dot, which drags like a port.
+  const looseSvg = (it, w, which, cls) => `<circle class="cv-port cv-loose${cls}" cx="${f(it.x)}" cy="${f(it.y)}" r="${PORT_R}" data-end="${w.id}|${which}" data-wire="${w.id}"/>`;
   function boxBack(it, opts) {
     const b = it.b, sel = boxSel(it, opts);
     return `<rect class="cv-box${b.kind === 'cable' ? ' cable' : ''}${sel ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>`;
@@ -487,16 +566,25 @@
     Lo.items.forEach(it => {
       if (it.kind === 'box') { backs += boxBack(it, opts); fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts, Lo)}</g>`; }
       else if (it.kind === 'conn') ends += connSvg(h, it, opts, Lo);
-      else ends += spliceSvg(it, opts);
+      else if (it.kind === 'splice') ends += spliceSvg(it, opts, Lo);
     });
+    // Every wire end has a dot to drag it by: a splice's ports and loose ends (drawn and printed
+    // with them), and a small dot where it meets a pin (canvas only).
+    let dots = '';
     h.wires.slice().sort((a, b) => a.no - b.no).forEach(w => {
       const p = Lo.wirePath(w);
       if (!p) return;
       const cls = (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + dimIf(opts.focus && !opts.focus.wires.has(w.id));
       wires += wireSvg(w, p.d, cls);
       overs += overSvg(w, p.over, cls);
+      p.ends.forEach(en => {
+        const it = Lo.itemOf.get(en.e.node);
+        if (!it) return;
+        if (it.kind === 'loose') dots += looseSvg(it, w, en.which, dimIf(opts.focus && !opts.focus.wires.has(w.id))) + hitEnd(it.x, it.y, w.id, en.which, opts);
+        else if (it.kind === 'conn' && !opts.sheet) dots += `<circle class="cv-end${dimIf(opts.focus && !opts.focus.wires.has(w.id))}" cx="${f(en.at.x)}" cy="${f(en.at.y)}" r="3.4" data-end="${w.id}|${en.which}" data-wire="${w.id}"/>` + hitEnd(en.at.x, en.at.y, w.id, en.which, opts);
+      });
     });
-    return { svg: backs + wires + overs + fronts + ends, box: Lo.box, layout: Lo };
+    return { svg: backs + wires + overs + fronts + ends + dots, box: Lo.box, layout: Lo };
   }
 
   LM.conn = { G, layout, render, boxesOf, pinLabel };

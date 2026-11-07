@@ -17,6 +17,7 @@
 .lm-sheet .cv-sheath{fill:rgba(29,29,31,.38);stroke:rgba(29,29,31,.85);stroke-width:1.4}.lm-sheet .cv-band rect{fill:#2c2c2e;stroke:rgba(29,29,31,.85)}
 .lm-sheet .cv-band line{stroke:rgba(255,255,255,.3);stroke-width:2;stroke-linecap:round}
 .lm-sheet .cv-lead{fill:none;stroke:#6e6e73;stroke-width:.9;stroke-linecap:round}
+.lm-sheet .cv-sp-line{fill:none;stroke:#1d1d1f;stroke-width:1.3;stroke-linecap:round}.lm-sheet .cv-port{fill:#fff;stroke:#1d1d1f;stroke-width:1.4}
 .lm-sheet .cv-wrow text,.lm-sheet .cv-halo{paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
 .lm-sheet .cv-sketch .fv-body,.lm-sheet .cv-sketch .fv-latch,.lm-sheet .cv-sketch .fv-flange,.lm-sheet .cv-sketch .fv-cav,.lm-sheet .cv-sketch .fv-hole,.lm-sheet .cv-sketch .fv-key,.lm-sheet .cv-sketch .fv-collar{stroke-width:inherit}
 .lm-sheet .cv-sketch .fv-lead,.lm-sheet .cv-sketch .fv-strip{stroke-width:inherit}.lm-sheet .cv-sketch text{display:none}
