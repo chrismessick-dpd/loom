@@ -131,9 +131,11 @@
     return w ? w.signal || '' : '';
   }
   // A small sketch of the connector for its header: the view the drawing prints (the front when it
-  // prints both), at most H tall and 64 wide.
+  // prints both), at most H tall and 64 wide. A round face is twice as tall (Chris: at the header's
+  // height it was a dot beside the wide rectangular ones), and the header grows to hold it.
   function sketchOf(h, n, H) {
     const v = LM.shapes.face(h, n, LM.shapes.views(n)[0]);
+    if (LM.library.family(n.family).style === 'circular') H *= 2;
     const k = Math.min(H / v.h, 64 / v.w);
     return { v, k, w: v.w * k, h: v.h * k };
   }
@@ -149,8 +151,9 @@
     const textW = Math.max(tw(n.ref, 13), n.name ? tw(n.name, 11) : 0);
     const headW = textW + 20 + sk.w + 8;
     const w = Math.max(labW + numW, infoW, headW, 150);
-    const h0 = G.HEAD + (hasName ? 16 : 0) + G.INFO;
-    return { w, h: h0 + pins.length * G.ROW, h0, port0: h0 + G.ROW / 2, labels, info, numW, hasName, sk, textW };
+    const hh = Math.max(G.HEAD + (hasName ? 16 : 0), Math.ceil(sk.h + 8));
+    const h0 = hh + G.INFO;
+    return { w, h: h0 + pins.length * G.ROW, h0, hh, port0: h0 + G.ROW / 2, labels, info, numW, hasName, sk, textW };
   }
   // Each wire's row text, by wire id.
   function boxRows(h, b) {
@@ -884,14 +887,14 @@
     let o = `<g class="cv-conn${sel ? ' sel' : ''}${fxCls(it, opts)}${dimIf(F && !F.nodes.has(n.id))}" data-node="${n.id}" data-item="${it.key}"${fxStyle(it, opts)}>`;
     if (fx) o += cardOpen(fxId('c', n.id), x, y, w, it.h, R);
     o += `<rect class="cv-bg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(it.h)}"/>`;
-    const hh = G.HEAD + (sz.hasName ? 16 : 0);
+    const hh = sz.hh;
     // The sketch sits left of the ref (and name), and the pair is centered in the header.
     const sk = sz.sk, textW = Math.min(sz.textW, w - 16 - sk.w - 8);
     const sx = x + (w - (sk.w + 8 + textW)) / 2, tx = sx + sk.w + 8 + textW / 2;
     o += `<g class="cv-head" data-head="${n.id}"><rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${hh}"/>` +
       `<g class="cv-sketch" style="stroke-width:${f(0.9 / sk.k)}" transform="translate(${f(sx + sk.v.ox * sk.k)} ${f(y + (hh - sk.h) / 2)}) scale(${f(sk.k * 1000) / 1000})">${sk.v.svg}</g>` +
-      `<text class="cv-ref" x="${f(tx)}" y="${f(y + 16)}" text-anchor="middle">${esc(n.ref)}</text>` +
-      (sz.hasName ? `<text class="cv-name" x="${f(tx)}" y="${f(y + 32)}" text-anchor="middle">${esc(U.clip(n.name, 11, textW + 4))}</text>` : '') + '</g>';
+      `<text class="cv-ref" x="${f(tx)}" y="${f(y + hh / 2 + (sz.hasName ? -4 : 4))}" text-anchor="middle">${esc(n.ref)}</text>` +
+      (sz.hasName ? `<text class="cv-name" x="${f(tx)}" y="${f(y + hh / 2 + 12)}" text-anchor="middle">${esc(U.clip(n.name, 11, textW + 4))}</text>` : '') + '</g>';
     const numX = numRight ? x + w - sz.numW : x;
     const labX = numRight ? x : x + sz.numW;
     // The info row in the same two columns as the pin rows.

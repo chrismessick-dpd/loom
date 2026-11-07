@@ -232,7 +232,7 @@ links to it so far. Before every commit:
     lists the wire sets as trees, and its Ends list is gone.
 - **Diagram look (2026-11-06, Chris; the bundle, table and Wire bundle notes predate wire sets):**
   - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
-    the view the drawing prints; the front when it prints both). Chris tried the header as a band
+    the view the drawing prints; the front when it prints both). A circular connector's sketch is twice as tall, and its header grows to hold it (`sz.hh`; 2026-11-07). Chris tried the header as a band
     down the card's side (2026-11-07) and kept it on top. Under it, the info row has the
     same two columns as the pin rows (Chris): family and gender ("JST GH receptacle") over the
     labels, and the count ("8-pins", "2-leads") over the pin numbers (`connInfo`).
