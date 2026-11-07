@@ -24,7 +24,7 @@
   // table on top, with the first port lower by TABLE_SHIFT (and a cable's by NOTE_H more for its
   // note), so it moves down by that and its wires stay put.
   const TABLE_SHIFT = 40, NOTE_H = 18;
-  const tableShift = (b, sz, p) => (b.kind === 'bundle' ? (p.v >= 2 ? 0 : TABLE_SHIFT) : (p.v >= 3 ? 0 : TABLE_SHIFT + (sz.note ? NOTE_H : 0)));
+  const tableShift = (b, sz, p) => (b.kind === 'single' ? 0 : b.kind === 'bundle' ? (p.v >= 2 ? 0 : TABLE_SHIFT) : (p.v >= 3 ? 0 : TABLE_SHIFT + (sz.note ? NOTE_H : 0)));
   const f = v => Math.round(v * 10) / 10;
   const tw = (s, size) => U.textW(s, size || G.FS);
 
@@ -33,9 +33,9 @@
   const lenText = mm => (mm == null ? 'length not set' : Math.round(mm) + ' mm');
 
   // The boxes: cables first, then bundles by end pair, in wire order. A wire alone between its two
-  // ends gets no box (Chris); Properties shows its details when it's clicked. For the layout only
-  // (withSingles), it still holds a slot in the box column, an undrawn 'single' that keeps the parts
-  // around it apart and that its wire runs straight through. A wire with a loose end is in no box
+  // ends gets no box or table (Chris), just its label row over the wire; Properties shows the rest
+  // when it's clicked. In the layout (withSingles) it's a 'single' in the box column, which keeps the
+  // parts around it apart, holds its label, and drags like a box. A wire with a loose end is in no box
   // either: it curves to its loose end's dot.
   const looseWire = (h, w) => M.isLoose(M.node(h, w.from.node)) || M.isLoose(M.node(h, w.to.node));
   function boxesOf(h, A, withSingles) {
@@ -138,7 +138,6 @@
   }
   function sizeBox(h, A, b) {
     const rows = boxRows(h, b);
-    if (b.kind === 'single') return { w: 60, h: 32, h0: 6, rowsBot: 32, headY: 32, lead: 0, port0: 23, rows, info: [], note: '', cols: { from: 0, c: 0, to: 0, t: 0 } };
     const gauges = [...new Set(b.wires.map(w => w.gauge || ''))];
     const lens = b.wires.map(w => A.wireLen.get(w.id));
     const known = lens.filter(x => x != null);
@@ -152,6 +151,11 @@
     const colFrom = Math.max(...rows.map(r => tw(r.from))), colTo = Math.max(...rows.map(r => tw(r.to)));
     const colC = Math.max(...rows.map(r => tw(r.color))), colT = Math.max(0, ...rows.map(r => (r.tags ? tw(r.tags, 10.5) : 0)));
     const rowW = colFrom + colC + colTo + 64 + (colT ? colT + 18 : 0);
+    // A wire alone: just its label row over the wire, no table.
+    if (b.kind === 'single') {
+      const rb = 6 + G.BROW + 6;
+      return { w: rowW, h: rb, h0: 6, rowsBot: rb, headY: rb, lead: 0, port0: 6 + G.BROW - 3, rows, info: [], note: '', cols: { from: colFrom, c: colC, to: colTo, t: colT } };
+    }
     const infoW = info.reduce((t, s) => t + tw(s) + 20, 0);
     const tg = h.groups.filter(g => g.kind === 'twist' && b.wires.some(w => g.wires.includes(w.id)));
     const oneSet = b.kind === 'bundle' && tg.length === 1 && b.wires.every(w => tg[0].wires.includes(w.id));
@@ -290,7 +294,7 @@
     items.forEach(i => {
       i.key = i.kind === 'box' ? 'b:' + i.b.key : 'n:' + i.n.id;
       const p = place[i.key];
-      if (p && isFinite(p.x) && isFinite(p.y) && !(i.kind === 'box' && i.b.kind === 'single')) {
+      if (p && isFinite(p.x) && isFinite(p.y)) {
         i.x = p.x; i.y = p.y + (i.kind === 'box' ? tableShift(i.b, i.sz, p) : 0); i.placed = true;
       }
     });
@@ -589,13 +593,16 @@
   function boxFront(it, opts, Lo) {
     const b = it.b, sz = it.sz, x = it.x, y = it.y, w = it.w, F = opts.focus, bd = dimIf(boxDim(it, opts));
     const ty0 = y + sz.headY;
-    let o = holder(it, opts);
+    let o = '';
+    if (b.kind !== 'single') {
+    o += holder(it, opts);
     o += `<g class="cv-boxg${bd}" data-box="${esc(b.key)}"><rect class="cv-bg" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/>` +
       `<rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD}"/>` +
       `<text class="cv-ref" x="${f(x + w / 2)}" y="${f(ty0 + 16)}" text-anchor="middle">${esc(b.label)}</text>`;
     o += cellRow(x, ty0 + G.HEAD, w, G.INFO, sz.info, 'cv-t');
     o += `<rect class="cv-frame${boxSel(it, opts) ? ' sel' : ''}" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/></g>`;
     if (sz.note) o += `<text class="cv-name cv-halo${bd}" x="${f(x + w / 2)}" y="${f(ty0 + G.HEAD + G.INFO + 13)}" text-anchor="middle">${esc(U.clip(sz.note, 11, w - 16))}</text>`;
+    }
     const c = sz.cols, inner = c.from + c.c + c.to + 40 + (c.t ? c.t + 18 : 0);
     const x0 = x + (w - inner + sz.lead) / 2;
     sz.rows.forEach((r, i) => {
@@ -621,7 +628,10 @@
     opts = Object.assign({}, opts, { focus: focusOf(h, opts.sel, opts.pending) });
     let backs = '', wires = '', overs = '', fronts = '', ends = '';
     Lo.items.forEach(it => {
-      if (it.kind === 'box') { if (it.b.kind !== 'single') { backs += boxBack(it, opts); fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts, Lo)}</g>`; } }
+      if (it.kind === 'box') {
+        if (it.b.kind !== 'single') backs += boxBack(it, opts);
+        fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts, Lo)}</g>`;
+      }
       else if (it.kind === 'conn') ends += connSvg(h, it, opts, Lo);
       else if (it.kind === 'splice') ends += spliceSvg(it, opts, Lo);
     });

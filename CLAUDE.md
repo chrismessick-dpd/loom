@@ -40,10 +40,10 @@ links to it so far. Before every commit:
     it goes back to Parts (`renderParts`, `propsHtml`). The left rail shows only the harness, except
     under 860 px, where the right pane is hidden and the rail shows the selection.
   - Boxes follow option (b): one box per cable group, and other wires are bundled per end pair
-    (`B1`, `B2`…). A wire alone between its two ends gets no box (Chris); Properties shows its
-    details. The layout still gives it an undrawn `single` slot in the box column
-    (`boxesOf(h, A, true)`), so the parts around it stay apart and its wire runs straight through.
-    `boxesOf` without that flag (the app's parts list and selections) leaves singles out.
+    (`B1`, `B2`…). A wire alone between its two ends gets no box or table (Chris), just its label
+    row over the wire; Properties shows the rest. The layout gives it a `single` slot in the box
+    column (`boxesOf(h, A, true)`), which keeps the parts around it apart, holds the label and drags
+    like a box. `boxesOf` without that flag (the app's parts list and selections) leaves singles out.
   - The canvas is a paper diagram that follows the theme. The drawing sheet uses the same diagram.
   - The formboard renderer (`render.js`), breakouts in the UI, coverings in the UI and the
     Formboard/Wiring sheet toggle are gone. The model still has segments, breakouts and coverings,
