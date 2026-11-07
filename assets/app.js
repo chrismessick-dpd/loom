@@ -209,7 +209,7 @@
     const h = hp || H(), svg = svgEl();
     const intro = !hp && !reduceMotion() && S.introFor !== h.id;
     if (intro) { S.introFor = h.id; clearTimeout(S.introT); S.introT = setTimeout(() => { S.introT = null; if (S.view === 'build') renderCanvas(); }, 1700); }
-    const r = C.render(h, M.analyze(h), Object.assign({ sel: S.sel, pending: S.pending, fx: true, intro: intro || (!hp && !!S.introT), fresh: S.fresh, lift: S.lift, prop: !!fold.prop }, extra));
+    const r = C.render(h, M.analyze(h), Object.assign({ sel: S.sel, pending: S.pending, fx: true, intro: intro || (!hp && !!S.introT), fresh: S.fresh, lift: S.lift, slide: S.slide, prop: !!fold.prop }, extra));
     if (!hp) { lastBox = r.box; lastLayout = r.layout; }
     const wrap = $('#canvas-wrap');
     const w = wrap.clientWidth || 800, hh = wrap.clientHeight || 600;
@@ -326,7 +326,8 @@
     applySide();
   }
   function renderHud() {
-    const h = H(), gs = gridOf(h), placed = h && h.place && Object.keys(h.place).length;
+    // Slid labels count as dragged positions: Auto layout puts them back too.
+    const h = H(), gs = gridOf(h), placed = h && ((h.place && Object.keys(h.place).length) || h.wires.some(w => w.labelAt != null));
     // Glass capsules, one per kind of control (docs/look-2026-11.md): the panel, the view, the grid.
     $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
     $('#hud').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel" aria-label="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
@@ -357,7 +358,7 @@
         const g = gesture;
         gesture = null; S.lift = null;
         svgEl().classList.remove('dragging', 'dragging-end');
-        if (g && (g.item || g.note || g.setEnd) && g.moved) { H().updated = Date.now(); persist(); renderAll(); }
+        if (g && (g.item || g.note || g.setEnd || g.label) && g.moved) { S.slide = null; H().updated = Date.now(); persist(); renderAll(); }
         else if (g && g.end && g.moved) renderCanvas();
         cancelAnimationFrame(glideRaf);
         const m = pinchAt();
@@ -372,10 +373,12 @@
     const setEndEl = e.button === 0 && !S.pending && !endEl && e.target.closest('[data-setend]');
     // A note's bubble drags the bubble.
     const noteEl = e.button === 0 && !S.pending && !S.placing && e.target.closest('[data-notebox]');
+    // A wire's label slides along its wire; a click on one is a click on what's under it.
+    const labelEl = e.button === 0 && !S.pending && !S.placing && !endEl && !setEndEl && e.target.closest('[data-label]');
     const itemEl = e.button === 0 && !endEl && !setEndEl && e.target.closest('[data-item]');
     const end = endEl ? { wire: endEl.dataset.end.split('|')[0], which: endEl.dataset.end.split('|')[1] } : null;
     const setEnd = setEndEl ? { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] } : null;
-    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null };
+    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null, label: labelEl ? labelEl.dataset.label : null };
     svgEl().setPointerCapture(e.pointerId);
   }
   // Where a dragged wire end would land: a splice (the side and port slot under the pointer), a
@@ -438,6 +441,7 @@
       return;
     }
     if (g.setEnd) { dragSetEnd(g, dx); return; }
+    if (g.label) { slideLabel(g, e); return; }
     if (g.note) {
       const c = M.note(H(), g.note);
       if (!c) { gesture = null; return; }
@@ -531,12 +535,41 @@
     if (!touches.size) pinch = null;
     return true;
   }
+  // Slide a wire's label along its wire (Chris: labels size nothing and go anywhere on their wires,
+  // in either view): the pointer, less where the label was grabbed, projected onto the wire's lane
+  // from the drag's start gives w.labelAt, 0 to 1 along it. When the drawing moves the label keeps
+  // that fraction, so it stays on its wire. One snapshot, so one undo puts it back.
+  function slideLabel(g, e) {
+    const w = M.wire(H(), g.label);
+    if (!g.moved) {
+      const L = w && lastLayout && lastLayout.labelAt(w), ln = L && lastLayout.lane(w);
+      if (!ln) { gesture = null; return; }
+      const p = toWorld({ clientX: g.x, clientY: g.y });
+      snapshot();
+      Object.assign(g, { moved: true, ln, off: { x: p.x - L.x, y: p.y - L.y } });
+      S.slide = w.id;
+      svgEl().classList.add('dragging');
+    }
+    const p = toWorld(e);
+    w.labelAt = Math.round(C.project(g.ln, { x: p.x - g.off.x, y: p.y - g.off.y }) / (g.ln.S || 1) * 1000) / 1000;
+    renderCanvas();
+  }
   function onUp(e) {
     if (endTouch(e) || pinch) return;
     const g = gesture;
     gesture = null;
     S.lift = null;
+    S.slide = null;
     svgEl().classList.remove('dragging', 'dragging-end');
+    if (g && g.label) {
+      if (g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
+      // Not a way to pick a wire (Chris took that out): the click goes to what's under the label.
+      if (g.button === 0) {
+        const svg = svgEl(), under = document.elementsFromPoint(g.x, g.y).find(el => el !== svg && svg.contains(el) && !el.closest('[data-label]'));
+        click(under || svg, g.shift, g);
+      }
+      return;
+    }
     if (g && (g.setEnd || g.note) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
@@ -1193,7 +1226,7 @@
       case 'nav': toggleSidebar(); break;
       case 'fold-parts': toggleFold('parts'); break;
       case 'pane-tab': S.paneTab = el.dataset.tab; renderParts(); break;
-      case 'auto-layout': change(x => { x.place = {}; }); S.cam = null; renderCanvas(); break;
+      case 'auto-layout': change(x => { x.place = {}; x.wires.forEach(w => { delete w.labelAt; }); }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
       case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;
@@ -1363,7 +1396,7 @@
   svg.addEventListener('pointerleave', () => { if (badgeHover) { badgeHover = null; lightBadgeSet(); } });
   svg.addEventListener('pointermove', onMove);
   svg.addEventListener('pointerup', onUp);
-  svg.addEventListener('pointercancel', e => { if (endTouch(e) || pinch) return; const g = gesture; gesture = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
+  svg.addEventListener('pointercancel', e => { if (endTouch(e) || pinch) return; const g = gesture; gesture = null; S.slide = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
   svg.addEventListener('wheel', onWheel, { passive: false });
   svg.addEventListener('contextmenu', e => e.preventDefault()); // the right button pans
   // When the canvas changes size (the sidebar sliding, a panel folding, the window), the picture

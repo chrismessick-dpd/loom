@@ -96,10 +96,11 @@ links to it so far. Before every commit:
     old Covers value (`s.length`) converts in `normalize` to an overhang on the right, or stays
     while the run isn't known. The BOM uses `setLength`: a cable shorter than its wires leaves
     the rest as loose wire, and a shield braid is listed only outside any cable. The demo
-    (`VERSION` 11): B1 covers 150 mm of the 250 mm run, 15 mm in from the left end and 85 mm
+    (`VERSION` 12): B1 covers 150 mm of the 250 mm run, 15 mm in from the left end and 85 mm
     from the right, and TP1 runs past it to both ends. The demo also places P2's left side at
-    P3's right side, S1's middle at TP1's right end, and the S1 → P2 labels a fifth of the way
-    from S1 to P2, level with S1's output ports, taken from the auto layout (`demo.js`).
+    P3's right side, S1's middle at TP1's right end, and the S1 → P2 labels' left sides a fifth
+    of the way from S1 to P2 (by placing their stack's box), level with S1's output ports, taken
+    from the auto layout (`demo.js`).
   - **Dragging a set's ends** (Chris). Every set has a grip at each end (`setEnds`,
     `data-setend`; it shows on hover and while selected), outermost sets included (cables,
     twisted pairs, bundles). Dragging it sets that overhang (`dragSetEnd` in `app.js`): measured
@@ -135,15 +136,34 @@ links to it so far. Before every commit:
     Properties chip colors: cable blue, bundle gray, twist amber, shield violet). The sheet prints
     plain pills. Clicking a badge selects its set; the selected one and its leader glow. Hovering
     a badge lights its set's area as hovering the set does (`lightBadgeSet` in `app.js`).
-  - **Twist leaders** (`.cv-lead`) are drawn in the main ink at 1.4 with a dot where the twist
-    starts (Chris: more prominent). Where rows twist, the row text moves left to just past where
-    the first twist starts (staying right of a break), so the leaders stay short in a wide box.
+  - **Wire labels** (2026-11-07, Chris: they size nothing and slide anywhere along their wires).
+    Each boxed wire's label (from, color and to, in its box's shared columns, `sz.cols`,
+    `sz.inner`) is drawn in its own layer over the parts, outside every `data-item`
+    (`labelSvg`). Boxes no longer size to their text: a box gives its rows a nominal run,
+    `ROW_W` (140).
+    - **Where it sits.** Each label rides its wire's lane (`lane`): the wire's path from pin to
+      pin, but across its box on its row without a twist's swing, so a label over a twist stays
+      level with its row. Until slid, it sits where row text sat (`labelX0`: centered on the
+      frame, right of a break in Real proportions, and where rows twist just past where the first
+      twist starts, `LEAD` further right). Slid, it keeps `w.labelAt`, 0 to 1 along the lane
+      (`labelAt`), so when parts move it stays on its wire at the same fraction. That holds in
+      both views.
+    - **Sliding.** Drag a label by its clear rect (`.cv-lgrab`, lit on hover; `slideLabel` in
+      `app.js`). The pointer, less where it was grabbed, is projected onto the lane from the
+      drag's start (`conn.project`), and one undo puts it back. A click without movement goes to
+      whatever is under the label (Chris took out picking a wire by its text), so a click on a
+      label inside a set selects the set. Auto layout puts slid labels back, and a slid label
+      shows its button.
+    - **Twist leaders** (`.cv-lead`, the main ink at 1.4, Chris: more prominent). Over its
+      twist, a label has a leader from its left end: to where the twist starts while that's
+      within `3 × LEAD` (the default spot), else to where its wire is drawn under that end
+      (`wireAt`, from the same `helix` the twist is drawn with).
   - **Set areas** (`setAreas`, canvas only). Each set's bounds are a hit area over the wires,
     outermost first, so the innermost set under the pointer wins. Hovering an area tints it and
     titles it, a click selects that set, and shift-click adds its wires to the selection (or takes
-    them out). Row text is never clickable (`.cv-wrow` has no pointer events, Chris): a wire is
-    picked by its line in the open. A stack (wires in no set) keeps an invisible `.cv-grab` behind
-    each row so it still drags. The areas sit inside the box's `data-item`, so they drag it.
+    them out). A wire is picked by its line in the open, never by its label. A stack (wires in no
+    set) has an invisible `.cv-grab` over each row's run so it still drags. The areas sit inside
+    the box's `data-item`, so they drag it.
   - **Selection look** (Chris). A selected wire's pulse (`.w-pulse`) is half its first strength
     (opacity 0.5, a smaller glow). A selected set's wires carry one at half that (`.w-pulse.soft`,
     wire class `setsel`). What a selection isn't about dims half as much as before (`.dim` 0.6,
@@ -161,8 +181,8 @@ links to it so far. Before every commit:
       positions (`M.reach`, clamped to the wire ends). `sz.prop` maps mm along its wires to x.
     - A run longer than `MAX_RUN` (or too long for its gap by more than `2 × FAN`) is drawn to
       scale at both ends with a break a third of the way along (`breakMark`: a paper band between
-      two zigzags across its wires, with the run's length over it); the row text moves right of
-      it (`sz.textC`). A run with no length is `NOMINAL` long.
+      two zigzags across its wires, with the run's length over it); labels default to the right
+      of it (`sz.textC`). A run with no length is `NOMINAL` long.
     - Boxes can then reach into another column's parts, so anything that would overlap what's
       already placed moves down below it, top down.
     - In this view parts don't drag; set ends do, to the box's true scale (`g.prop` in
@@ -216,9 +236,6 @@ links to it so far. Before every commit:
     under its table (`sz.headY`, `sz.rowsBot`). Positions dragged before that move down so their
     wires stay put (`tableShift`): a bundle's unless its `h.place` entry has `v` ≥ 2, a cable's
     unless `v` ≥ 3. Entries saved now carry `v: 3`.
-  - A twisted wire's row gets a thin leader (`.cv-lead`) from the left of its text to where its
-    twist starts (`twistStart`). Boxes with twisted wires, other than a bundle that is one twisted
-    set, get `LEAD` more room left of the text for it.
   - Selecting exactly one bundle's wires (a click on its label) titles Properties **Wire bundle**.
 - **Canvas finish (2026-11-06, merged):** the Build canvas is meant to be
   fun to use (Chris: Apple, liquid glass). The reference audit and the rules are in

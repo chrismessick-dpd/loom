@@ -35,9 +35,10 @@
   const BADGE_H = 22, BADGE_GAP = 8;
   const badgeW = label => Math.max(34, tw(label, 11) + 30);
   const hasEnds = s => !!(s.cable || s.shield || s.bundle);
-  // Extra room left of a box's row text when some of its wires twist inside a set that is inset or
-  // has ends, for the leader lines from the text to where each wire's twist starts.
-  const LEAD = 22;
+  // Wire labels size nothing (Chris): a box gives its rows a nominal run, ROW_W. Where some of its
+  // wires twist inside a set that is inset or has ends, a box's labels sit LEAD further right by
+  // default, for the leader lines from each label to where its wire's twist starts.
+  const ROW_W = 140, LEAD = 22;
   // Positions dragged before a box's label table moved under its wires (and then went) had the
   // first port lower by TABLE_SHIFT: a stack's before h.place v 2, a set's before v 3. They move
   // down by that, so their wires stay put.
@@ -160,16 +161,17 @@
   }
   function sizeBox(h, A, b) {
     const text = boxRows(h, b), rows = [...text.values()];
+    // The labels' columns (from, color, to) are shared by a box's rows, so its labels line up where
+    // they haven't been slid; they're only for drawing the labels (inner is a label's width).
     const cols = { from: Math.max(...rows.map(r => tw(r.from))), to: Math.max(...rows.map(r => tw(r.to))), c: Math.max(...rows.map(r => tw(r.color))) };
-    const rowW = cols.from + cols.c + cols.to + 64;
-    let w = rowW, lead = 0;
+    let w = ROW_W, lead = 0;
     if (b.kind === 'set') {
       const all = setsUnder(h, b.set);
       const D = Math.max(0, ...all.map(x => x.depth));
       lead = all.some(x => x.s.twist && (x.depth > 0 || hasEnds(x.s))) ? LEAD : 0;
-      w = Math.max(rowW + lead + 2 * (END + D * NEST), 120);
+      w = Math.max(ROW_W + 2 * (END + D * NEST), 120);
     }
-    const sz = { w, text, lead, cols, rootW: w, lx: 0, k: 1, ext: new Map() };
+    const sz = { w, text, lead, cols, inner: cols.from + cols.c + cols.to + 40, rootW: w, lx: 0, k: 1, ext: new Map() };
     if (b.kind === 'set') {
       // Where each set's ends sit, from the box's left. rootW is the wires' run (the frame); k is
       // mm per unit to its scale (2 when the run isn't known). The outermost set at 0 overhang
@@ -549,7 +551,17 @@
       const rIn = { x: rit.x + rit.w / 2 > it.x + it.w ? it.x + it.w - fan : it.x + fan, y };
       return { b, it, l, r, lIn, rIn };
     }
-    const curve = (p, q) => { const dx = Math.max(30, Math.abs(q.x - p.x) * 0.5); const s = q.x > p.x ? 1 : -1; return `C${f(p.x + s * dx)} ${f(p.y)} ${f(q.x - s * dx)} ${f(q.y)} ${f(q.x)} ${f(q.y)}`; };
+    // A wire's curve between two points, level at both: as an SVG command, and as points for its
+    // label's lane (the same control points).
+    const ctl = (p, q) => { const dx = Math.max(30, Math.abs(q.x - p.x) * 0.5), s = q.x > p.x ? 1 : -1; return [{ x: p.x + s * dx, y: p.y }, { x: q.x - s * dx, y: q.y }]; };
+    const curve = (p, q) => { const [a, b] = ctl(p, q); return `C${f(a.x)} ${f(a.y)} ${f(b.x)} ${f(b.y)} ${f(q.x)} ${f(q.y)}`; };
+    const curvePts = (p, q) => {
+      const [a, b] = ctl(p, q), N = 24;
+      return [...Array(N + 1)].map((_, i) => {
+        const t = i / N, u = 1 - t, k0 = u * u * u, k1 = 3 * u * u * t, k2 = 3 * u * t * t, k3 = t * t * t;
+        return { x: k0 * p.x + k1 * a.x + k2 * b.x + k3 * q.x, y: k0 * p.y + k1 * a.y + k2 * b.y + k3 * q.y };
+      });
+    };
     const whichOf = (w, e) => (e === w.from ? 'from' : 'to');
     // A wire's path, plus its two ends (where each meets its pin, port or loose end) for the drag
     // handles. A wire with a loose end curves straight to it.
@@ -593,28 +605,44 @@
       const xa = dir > 0 ? lo : hi, xb = dir > 0 ? hi : lo;
       return run < TURN * n * 0.6 ? null : { t, dir, xa, xb, run, n };
     }
-    // Where a twisted wire's twist starts on the left, for the leader line from its row's text.
-    function twistStart(w) {
+    // Where a twisted wire's twist starts and ends on its row: the leader from its label runs to the
+    // start while the label sits over the twist.
+    function twistAt(w, end) {
       const e = entry(w), s = e && twistSpan(w, e.b, e.lIn, e.rIn);
-      return s ? { x: Math.min(s.xa, s.xb), y: e.lIn.y } : null;
+      return s ? { x: (end ? Math.max : Math.min)(s.xa, s.xb), y: e.lIn.y } : null;
+    }
+    const twistStart = w => twistAt(w, false), twistEnd = w => twistAt(w, true);
+    // The helix a twisted wire follows from its row y0: y dx along its twist (0 to run), and whether
+    // that stretch is on the near side.
+    function helix(s, y0) {
+      const { t, run, n } = s, turns = Math.max(1, Math.round(run / (TURN * n)));
+      const ys = t.ws.map(x => boxRowY.get(x.id)), lo = Math.min(...ys), hi = Math.max(...ys);
+      // The ease (smoothstep, level at both ends) takes about half a turn, so the wire leaves the
+      // straight part and joins the helix without a kink.
+      const c = (lo + hi) / 2, A = (hi - lo) / 2, ease = Math.min(TURN * n / 2, run / 4);
+      const phase = Math.PI - 2 * Math.PI * t.i / n;
+      return dx => {
+        const th = phase + 2 * Math.PI * turns * dx / run, e = Math.min(1, dx / ease, (run - dx) / ease), m = e * e * (3 - 2 * e);
+        return { y: y0 + (c + A * Math.cos(th) - y0) * m, front: Math.sin(th) > 0 && m > 0.5 };
+      };
+    }
+    // Where a boxed wire is drawn at x (on the helix where it twists), for the leader from a label
+    // slid along a twist.
+    function wireAt(w, q) {
+      const e = entry(w);
+      if (!e) return null;
+      const s = twistSpan(w, e.b, e.lIn, e.rIn);
+      if (!s) return { x: q.x, y: e.lIn.y };
+      const dx = Math.min(s.run, Math.max(0, (q.x - s.xa) * s.dir));
+      return { x: s.xa + s.dir * dx, y: helix(s, e.lIn.y)(dx).y };
     }
     function twist(w, b, lIn, rIn) {
       const s = twistSpan(w, b, lIn, rIn);
       if (!s) return null;
-      const { t, dir, xa, xb, run, n } = s;
-      const turns = Math.max(1, Math.round(run / (TURN * n)));
-      const ys = t.ws.map(x => boxRowY.get(x.id)), lo = Math.min(...ys), hi = Math.max(...ys);
-      // The ease (smoothstep, level at both ends) takes about half a turn, so the wire leaves the
-      // straight part and joins the helix without a kink.
-      const c = (lo + hi) / 2, A = (hi - lo) / 2, y0 = lIn.y, ease = Math.min(TURN * n / 2, run / 4);
-      const phase = Math.PI - 2 * Math.PI * t.i / n;
+      const { dir, xa, run } = s, y0 = lIn.y, at = helix(s, y0);
       const steps = Math.max(24, Math.ceil(run / 3));
       const pts = [];
-      for (let k = 0; k <= steps; k++) {
-        const u = k / steps, th = phase + 2 * Math.PI * turns * u, dx = u * run;
-        const e = Math.min(1, dx / ease, (run - dx) / ease), m = e * e * (3 - 2 * e);
-        pts.push({ x: xa + dir * dx, y: y0 + (c + A * Math.cos(th) - y0) * m, front: Math.sin(th) > 0 && m > 0.5 });
-      }
+      for (let k = 0; k <= steps; k++) { const dx = run * k / steps, v = at(dx); pts.push({ x: xa + dir * dx, y: v.y, front: v.front }); }
       let d = `L${f(xa)} ${f(y0)}`;
       pts.forEach(p => { d += `L${f(p.x)} ${f(p.y)}`; });
       const over = [];
@@ -630,6 +658,50 @@
       x1: Math.max(200, ...items.map(i => i.x + i.w)), y1: Math.max(120, ...items.map(i => i.y + i.h)) };
     // The wires on each side of a splice, in port order (for drawing and for drops).
     const portsOf = id => { const S = sides.get(id); return S ? { l: S.l.slice(), r: S.r.slice() } : { l: [], r: [] }; };
+    // Wire labels (Chris: they size nothing and slide anywhere along their wires). A boxed wire's
+    // lane is the line its label rides: its path from pin to pin, but across its box on its row
+    // without a twist's swing, so a label over a twist stays level with its row. Points with arc
+    // length s (laneAt, project).
+    const lanes = new Map(), labelX = new Map();
+    function lane(w) {
+      if (lanes.has(w.id)) return lanes.get(w.id);
+      const e = entry(w);
+      let out = null;
+      if (e) {
+        const { it, l, r, lIn, rIn } = e, L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
+        const pts = curvePts(L0, lIn).concat(curvePts(rIn, R0));
+        let s = 0;
+        out = { pts: pts.map((p, i) => { if (i) s += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y); return { x: p.x, y: p.y, s }; }), S: 0, it };
+        out.S = s;
+      }
+      lanes.set(w.id, out);
+      return out;
+    }
+    // Where a box's labels sit until one is slid: centered on its frame (in Real proportions, right
+    // of a break), but where rows twist, left to just past where the first twist starts, so the
+    // leaders stay short. Each label is its box's label width (sz.inner), so they line up as a table.
+    function labelX0(it) {
+      if (labelX.has(it)) return labelX.get(it);
+      const sz = it.sz, x = it.x;
+      let x0 = x + (sz.textC != null ? sz.textC : (sz.lx || 0) + sz.rootW / 2) - (sz.inner - sz.lead) / 2;
+      const starts = sz.rows.map(r => r.w && twistStart(r.w)).filter(Boolean);
+      if (starts.length) {
+        const near = Math.min(...starts.map(t => t.x)) + LEAD + 8;
+        if (x0 > near) x0 = Math.max(near, it.brk ? x + it.brk.x + BREAK_W / 2 + 10 : -Infinity);
+      }
+      labelX.set(it, x0);
+      return x0;
+    }
+    // A label's middle: w.labelAt along its lane (0 to 1, set by sliding it, in either view), else
+    // its box's spot projected onto the lane. null for a wire in no box (one with a loose end).
+    function labelAt(w) {
+      const ln = lane(w);
+      if (!ln) return null;
+      const t = w.labelAt == null ? null : Math.min(1, Math.max(0, +w.labelAt));
+      const s = t != null ? t * ln.S : project(ln, { x: labelX0(ln.it) + ln.it.sz.inner / 2, y: boxRowY.get(w.id) });
+      const p = laneAt(ln, s);
+      return { x: p.x, y: p.y, t: ln.S ? s / ln.S : 0.5, it: ln.it };
+    }
     // Notes: where a note is pinned, and the reverse for pinning one (app.js). A wire's t runs along
     // its box row (or, outside a box, straight between its ends); a set's spot is on its drawn area.
     function wireEnds(w) {
@@ -656,7 +728,29 @@
     }
     // The diagram's bounds take in the notes' bubbles.
     (h.callouts || []).forEach(c => { const p = noteAt(c); if (!p) return; const s = noteSize(c); box.x0 = Math.min(box.x0, p.x + c.dx - s.w / 2); box.x1 = Math.max(box.x1, p.x + c.dx + s.w / 2); box.y0 = Math.min(box.y0, p.y + c.dy - s.h / 2); box.y1 = Math.max(box.y1, p.y + c.dy + s.h / 2); });
-    return { items, itemOf, boxes, wirePath, twistStart, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom };
+    return { items, itemOf, boxes, wirePath, twistStart, twistEnd, wireAt, lane, labelAt, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom };
+  }
+
+  // A lane (layout's lane: points with arc length s): the point at s along it, and how far along it
+  // a point's nearest point is (sliding a label, app.js).
+  function laneAt(ln, s) {
+    const P = ln.pts;
+    s = Math.min(ln.S, Math.max(0, s));
+    let i = 1;
+    while (i < P.length - 1 && P[i].s < s) i++;
+    const a = P[i - 1], b = P[i], t = b.s > a.s ? (s - a.s) / (b.s - a.s) : 0;
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  }
+  function project(ln, q) {
+    let best = Infinity, out = 0;
+    const P = ln.pts;
+    for (let i = 1; i < P.length; i++) {
+      const a = P[i - 1], b = P[i], dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
+      const t = L2 ? Math.min(1, Math.max(0, ((q.x - a.x) * dx + (q.y - a.y) * dy) / L2)) : 0;
+      const d = (q.x - a.x - dx * t) ** 2 + (q.y - a.y - dy * t) ** 2;
+      if (d < best) { best = d; out = a.s + (b.s - a.s) * t; }
+    }
+    return out;
   }
 
   // ── SVG ───────────────────────────────────────────────────────────────────
@@ -947,35 +1041,32 @@
     }).join('');
   }
   function boxFront(it, opts, Lo, hatch) {
-    const sz = it.sz, x = it.x, w = it.w, F = opts.focus;
+    const sz = it.sz, x = it.x, w = it.w;
     let o = (it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) : '') + breakMark(it) + (it.b.kind === 'set' ? setEnds(it, opts) + badges(it, opts) : '');
-    const c = sz.cols, inner = c.from + c.c + c.to + 40;
-    // The text is centered on the outermost set, but where rows twist it moves left to just past
-    // where the first twist starts, so the leaders from text to twist stay short (Chris: in a wide
-    // box they ran the length of the helix). It stays right of a break.
-    let x0 = x + (sz.textC != null ? sz.textC : (sz.lx || 0) + sz.rootW / 2) - (inner - sz.lead) / 2;
-    const starts = Lo ? sz.rows.map(r => r.w && Lo.twistStart(r.w)).filter(Boolean) : [];
-    if (starts.length) {
-      const near = Math.min(...starts.map(t => t.x)) + LEAD + 8;
-      if (x0 > near) x0 = Math.max(near, it.brk ? x + it.brk.x + BREAK_W / 2 + 10 : -Infinity);
-    }
-    sz.rows.forEach((r, i) => {
-      if (!r.w) return;
-      // The text sits above the wire and isn't clickable (Chris): a wire is picked by its line in
-      // the open, and a click inside a set picks the set. A stack (wires in no set) keeps an
-      // invisible grab behind each row, outside the row's data-wire, so it still drags. A twisted
-      // wire gets a leader from the text's left to where its twist starts, since the twist runs
-      // under the other rows' text.
-      const wy = wireYAt(it, i), top = wy - G.BROW + 3, ty = wy - 5;
-      const ts = Lo && Lo.twistStart(r.w);
-      const lead = ts && x0 - 4 > ts.x + 4 ? `<g class="cv-lead"><path d="M${f(x0 - 4)} ${f(ty - 4)}L${f(ts.x)} ${f(ts.y - 2.6)}"/><circle cx="${f(ts.x)}" cy="${f(ts.y - 2.6)}" r="2"/></g>` : '';
-      if (it.b.kind !== 'set' && !opts.sheet) o += `<rect class="cv-grab" x="${f(x0 - 6)}" y="${f(top)}" width="${f(inner + 12)}" height="${G.BROW}"/>`;
-      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}">` + lead +
-        `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
-        `<text class="cv-t" x="${f(x0 + c.from + 20 + c.c / 2)}" y="${f(ty)}" text-anchor="middle">${esc(r.color)}</text>` +
-        `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text></g>`;
+    // A stack (wires in no set) is dragged by a clear grab over each row's run.
+    if (it.b.kind !== 'set' && !opts.sheet) sz.rows.forEach((r, i) => {
+      if (r.w) o += `<rect class="cv-grab" x="${f(x)}" y="${f(wireYAt(it, i) - G.BROW + 3)}" width="${f(w)}" height="${G.BROW}"/>`;
     });
     return o;
+  }
+  // A wire's label: from, color and to over the wire, its middle at its spot on its lane, in its
+  // box's columns. It sizes nothing. Over its twist, which runs under it, a leader runs from its
+  // left to where the twist starts while that's near (the default spot), else to where the wire is
+  // under its left end. Labels are drawn over everything but the end dots and notes; on the canvas
+  // a clear rect grabs one to slide it (app.js), and a click passes through.
+  function labelSvg(w, Lo, opts) {
+    const L = Lo.labelAt(w);
+    if (!L) return '';
+    const sz = L.it.sz, c = sz.cols, r = sz.text.get(w.id), x0 = L.x - sz.inner / 2, ty = L.y - 5;
+    const ts = Lo.twistStart(w), te = ts && Lo.twistEnd(w);
+    const to = ts && x0 - 4 > ts.x + 4 && L.x < te.x && (x0 - ts.x < 3 * LEAD ? { x: ts.x, y: ts.y - 2.6 } : Lo.wireAt(w, { x: x0, y: L.y }));
+    const lead = to ? `<g class="cv-lead"><path d="M${f(x0 - 4)} ${f(ty - 4)}L${f(to.x)} ${f(to.y)}"/><circle cx="${f(to.x)}" cy="${f(to.y)}" r="2"/></g>` : '';
+    const grab = opts.sheet ? '' : `<rect class="cv-lgrab" x="${f(x0 - 5)}" y="${f(ty - 12)}" width="${f(sz.inner + 10)}" height="15" rx="5"/>`;
+    const fx = opts.fx ? ' cv-item' : '';
+    return `<g class="cv-wrow${fx}${dimIf(opts.focus && !opts.focus.wires.has(w.id))}${opts.slide === w.id ? ' slide' : ''}" data-label="${w.id}"${fxStyle(L.it, opts)}>` + grab + lead +
+      `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
+      `<text class="cv-t" x="${f(x0 + c.from + 20 + c.c / 2)}" y="${f(ty)}" text-anchor="middle">${esc(r.color)}</text>` +
+      `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text></g>`;
   }
 
   function render(h, A, opts) {
@@ -991,7 +1082,7 @@
     const hatch = opts.sheet ? 'lm-braid-sheet' : 'lm-braid-canvas';
     let backs = h.sets.some(st => st.shield) ? `<defs><pattern id="${hatch}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
       `<path class="cv-braid-line" d="M2.5 0V5M0 2.5H5"/></pattern></defs>` : '';
-    let wires = '', overs = '', fronts = '', ends = '';
+    let wires = '', overs = '', fronts = '', ends = '', labels = '';
     Lo.items.forEach(it => {
       if (it.kind === 'box') {
         if (it.b.kind === 'set' || it.b.wires.length > 1) backs += boxBack(it, opts);
@@ -1014,6 +1105,7 @@
       const inSet = opts.sel && opts.sel.kind === 'set' && opts.focus && opts.focus.wires.has(w.id);
       const cls = (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + (inSet ? ' setsel' : '') + dim + (fresh ? ' fresh' : '') + (fx && opts.carry === w.id ? ' carry' : '');
       wires += wireSvg(w, p.d, cls, fx, fresh, opts.intro ? i : null);
+      labels += labelSvg(w, Lo, opts);
       overs += overSvg(w, p.over, cls, fx);
       const rg = ring(opts, w, fresh);
       p.ends.forEach(en => {
@@ -1024,8 +1116,8 @@
       });
     });
     const notes = (h.callouts || []).map(c => noteSvg(c, Lo, opts)).join('');
-    return { svg: backs + wires + overs + fronts + ends + dots + notes, box: Lo.box, layout: Lo };
+    return { svg: backs + wires + overs + fronts + ends + labels + dots + notes, box: Lo.box, layout: Lo };
   }
 
-  LM.conn = { G, layout, render, boxesOf, pinLabel };
+  LM.conn = { G, layout, render, boxesOf, pinLabel, project };
 })(window.LM = window.LM || {});

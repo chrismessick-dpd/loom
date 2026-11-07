@@ -4,7 +4,7 @@
 (function (LM) {
   'use strict';
   const M = LM.model;
-  const VERSION = 11; // bump when the demo changes, so stored copies rebuild
+  const VERSION = 12; // bump when the demo changes, so stored copies rebuild
 
   function harness() {
     const h = M.blank('Display & Sensor Harness');
@@ -44,7 +44,8 @@
 
     // Placed by hand (Chris): P2's left side at P3's right side, S1's middle at TP1's right end,
     // and the S1 → P2 labels' left side a fifth of the way from S1's right side to P2's left, their
-    // rows level with S1's output ports so the wires leave S1 parallel.
+    // rows level with S1's output ports so the wires leave S1 parallel. The labels sit in the middle
+    // of their stack's box until slid, so the box goes where that puts them.
     // Taken from the auto layout and snapped to the 10 grid, so they follow it.
     const lay = () => LM.conn.layout(h, M.analyze(h));
     const up = v => Math.ceil(v / 10) * 10, near = v => Math.round(v / 10) * 10;
@@ -58,7 +59,7 @@
     const key = 'b:p:' + [s1.id, p2.id].sort().join('|'), labels = lo.items.find(i => i.key === key);
     const s1R = at(s1).x + at(s1).w;
     const first = labels.sz.rows.find(r => r.w).w, port = lo.endY(first.from.node === s1.id ? first.from : first.to);
-    h.place[key] = { x: near(s1R + (at(p2).x - s1R) / 5), y: port - labels.sz.port0, v: 3 };
+    h.place[key] = { x: near(s1R + (at(p2).x - s1R) / 5 - (labels.w - labels.sz.inner) / 2), y: port - labels.sz.port0, v: 3 };
     return h;
   }
   LM.demo = { harness, VERSION };
