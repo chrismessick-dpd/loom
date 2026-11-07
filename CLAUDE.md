@@ -121,6 +121,25 @@ links to it so far. Before every commit:
     (opacity 0.5, a smaller glow). A selected set's wires carry one at half that (`.w-pulse.soft`,
     wire class `setsel`). What a selection isn't about dims half as much as before (`.dim` 0.6,
     wires 0.56, pins 0.65).
+  - **Real proportions** (Chris). A checkbox beside Wire labels (`#propview`, `fold.prop`, kept per
+    browser) switches the canvas to a to-scale view (`conn.layout(h, A, { prop: true })`,
+    `proportion`); unticking goes back to the arranged (casual) view, whose dragged positions
+    (`h.place`) the proportional view ignores and never changes. The sheet stays casual.
+    - Top-to-bottom order comes from the casual auto layout. x comes from lengths: one scale for
+      the harness (the shortest run is `MIN_RUN` units), and in column order each part sits as
+      far right as its longest incoming run puts it (a connector's left edge, a splice's middle).
+      Parts nothing feeds from the left line up on their right edges.
+    - A box spans exactly from the parts on its left to those on its right, wires fan from their
+      pins to their rows over `FAN` inside it (`it.fan`), and its sets are drawn at their true
+      positions (`M.reach`, clamped to the wire ends). `sz.prop` maps mm along its wires to x.
+    - A run longer than `MAX_RUN` (or too long for its gap by more than `2 × FAN`) is drawn to
+      scale at both ends with a break a third of the way along (`breakMark`: a paper band between
+      two zigzags across its wires, with the run's length over it); the row text moves right of
+      it (`sz.textC`). A run with no length is `NOMINAL` long.
+    - Boxes can then reach into another column's parts, so anything that would overlap what's
+      already placed moves down below it, top down.
+    - In this view parts don't drag; set ends do, to the box's true scale (`g.prop` in
+      `dragSetEnd`), between the set's other end and the wire ends.
   - **Properties.** Several wires or a set show the **Wire set** panel. It has Twist, Shield, Cable
     and Bundle ticks, Label, Description and Part number (cable or shield), the wire length,
     each end's overhang with the total (`coversField`), Set color, and a clickable **Hierarchy**

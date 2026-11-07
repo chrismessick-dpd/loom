@@ -23,6 +23,10 @@
   // A nested set running past its parent's end is drawn OUT past it plus its overhang to scale, at
   // most OVER_MAX; no set is drawn narrower than MIN_SET_W.
   const OUT = 6, OVER_MAX = 240, MIN_SET_W = 60;
+  // Real proportions (view.prop): the shortest wire run is drawn MIN_RUN units long and the rest to
+  // the same scale, but no run longer than MAX_RUN; a longer one gets a break (BREAK_W wide). A run
+  // with no length is NOMINAL long. Inside a box, wires fan from their pins to their rows over FAN.
+  const MIN_RUN = 170, MAX_RUN = 900, NOMINAL = 220, BREAK_W = 26, FAN = 40;
   // A cable reaches CABLE_R above its first wire and below its last, so its sheath clears the
   // first row's text (Chris).
   const CABLE_R = 18;
@@ -240,13 +244,16 @@
     sz.h = sz.port0 + (sz.rows.length - 1) * PITCH + root.R + 6 + BADGE;
   }
 
-  function layout(h, A) {
+  // view.prop: the real-proportions view (Chris). Its x comes from lengths (proportion, below),
+  // and positions dragged by hand don't apply; the casual view keeps them.
+  function layout(h, A, view) {
     A = A || M.analyze(h);
+    const prop = !!(view && view.prop);
     const boxes = boxesOf(h);
     const R = ranks(h, boxes);
     const items = [];
     const itemOf = new Map();
-    const place = h.place || {};
+    const place = prop ? {} : h.place || {};
     // Splice ports: one per wire, on the side it comes from (l or r). The order a drag left in
     // n.ports wins; the rest go on the side facing their other end and are sorted later.
     const sides = new Map();
@@ -399,6 +406,83 @@
       it.x = Math.round((lx + rx) / 2 - it.w / 2);
       if (ys.length) it.y = Math.round((ys.reduce((t, y) => t + y, 0) / ys.length - G.BROW * (it.sz.rows.length - 1) / 2) / PITCH) * PITCH - it.sz.port0;
     });
+    if (prop) proportion();
+    // Real proportions: x from lengths. One scale s (units per mm) for the whole harness, from the
+    // shortest run. In column order, each part sits as far right as its longest incoming run puts
+    // it: a connector's left edge, or a splice's (or loose end's) middle, at the right edge (or
+    // middle) of the part a wire comes from plus that wire's run, capped at MAX_RUN. A box then
+    // spans the gap its wires cross exactly, and maps mm along its wires to x (box.sz.prop): to
+    // scale, or, where its run was capped, to scale at both ends with a break between, a third of
+    // the way along. Its sets are drawn at their true positions (M.reach).
+    function proportion() {
+      const len = w => { const v = A.wireLen.get(w.id); return v != null && v > 0 ? v : null; };
+      const known = h.wires.map(len).filter(v => v != null);
+      const s = known.length ? MIN_RUN / Math.min(...known) : 1;
+      const gap = w => (len(w) == null ? NOMINAL : Math.min(len(w) * s, MAX_RUN));
+      const inX = new Map(), outX = new Map(), parts = items.filter(i => i.kind !== 'box');
+      // Parts nothing feeds from the left line up on their right edges, like the first column.
+      const fed = new Set(h.wires.map(w => leftFirst(w)[1].node));
+      const start = Math.max(0, ...parts.filter(i => !fed.has(i.n.id)).map(i => i.w));
+      parts.sort((a, b) => a.col - b.col || (a.y || 0) - (b.y || 0)).forEach(it => {
+        let x = fed.has(it.n.id) ? 0 : start - (it.kind === 'conn' ? 0 : it.w / 2);
+        h.wires.forEach(w => {
+          const [l, r] = leftFirst(w);
+          if (r.node === it.n.id && outX.has(l.node)) x = Math.max(x, outX.get(l.node) + gap(w));
+        });
+        inX.set(it.n.id, x);
+        if (it.kind === 'conn') { it.x = fed.has(it.n.id) ? x : start - it.w; outX.set(it.n.id, it.x + it.w); } else { it.x = x - it.w / 2; outX.set(it.n.id, x); }
+      });
+      // A box spans from the edge of the parts on its left to the edge of those on its right.
+      const edgeR = id => { const i = itemOf.get(id); return i ? i.x + i.w : 0; }, edgeL = id => { const i = itemOf.get(id); return i ? i.x : null; };
+      boxes.forEach(b => {
+        const it = b.item, sz = it.sz;
+        const x0 = Math.max(...b.wires.map(w => edgeR(leftFirst(w)[0].node)));
+        const x1 = Math.min(...b.wires.map(w => { const v = edgeL(leftFirst(w)[1].node); return v == null ? x0 + NOMINAL : v; }));
+        const W = Math.max(60, x1 - x0);
+        const runs = b.kind === 'set' ? [M.setRun(A, b.set)] : b.wires.map(len);
+        const L0 = runs.every(v => v != null) ? Math.max(...runs) : null, L = L0 || W / s;
+        let map, inv, brk = null;
+        // A run a little longer than its gap (a splice's width, say) is drawn squeezed; only one
+        // too long to draw (past MAX_RUN) gets a break.
+        if (L * s > W + 2 * FAN) {
+          // To scale at both ends, a break between them a third of the way along.
+          const a1 = (W - BREAK_W) / 3, a2 = W - BREAK_W - a1, mid = L * s - a1 - a2;
+          map = mm => { const u = mm * s; return u <= a1 ? u : (L - mm) * s <= a2 ? W - (L - mm) * s : a1 + BREAK_W * (u - a1) / mid; };
+          inv = u => (u <= a1 ? u / s : u >= W - a2 ? L - (W - u) / s : (a1 + (u - a1) / BREAK_W * mid) / s);
+          brk = { x: a1 + BREAK_W / 2, L };
+          sz.textC = (a1 + BREAK_W + W) / 2;
+        } else {
+          map = mm => mm * W / L; inv = u => u * L / W;
+          sz.textC = W / 2;
+        }
+        it.x = x0; it.w = W; it.fan = FAN; it.brk = brk;
+        sz.w = W; sz.rootW = W; sz.lx = 0;
+        sz.prop = { L, map, inv };
+        // A set that runs past its wire ends (Checks warns) stops at them here.
+        if (b.kind === 'set') setsUnder(h, b.set).forEach(({ s: st }) => {
+          const r = M.reach(h, st);
+          let e0 = map(Math.max(0, r.l)), e1 = map(L - Math.max(0, r.r));
+          if (e1 - e0 < 12) { const c = (e0 + e1) / 2; e0 = c - 6; e1 = c + 6; }
+          sz.ext.set(st.id, { x0: e0, x1: e1 });
+        });
+      });
+      // Boxes now span their real runs, so they can reach into another column's parts: from the
+      // top down, anything that would overlap what's already placed moves down below it.
+      const done = [], down = it => Math.ceil((it.y + it.sz.port0) / PITCH) * PITCH - it.sz.port0;
+      items.slice().sort((a, b) => a.y - b.y || a.x - b.x).forEach(it => {
+        for (let again = true; again;) {
+          again = false;
+          for (const o of done) {
+            // Touching sideways is fine (a box meets the parts at its ends); overlapping isn't.
+            if (it.x < o.x + o.w - 1 && o.x < it.x + it.w - 1 && it.y < o.y + o.h + 12 && o.y < it.y + it.h + 12) {
+              it.y = down({ y: o.y + o.h + G.GAP_Y, sz: it.sz });
+              again = true;
+            }
+          }
+        }
+        done.push(it);
+      });
+    }
     // Splice ports nobody arranged follow the wires they lead to, so the wires don't cross.
     const yOfWire = (w, id) => {
       if (boxRowY.has(w.id)) return boxRowY.get(w.id);
@@ -443,8 +527,9 @@
       const it = b.item, y = boxRowY.get(w.id);
       const [l, r] = leftFirst(w);
       const lit = itemOf.get(l.node), rit = itemOf.get(r.node);
-      const lIn = { x: lit.x + lit.w / 2 < it.x ? it.x : it.x + it.w, y };
-      const rIn = { x: rit.x + rit.w / 2 > it.x + it.w ? it.x + it.w : it.x, y };
+      const fan = it.fan || 0;
+      const lIn = { x: lit.x + lit.w / 2 < it.x ? it.x + fan : it.x + it.w - fan, y };
+      const rIn = { x: rit.x + rit.w / 2 > it.x + it.w ? it.x + it.w - fan : it.x + fan, y };
       return { b, it, l, r, lIn, rIn };
     }
     const curve = (p, q) => { const dx = Math.max(30, Math.abs(q.x - p.x) * 0.5); const s = q.x > p.x ? 1 : -1; return `C${f(p.x + s * dx)} ${f(p.y)} ${f(q.x - s * dx)} ${f(q.y)} ${f(q.x)} ${f(q.y)}`; };
@@ -486,7 +571,8 @@
       const t = twistOf.get(w.id);
       if (!t || Math.abs(rIn.x - lIn.x) < 1) return null;
       const dir = rIn.x > lIn.x ? 1 : -1, g = spanX(t.it, t.sp), pad = hasEnds(t.sp.s) ? END + 6 : 8;
-      const lo = g.x0 + pad, hi = g.x1 - pad, run = hi - lo, n = t.ws.length;
+      const fan = t.it.fan || 0;
+      const lo = Math.max(g.x0 + pad, t.it.x + fan + 8), hi = Math.min(g.x1 - pad, t.it.x + t.it.w - fan - 8), run = hi - lo, n = t.ws.length;
       const xa = dir > 0 ? lo : hi, xb = dir > 0 ? hi : lo;
       return run < TURN * n * 0.6 ? null : { t, dir, xa, xb, run, n };
     }
@@ -730,6 +816,16 @@
       return `<rect class="cv-setarea${on ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(g.x)}" y="${f(g.top)}" width="${f(g.w)}" height="${f(g.bot - g.top)}" rx="${f(g.rx)}" data-set="${esc(sp.s.id)}"><title>${esc(name)}</title></rect>`;
     }).join('');
   }
+  // A break across a box's wires where its run is too long to draw to scale (real proportions):
+  // a band of paper between two zigzags, and the run's length over it.
+  function breakMark(it) {
+    const b = it.brk;
+    if (!b) return '';
+    const n = it.sz.rows.length, top = wireYAt(it, 0) - Math.max(14, it.sz.R0 + 4), bot = wireYAt(it, n - 1) + Math.max(12, it.sz.R0 + 4), x = it.x + b.x;
+    const zz = dx => { let d = `M${f(x + dx)} ${f(top)}`, i = 0; for (let y = top; y < bot; y += 6, i++) d += `L${f(x + dx + (i % 2 ? 3.5 : -3.5))} ${f(Math.min(bot, y + 6))}`; return d; };
+    return `<g class="cv-break"><rect x="${f(x - 6)}" y="${f(top)}" width="12" height="${f(bot - top)}"/><path d="${zz(-6)}"/><path d="${zz(6)}"/>` +
+      `<text x="${f(x)}" y="${f(top - 5)}" text-anchor="middle">${Math.round(b.L)} mm</text></g>`;
+  }
   // A grip at each end of every set (canvas only), to drag that end in from the wire ends (an
   // outermost set) or past its parent's or in from it (a nested one; app.js). It shows on hover,
   // and stays while its set is selected.
@@ -781,10 +877,10 @@
   }
   function boxFront(it, opts, Lo, hatch) {
     const sz = it.sz, x = it.x, w = it.w, F = opts.focus;
-    let o = it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) + setEnds(it, opts) + badges(it, opts) : '';
+    let o = (it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) : '') + breakMark(it) + (it.b.kind === 'set' ? setEnds(it, opts) + badges(it, opts) : '');
     const c = sz.cols, inner = c.from + c.c + c.to + 40;
     // The text is centered on the outermost set.
-    const x0 = x + (sz.lx || 0) + (sz.rootW - inner + sz.lead) / 2;
+    const x0 = x + (sz.textC != null ? sz.textC : (sz.lx || 0) + sz.rootW / 2) - (inner - sz.lead) / 2;
     sz.rows.forEach((r, i) => {
       if (!r.w) return;
       // The text sits above the wire and isn't clickable (Chris): a wire is picked by its line in
@@ -807,7 +903,7 @@
   function render(h, A, opts) {
     opts = opts || {};
     A = A || M.analyze(h);
-    const Lo = layout(h, A);
+    const Lo = layout(h, A, { prop: !!opts.prop });
     opts = Object.assign({}, opts, { focus: focusOf(h, opts.sel, opts.pending) });
     const fx = !!opts.fx;
     // The intro reveals parts left to right.

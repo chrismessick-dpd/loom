@@ -203,7 +203,7 @@
     const h = hp || H(), svg = svgEl();
     const intro = !hp && !reduceMotion() && S.introFor !== h.id;
     if (intro) { S.introFor = h.id; clearTimeout(S.introT); S.introT = setTimeout(() => { S.introT = null; if (S.view === 'build') renderCanvas(); }, 1700); }
-    const r = C.render(h, M.analyze(h), Object.assign({ sel: S.sel, pending: S.pending, fx: true, intro: intro || (!hp && !!S.introT), fresh: S.fresh, lift: S.lift }, extra));
+    const r = C.render(h, M.analyze(h), Object.assign({ sel: S.sel, pending: S.pending, fx: true, intro: intro || (!hp && !!S.introT), fresh: S.fresh, lift: S.lift, prop: !!fold.prop }, extra));
     if (!hp) { lastBox = r.box; lastLayout = r.layout; }
     const wrap = $('#canvas-wrap');
     const w = wrap.clientWidth || 800, hh = wrap.clientHeight || 600;
@@ -218,6 +218,7 @@
     // Wire labels (the checkbox by the zoom control): canvas only; the sheet always prints them.
     svg.classList.toggle('no-wtext', !!fold.noWireText);
     if ($('#wtext')) $('#wtext').checked = !fold.noWireText;
+    if ($('#propview')) $('#propview').checked = !!fold.prop;
     svg.style.setProperty('--phase', -(performance.now() % 1800).toFixed(0) + 'ms');
     svg.innerHTML = FX_DEFS + grid + `<rect class="bg" data-bg="1" x="-20000" y="-20000" width="40000" height="40000" fill="${gs ? 'url(#cv-grid)' : 'transparent'}"/>` +
       `<g id="world">${r.svg}</g><g id="ghost"></g>`;
@@ -380,7 +381,8 @@
     }
     if (g.setEnd) { dragSetEnd(g, dx); return; }
     if (!g.moved && g.item) {
-      const it = lastLayout && lastLayout.items.find(i => i.key === g.item);
+      const it = !fold.prop && lastLayout && lastLayout.items.find(i => i.key === g.item);
+      // In the real-proportions view positions come from lengths, so parts don't drag.
       if (!it) g.item = null;
       // A box's stored x is its outermost set's left end (conn.js), past any set running out on the left.
       else { snapshot(); g.start = { x: it.x + (it.kind === 'box' ? it.sz.lx || 0 : 0), y: it.y }; g.port0 = it.sz.port0 || 0; S.lift = g.item; svgEl().classList.add('dragging'); }
@@ -426,15 +428,25 @@
       const lim = d.side === 'r' ? Math.min(Infinity, ...ends.filter(e => e.x + e.w / 2 > cx).map(e => e.x)) - CLEAR
         : Math.max(-Infinity, ...ends.filter(e => e.x + e.w / 2 < cx).map(e => e.x + e.w)) + CLEAR;
       const otherX = it.x + (d.side === 'r' ? ce.x0 : ce.x1);
+      // In the real-proportions view the end goes where the pointer is, to the box's scale
+      // (sz.prop), between the set's other end and the wire ends.
+      if (it.sz.prop) Object.assign(g, { prop: it.sz.prop, boxX: it.x, pr: p ? M.reach(h, p) : { l: 0, r: 0 },
+        plo: d.side === 'r' ? otherX + 12 : it.x, phi: d.side === 'r' ? it.x + it.w : otherX - 12 });
       Object.assign(g, { k: it.sz.k, nest: p ? NEST : 0, parentX: it.x + (d.side === 'r' ? pe.x1 : pe.x0), endX: it.x + (d.side === 'r' ? ce.x1 : ce.x0),
         lo: d.side === 'r' ? otherX + MIN_W : lim, hi: d.side === 'r' ? lim : otherX - MIN_W,
         PL: p ? M.setLength(h, A, p) : M.setRun(A, st), other: M.ov(st)[d.side === 'r' ? 'l' : 'r'], parent: p ? p.label : null });
       S.sel = { kind: 'set', ids: new Set([d.id]) };
       svgEl().classList.add('dragging');
     }
-    const at = Math.min(g.hi, Math.max(g.lo, g.endX + dx / S.cam.k)), rel = d.side === 'r' ? at - g.parentX : g.parentX - at;
-    let v = rel > OUT ? (rel - OUT) * g.k : rel >= -g.nest ? 0 : (rel + g.nest) * g.k;
-    v = Math.round(v / 5) * 5;
+    let v;
+    if (g.prop) {
+      const at = Math.min(g.phi, Math.max(g.plo, g.endX + dx / S.cam.k)), mm = g.prop.inv(at - g.boxX);
+      v = Math.round((d.side === 'r' ? g.pr.r - (g.prop.L - mm) : g.pr.l - mm) / 5) * 5;
+    } else {
+      const at = Math.min(g.hi, Math.max(g.lo, g.endX + dx / S.cam.k)), rel = d.side === 'r' ? at - g.parentX : g.parentX - at;
+      v = rel > OUT ? (rel - OUT) * g.k : rel >= -g.nest ? 0 : (rel + g.nest) * g.k;
+      v = Math.round(v / 5) * 5;
+    }
     const st = M.set(h, d.id);
     M.setEnd(h, d.id, d.side, v);
     renderCanvas();
@@ -1129,6 +1141,16 @@
     if (el.id === 'file-input') { if (el.files[0]) openFile(el.files[0]); el.value = ''; return; }
     if (el.dataset && el.dataset.hud === 'grid') { change(h => { h.grid = +el.value; }); return; }
     // Kept with the panel folds: a view setting for this browser, not part of the harness.
+    // Real proportions: a view of this browser's, like the wire labels. Ticked, the canvas is laid
+    // out to scale from the lengths; unticked, it's the arranged (casual) view with its dragged
+    // positions, which the proportional view never changes.
+    if (el.dataset && el.dataset.hud === 'prop') {
+      fold.prop = el.checked;
+      try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ }
+      S.cam = null;
+      renderAll();
+      return;
+    }
     if (el.dataset && el.dataset.hud === 'wtext') {
       fold.noWireText = !el.checked;
       try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ }
