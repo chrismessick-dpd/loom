@@ -32,10 +32,13 @@
   const gaugeMetric = g => (g ? (M.AWG[g] ? M.AWG[g] + ' mm² (' + g + ' AWG)' : g + ' AWG') : '');
   const lenText = mm => (mm == null ? 'length not set' : Math.round(mm) + ' mm');
 
-  // The boxes: cables first, then bundles by end pair, in wire order.
-  // A wire with a loose end is in no box: it's drawn as a curve to its loose end's dot.
+  // The boxes: cables first, then bundles by end pair, in wire order. A wire alone between its two
+  // ends gets no box (Chris); Properties shows its details when it's clicked. For the layout only
+  // (withSingles), it still holds a slot in the box column, an undrawn 'single' that keeps the parts
+  // around it apart and that its wire runs straight through. A wire with a loose end is in no box
+  // either: it curves to its loose end's dot.
   const looseWire = (h, w) => M.isLoose(M.node(h, w.from.node)) || M.isLoose(M.node(h, w.to.node));
-  function boxesOf(h, A) {
+  function boxesOf(h, A, withSingles) {
     const out = [], taken = new Set();
     h.groups.filter(g => g.kind === 'cable').forEach(g => {
       const ws = g.wires.map(id => M.wire(h, id)).filter(w => w && !looseWire(h, w));
@@ -51,7 +54,10 @@
       pairs.get(k).push(w);
     });
     let i = 0;
-    pairs.forEach((ws, k) => out.push({ key: 'p:' + k, kind: 'bundle', label: 'B' + ++i, wires: ws }));
+    pairs.forEach((ws, k) => {
+      if (ws.length > 1) out.push({ key: 'p:' + k, kind: 'bundle', label: 'B' + ++i, wires: ws });
+      else if (withSingles) out.push({ key: 's:' + k, kind: 'single', label: '', wires: ws });
+    });
     return out;
   }
 
@@ -132,6 +138,7 @@
   }
   function sizeBox(h, A, b) {
     const rows = boxRows(h, b);
+    if (b.kind === 'single') return { w: 60, h: 32, h0: 6, rowsBot: 32, headY: 32, lead: 0, port0: 23, rows, info: [], note: '', cols: { from: 0, c: 0, to: 0, t: 0 } };
     const gauges = [...new Set(b.wires.map(w => w.gauge || ''))];
     const lens = b.wires.map(w => A.wireLen.get(w.id));
     const known = lens.filter(x => x != null);
@@ -161,7 +168,7 @@
 
   function layout(h, A) {
     A = A || M.analyze(h);
-    const boxes = boxesOf(h, A);
+    const boxes = boxesOf(h, A, true);
     const R = ranks(h, boxes);
     const items = [];
     const itemOf = new Map();
@@ -238,15 +245,24 @@
     // Auto-placed parts sit with their ports on the pitch, like dragged ones on the grid.
     const onPitch = it => Math.round((it.y + it.sz.port0) / PITCH) * PITCH - it.sz.port0;
     const boxRowY = new Map();
+    const boxed = new Set(boxes.flatMap(b => b.wires.map(w => w.id)));
     cols.forEach((list, c) => {
       list.forEach(it => {
         let ys = [];
         if (it.kind === 'box') ys = it.b.wires.map(w => [w.from, w.to].map(endY).find(y => y != null)).filter(y => y != null);
-        else boxes.forEach(b => b.wires.forEach(w => {
-          if (w.from.node !== it.n.id && w.to.node !== it.n.id) return;
-          const y = boxRowY.get(w.id);
-          if (y != null) ys.push(y);
-        }));
+        else {
+          boxes.forEach(b => b.wires.forEach(w => {
+            if (w.from.node !== it.n.id && w.to.node !== it.n.id) return;
+            const y = boxRowY.get(w.id);
+            if (y != null) ys.push(y);
+          }));
+          // A wire with no box: by where its other end already sits.
+          h.wires.forEach(w => {
+            if (boxed.has(w.id) || (w.from.node !== it.n.id && w.to.node !== it.n.id)) return;
+            const y = endY(w.from.node === it.n.id ? w.to : w.from);
+            if (y != null) ys.push(y);
+          });
+        }
         it.bary = ys.length ? ys.reduce((t, y) => t + y, 0) / ys.length : null;
       });
       if (c === 0) list.sort((a, b) => (R.order.get(a.n.id) || 0) - (R.order.get(b.n.id) || 0));
@@ -274,18 +290,18 @@
     items.forEach(i => {
       i.key = i.kind === 'box' ? 'b:' + i.b.key : 'n:' + i.n.id;
       const p = place[i.key];
-      if (p && isFinite(p.x) && isFinite(p.y)) {
+      if (p && isFinite(p.x) && isFinite(p.y) && !(i.kind === 'box' && i.b.kind === 'single')) {
         i.x = p.x; i.y = p.y + (i.kind === 'box' ? tableShift(i.b, i.sz, p) : 0); i.placed = true;
       }
     });
     // Splice ports nobody arranged follow the wires they lead to, so the wires don't cross.
-    const yOfWire = w => {
+    const yOfWire = (w, id) => {
       if (boxRowY.has(w.id)) return boxRowY.get(w.id);
-      const lo = [w.from, w.to].map(e => itemOf.get(e.node)).find(it => it && it.kind === 'loose');
-      return lo ? lo.y : 0;
+      const y = endY(w.from.node === id ? w.to : w.from);
+      return y == null ? 0 : y;
     };
-    sides.forEach(S => ['l', 'r'].forEach(k => {
-      const rest = S[k].slice(S.fixed[k]).sort((a, b) => yOfWire(a) - yOfWire(b) || a.no - b.no);
+    sides.forEach((S, id) => ['l', 'r'].forEach(k => {
+      const rest = S[k].slice(S.fixed[k]).sort((a, b) => yOfWire(a, id) - yOfWire(b, id) || a.no - b.no);
       S[k] = S[k].slice(0, S.fixed[k]).concat(rest);
     }));
     if (items.some(i => i.placed) || sides.size) boxes.forEach(b => {
@@ -347,7 +363,12 @@
         return { d: `M${f(p.x)} ${f(p.y)}` + curve(p, q), over: [], ends: [{ which: whichOf(w, o), at: p, e: o }, { which: whichOf(w, lo), at: q, e: lo }] };
       }
       const e = entry(w);
-      if (!e) return '';
+      if (!e) {
+        const [l, r] = leftFirst(w), li = itemOf.get(l.node), ri = itemOf.get(r.node);
+        if (!li || !ri) return '';
+        const p = anchor(l, ri.x + ri.w / 2), q = anchor(r, li.x + li.w / 2);
+        return { d: `M${f(p.x)} ${f(p.y)}` + curve(p, q), over: [], ends: [{ which: whichOf(w, l), at: p, e: l }, { which: whichOf(w, r), at: q, e: r }] };
+      }
       const { b, it, l, r, lIn, rIn } = e;
       const segs = [];
       const L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
@@ -600,7 +621,7 @@
     opts = Object.assign({}, opts, { focus: focusOf(h, opts.sel, opts.pending) });
     let backs = '', wires = '', overs = '', fronts = '', ends = '';
     Lo.items.forEach(it => {
-      if (it.kind === 'box') { backs += boxBack(it, opts); fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts, Lo)}</g>`; }
+      if (it.kind === 'box') { if (it.b.kind !== 'single') { backs += boxBack(it, opts); fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts, Lo)}</g>`; } }
       else if (it.kind === 'conn') ends += connSvg(h, it, opts, Lo);
       else if (it.kind === 'splice') ends += spliceSvg(it, opts, Lo);
     });
