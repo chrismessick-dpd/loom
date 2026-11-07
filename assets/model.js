@@ -176,11 +176,12 @@
   // directly and every set in at most one parent, so the sets form a forest; h.sets is flat and the
   // tree is in the member lists. A set with no property means nothing and dissolves (its members
   // move up to its parent), and one whose only member is another set merges into it.
-  // Lengths (mm). An outermost set covers s.length, or by default the run all of its wires share.
-  // A set inside another covers its parent's length plus s.over.l and s.over.r: how far each of its
-  // ends runs past the parent's (Chris; negative stops inside). So a twisted, shielded pair can run
-  // on 100 mm past the end of its bundle: its length is the bundle's plus 100. s.length means
-  // nothing on a nested set; tree edits move lengths between the two so totals stay put.
+  // Lengths (mm). Every set's ends are measured from what holds it: s.over.l and s.over.r say how
+  // far each end runs past it (Chris; negative stops inside). An outermost set is measured from
+  // its wires' ends (the run they share), so a cable whose jacket is stripped back 20 mm at the
+  // left has over.l −20; a nested set from its parent's ends, so a twisted, shielded pair can run
+  // on past its bundle. A set covers what holds it plus both overhangs, and no end may run past
+  // the wire ends (reach). s.length is only an old value kept when the run isn't known yet.
   const FLAGS = ['twist', 'shield', 'cable', 'bundle'];
   const holderOf = s => (s.cable ? 'cable' : s.bundle ? 'bundle' : null);
   const hasFlag = s => FLAGS.some(k => s[k]);
@@ -260,16 +261,8 @@
         m.parent.sets = m.parent.sets.filter(id => !m.sets.includes(id)).concat(s.id);
       } else h.sets.forEach(x => { x.wires = x.wires.filter(id => !m.wires.includes(id)); });
       h.sets.push(s);
-      // Outermost sets taken into the new one keep their totals: an own length becomes an overhang
-      // past the new set's ends (on the right). Sets taken from a parent keep theirs, since the new
-      // set starts as long as that parent.
-      if (!m.parent) {
-        const kept = m.sets.map(id => set(h, id)).filter(c => c && c.length != null);
-        if (kept.length) {
-          const NL = setLength(h, analyze(h), s);
-          kept.forEach(c => { c.over = { l: 0, r: NL == null ? 0 : c.length - NL }; c.length = null; });
-        }
-      }
+      // Sets taken into the new one keep their overhangs: the new set starts as long as what held
+      // them (the wire ends, or their old parent), so they stay where they were.
     }
     const before = s.label ? setPrefix(s) : null;
     Object.keys(props).forEach(k => { if (k !== 'id' && (k !== 'label' || props.label)) s[k] = props[k]; });
@@ -300,18 +293,13 @@
     return set(h, id) || null;
   }
   // Remove a set; its wires and sets move up to its parent. Wires are never deleted here. Its child
-  // sets keep their lengths: their overhangs add its own, or, when they become outermost, their
-  // total becomes their own length.
+  // sets stay where they were: their overhangs add its own.
   const ov = s => ({ l: (s.over && +s.over.l) || 0, r: (s.over && +s.over.r) || 0 });
   function dissolveSet(h, id) {
     const s = set(h, id);
     if (!s) return;
     const p = parentOf(h, id), kids = s.sets.map(x => set(h, x)).filter(Boolean), so = ov(s);
-    if (p) kids.forEach(c => { const co = ov(c); c.over = { l: co.l + so.l, r: co.r + so.r }; });
-    else if (kids.some(c => s.length != null || ov(c).l || ov(c).r)) {
-      const A = analyze(h), SL = setLength(h, A, s);
-      kids.forEach(c => { const co = ov(c); c.length = SL == null ? null : Math.max(0, SL + co.l + co.r); c.over = { l: 0, r: 0 }; });
-    }
+    kids.forEach(c => { const co = ov(c); c.over = { l: co.l + so.l, r: co.r + so.r }; if (!p && s.length != null) c.length = Math.max(0, s.length + co.l + co.r); });
     if (p) { p.sets = p.sets.filter(x => x !== id).concat(s.sets); p.wires = p.wires.concat(s.wires); }
     h.sets = h.sets.filter(x => x !== s);
   }
@@ -353,10 +341,24 @@
   // The length a set covers (null: unknown). Outermost: its own, else the run its wires share.
   // Nested: its parent's plus its overhangs.
   function setLength(h, A, s) {
-    const p = parentOf(h, s.id);
-    if (!p) return s.length != null ? s.length : spanLength(A.spans.get(s.id) || []);
-    const pl = setLength(h, A, p), o = ov(s);
-    return pl == null ? null : Math.max(0, pl + o.l + o.r);
+    const p = parentOf(h, s.id), o = ov(s);
+    const base = p ? setLength(h, A, p) : spanLength(A.spans.get(s.id) || []);
+    if (base == null) return p ? null : s.length != null ? s.length : null;
+    return Math.max(0, base + o.l + o.r);
+  }
+  // Move one end of a set (side 'l' or 'r') to an overhang of v mm. The sets inside it stay where
+  // they are: their overhangs on that side change by the opposite amount.
+  function setEnd(h, id, side, v) {
+    const s = set(h, id);
+    if (!s) return;
+    const d = v - ov(s)[side];
+    s.over = Object.assign(ov(s), { [side]: v });
+    s.sets.forEach(cid => { const c = set(h, cid); if (c) c.over = Object.assign(ov(c), { [side]: ov(c)[side] - d }); });
+  }
+  // How far each of a set's ends sits in from its wires' ends (negative: past them, which can't be).
+  function reach(h, s) {
+    const p = parentOf(h, s.id), o = ov(s), pr = p ? reach(h, p) : { l: 0, r: 0 };
+    return { l: pr.l - o.l, r: pr.r - o.r };
   }
   // The run a set's wires share, which it can't cover more than.
   const setRun = (A, s) => spanLength(A.spans.get(s.id) || []);
@@ -499,8 +501,8 @@
       const ref = { kind: 'set', id: s.id }, span = A.spans.get(s.id) || [], run = spanLength(span);
       if (!span.length) add('warn', `${s.label}'s wires share no segment, so it covers nothing.`, ref);
       else {
-        const len = setLength(h, A, s);
-        if (len != null && run != null && len > run) add('warn', `${s.label} covers ${len} mm, but its wires only run ${run} mm together.`, ref);
+        const r = reach(h, s);
+        ['l', 'r'].forEach(k => { if (r[k] < 0) add('warn', `${s.label} runs ${-r[k]} mm past its wires' ends on the ${k === 'l' ? 'left' : 'right'}.`, ref); });
       }
     });
     return out.sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev]);
@@ -582,14 +584,16 @@
       s.over = ov(s);
     });
     tidySets(h);
-    // Before overhangs, a nested set's length was its own s.length (Covers). It becomes an
-    // overhang on the right past its parent, outermost first so each parent's length is final.
-    const old = h.sets.filter(s => s.length != null && parentOf(h, s.id));
+    // Before overhangs, a set's length was its own s.length (Covers). It becomes an overhang on
+    // the right past what holds it (the wire ends, or its parent), outermost first so each
+    // parent's length is final. Where the length of what holds it isn't known yet, it stays.
+    const old = h.sets.filter(s => s.length != null);
     if (old.length) {
       const A = analyze(h);
       old.sort((a, b) => setChain(h, a).length - setChain(h, b).length).forEach(s => {
-        const PL = setLength(h, A, parentOf(h, s.id));
-        s.over = { l: 0, r: PL == null ? 0 : s.length - PL };
+        const p = parentOf(h, s.id), base = p ? setLength(h, A, p) : spanLength(A.spans.get(s.id) || []);
+        if (base == null) return;
+        s.over = { l: ov(s).l, r: ov(s).r + s.length - base };
         s.length = null;
       });
     }
@@ -614,7 +618,7 @@
     isConn, isLoose, node, seg, wire, set, other, nextRef, blank, addConnector, addNode, connect, splitSegment, removeNode, removeSegment, moveEnd,
     addWire, removeWires, wireStraight,
     holderOf, setWord, setPrefix, setTraits, parentOf, setOfWire, roots, wiresIn, chainOf, setChain, matchSet, crossing, membersFor, whyNot,
-    makeSet, setFlag, dissolveSet, tidySets, setLength, setRun, ov, setRun, ov, pinList, label, wireName, endText, parseEnd,
+    makeSet, setFlag, dissolveSet, tidySets, setLength, setRun, ov, reach, setEnd, setRun, ov, pinList, label, wireName, endText, parseEnd,
     analyze, spanLength, checks, fromTo, bom, qtyText, normalize,
   };
 })(window.LM = window.LM || {});

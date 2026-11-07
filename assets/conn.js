@@ -163,18 +163,18 @@
     }
     const sz = { w, text, lead, cols, rootW: w, lx: 0, k: 1, ext: new Map() };
     if (b.kind === 'set') {
-      // Where each set's ends sit, from the box's left. The outermost set spans rootW. A nested
-      // set at 0 overhang sits NEST inside its parent's ends; one that runs past (over > 0) is
-      // drawn OUT past them plus its overhang to the scale of the outermost set (k mm per unit,
-      // 2 when its length isn't known), up to OVER_MAX; one that stops inside moves in from the
-      // nested spot. The box grows to hold them all (lx: room added on the left).
-      const L = M.setLength(h, A, b.set);
-      sz.k = L ? Math.min(10, Math.max(0.3, L / w)) : 2;
+      // Where each set's ends sit, from the box's left. rootW is the wires' run (the frame); k is
+      // mm per unit to its scale (2 when the run isn't known). The outermost set at 0 overhang
+      // spans the frame and one that stops short moves in by its overhang. A nested set at 0 sits
+      // NEST inside its parent's ends; one that runs past (over > 0) is drawn OUT past them plus
+      // its overhang, and one that stops inside moves in from the nested spot. Overhangs are
+      // drawn at most OVER_MAX. The box grows to hold them all (lx: room added on the left).
+      const run = M.setRun(A, b.set);
+      sz.k = run ? Math.min(10, Math.max(0.3, run / w)) : 2;
       const ext = (st, p) => {
-        const o = M.ov(st);
-        if (!p) return { x0: 0, x1: w };
-        const side = (end, v, dir) => (v > 0 ? end + dir * (OUT + Math.min(v / sz.k, OVER_MAX)) : end - dir * NEST + dir * Math.max(v / sz.k, -OVER_MAX));
-        let x0 = side(p.x0, o.l, -1), x1 = side(p.x1, o.r, 1);
+        const o = M.ov(st), pe = p || { x0: 0, x1: w }, nest = p ? NEST : 0;
+        const side = (end, v, dir) => (v > 0 ? end + dir * (OUT + Math.min(v / sz.k, OVER_MAX)) : end - dir * nest + dir * Math.max(v / sz.k, -OVER_MAX));
+        let x0 = side(pe.x0, o.l, -1), x1 = side(pe.x1, o.r, 1);
         if (x1 - x0 < MIN_SET_W) { const c = (x0 + x1) / 2; x0 = c - MIN_SET_W / 2; x1 = c + MIN_SET_W / 2; }
         return { x0, x1 };
       };
@@ -730,11 +730,12 @@
       return `<rect class="cv-setarea${on ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(g.x)}" y="${f(g.top)}" width="${f(g.w)}" height="${f(g.bot - g.top)}" rx="${f(g.rx)}" data-set="${esc(sp.s.id)}"><title>${esc(name)}</title></rect>`;
     }).join('');
   }
-  // A grip at each end of every nested set (canvas only), to drag that end past its parent's or
-  // in from it (app.js). It shows on hover, and stays while its set is selected.
+  // A grip at each end of every set (canvas only), to drag that end in from the wire ends (an
+  // outermost set) or past its parent's or in from it (a nested one; app.js). It shows on hover,
+  // and stays while its set is selected.
   function setEnds(it, opts) {
     if (opts.sheet) return '';
-    return it.sz.spans.filter(sp => sp.depth).map(sp => {
+    return it.sz.spans.map(sp => {
       const g = spanGeom(it, sp), on = spanSel(sp, opts) ? ' on' : '';
       return ['l', 'r'].map(k => {
         const x = k === 'l' ? g.x : g.x + g.w;

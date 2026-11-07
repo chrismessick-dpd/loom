@@ -4,7 +4,7 @@
 (function (LM) {
   'use strict';
   const M = LM.model;
-  const VERSION = 9; // bump when the demo changes, so stored copies rebuild
+  const VERSION = 10; // bump when the demo changes, so stored copies rebuild
 
   function harness() {
     const h = M.blank('Display & Sensor Harness');
@@ -33,10 +33,11 @@
     const r = w(p4, '1', p5, '1', '24VAC_R', 'RD', '22');
     const cm = w(p4, '2', p5, '2', '24VAC_C', 'BU', '22');
     // The I2C pair is twisted and shielded, and laced into a bundle with 3V3 and TOUCH_INT.
-    // The bundle is laced over 150 mm of the 250 mm run, and the pair runs just past it on the
-    // left (15 mm) and on past it to the right (85 mm): 250 mm in all, connector to connector.
+    // The bundle is laced over 150 mm of the 250 mm run, 15 mm in from the left end and 85 mm
+    // from the right, and the pair runs past it to both ends: 250 mm in all, connector to
+    // connector.
     const pair = M.makeSet(h, [sda.id, scl.id], { twist: true, shield: true });
-    const bundle = M.makeSet(h, [v33.id, sda.id, scl.id, tint.id], { bundle: true, length: 150 });
+    const bundle = M.makeSet(h, [v33.id, sda.id, scl.id, tint.id], { bundle: true, over: { l: -15, r: -85 } });
     pair.over = { l: 15, r: 85 };
     M.makeSet(h, [ntc.id, rtn.id], { cable: true, note: '2 x 26 AWG, PVC jacket' });
     M.makeSet(h, [r.id, cm.id], { twist: true });

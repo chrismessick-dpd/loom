@@ -64,30 +64,34 @@ links to it so far. Before every commit:
     exactly one set's wires select that set (`wiresSel` in `app.js`).
   - **Labels.** C for a cable, B for a bundle, TP for twisted, SH for shielded. A label made from
     the prefix follows it when the prefix changes; one typed by hand stays (`relabel`).
-  - **Lengths** (`setLength`). An outermost set covers `s.length` (Properties › Covers), or by
-    default the run its wires share (`A.spans`). A nested set covers its parent's length plus
-    `s.over.l` and `s.over.r`, how far each end runs past the parent's (Chris; negative stops
-    inside), so TP1 can run 100 mm past B1: B1's 150 + 100. The demo (`VERSION` 9) shows it: B1
-    covers 150 mm of the 250 mm run, and TP1 runs 15 mm past it on the left and 85 mm on the
-    right. The demo also places P2's left side at P3's right side, S1's middle at TP1's right
-    end, and the S1 → P2 labels a fifth of the way from S1 to P2, level with S1's output ports, taken from the auto layout
-    (`demo.js`). Tree edits keep totals:
-    `dissolveSet` adds a parent's overhangs to its children's, or turns a child's total into its
-    own length when it becomes outermost; `makeSet` turns an outermost set's own length into an
-    overhang when it's wrapped; old nested `s.length` values convert in `normalize`. Checks warns
-    when a set covers more than its wires' run. The BOM uses `setLength`: a cable shorter than its
-    wires leaves the rest as loose wire, and a shield braid is listed only outside any cable.
-  - **Dragging a set's ends** (Chris). Each nested set has a grip at each end (`setEnds`,
-    `data-setend`; it shows on hover and while selected). Dragging it sets that overhang
-    (`dragSetEnd` in `app.js`): measured from the drag's start, to the outermost set's scale
-    (`sz.k`, mm per unit: its length over its drawn width, or 2 when unknown), snapped to 5 mm,
-    and kept between a 10 mm set and its wires' run; `#tip` reads the overhang and the total, and
-    one undo reverts it. Within `NEST` of the parent's end is 0; past it by `OUT` is positive. In
-    the box (`sz.ext`), a set at 0 sits `NEST` inside its parent, one running past is drawn `OUT`
-    past the parent's end plus its overhang to scale (at most `OVER_MAX`), and the box grows to
-    hold it (`sz.lx` on the left). A box's `h.place` x is its outermost set's left end, so a left
-    overhang doesn't move the wires. Outermost sets' ends don't drag: their length is Covers. The
-    diagram is still schematic; where along the run a set sits needs a layout (formboard) view.
+  - **Lengths** (`setLength`, `reach`). Every set's ends are measured from what holds it:
+    `s.over.l` and `s.over.r` say how far each end runs past it (Chris; negative stops inside).
+    An outermost set is measured from its wires' ends (the run they share, `A.spans`), so a
+    cable stripped back 20 mm at the left has `over.l` −20; a nested set from its parent's ends.
+    A set covers what holds it plus both overhangs, and no end may run past the wire ends
+    (`reach`; Checks warns, dragging stops there). Moving a set's end (`M.setEnd`) leaves the sets
+    inside it where they are. Tree edits keep sets in place: `dissolveSet` adds a parent's
+    overhangs to its children's, and wrapping keeps them (the new set spans what held them). An
+    old Covers value (`s.length`) converts in `normalize` to an overhang on the right, or stays
+    while the run isn't known. The BOM uses `setLength`: a cable shorter than its wires leaves
+    the rest as loose wire, and a shield braid is listed only outside any cable. The demo
+    (`VERSION` 10): B1 covers 150 mm of the 250 mm run, 15 mm in from the left end and 85 mm
+    from the right, and TP1 runs past it to both ends. The demo also places P2's left side at
+    P3's right side, S1's middle at TP1's right end, and the S1 → P2 labels a fifth of the way
+    from S1 to P2, level with S1's output ports, taken from the auto layout (`demo.js`).
+  - **Dragging a set's ends** (Chris). Every set has a grip at each end (`setEnds`,
+    `data-setend`; it shows on hover and while selected), outermost sets included (cables,
+    twisted pairs, bundles). Dragging it sets that overhang (`dragSetEnd` in `app.js`): measured
+    from the drag's start, to the box's scale (`sz.k`, mm per unit: the wires' run over the
+    frame's width `rootW`, or 2 when unknown), snapped to 5 mm, at least 10 mm of set, never past
+    the wire ends; `#tip` reads the overhang and the total, and one undo reverts it. For a nested
+    set, within `NEST` of the parent's end is 0 and past it by `OUT` is positive. In the box
+    (`sz.ext`), the frame (`lx` to `lx + rootW`) is the wires' run: an outermost set at 0 spans
+    it and moves in by its overhang; a nested set at 0 sits `NEST` inside its parent, one running
+    past is drawn `OUT` past the parent's end plus its overhang to scale (at most `OVER_MAX`), and
+    the box grows to hold it (`sz.lx` on the left). A box's `h.place` x is the frame's left end,
+    so a left overhang doesn't move the wires. The diagram is still schematic; where along the run
+    a set sits needs a layout (formboard) view.
   - **Drawing** (`conn.js`). `arrange` orders a box's rows by the set tree, so each set's rows are
     contiguous (`sz.spans`, outermost first). Neighboring sets whose drawings would touch get an
     empty row on the pitch. Each level in is inset `NEST` at both ends, and reaches `R` above its
@@ -117,7 +121,8 @@ links to it so far. Before every commit:
     wires 0.56, pins 0.65).
   - **Properties.** Several wires or a set show the **Wire set** panel. It has Twist, Shield, Cable
     and Bundle ticks, Label, Description and Part number (cable or shield), the wire length,
-    Covers, Set color, and a clickable **Hierarchy** tree (`setTree`). Delete on a set dissolves
+    each end's overhang with the total (`coversField`), Set color, and a clickable **Hierarchy**
+    tree (`setTree`). Delete on a set dissolves
     it (`dissolveSet`) and never deletes wires. A wire's chips link to its sets. The Parts tab
     lists the wire sets as trees, and its Ends list is gone.
 - **Diagram look (2026-11-06, Chris; the bundle, table and Wire bundle notes predate wire sets):**
