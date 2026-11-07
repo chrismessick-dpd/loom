@@ -141,8 +141,8 @@ links to it so far. Before every commit:
       already placed moves down below it, top down.
     - In this view parts don't drag; set ends do, to the box's true scale (`g.prop` in
       `dragSetEnd`), between the set's other end and the wire ends.
-  - **Properties.** Several wires or a set show the **Wire set** panel. It has Twist, Shield, Cable
-    and Bundle ticks, Label, Description and Part number (cable or shield), the wire length,
+  - **Properties.** Several wires or a set show the **Wire set** panel. It has Twist and Shield tick
+    boxes, a **Held as** radio choice of None, Cable or Bundle (Chris: show the mutual exclusion), Label, Description and Part number (cable or shield), the wire length,
     each end's overhang with the total (`coversField`), Set color, and a clickable **Hierarchy**
     tree (`setTree`). Delete on a set dissolves
     it (`dissolveSet`) and never deletes wires. A wire's chips link to its sets. The Parts tab

@@ -853,16 +853,24 @@
     const why = st ? '' : M.whyNot(h, ids), m = st ? null : M.membersFor(h, ids);
     const nW = st ? st.wires.length : m.wires.length, nS = st ? st.sets.length : m.sets.length;
     const can = { twist: nW >= 2 && !nS, shield: true, cable: true, bundle: nW + nS >= 2 };
-    const ticks = M.FLAGS.map(k => {
+    // Twist and Shield are tick boxes; Cable and Bundle are one choice, either or neither (Chris:
+    // make the mutual exclusion plain), drawn as radio buttons: None, Cable, Bundle.
+    const ticks = ['twist', 'shield'].map(k => {
       const on = !!(st && st[k]), off = !!why || (!on && !can[k]);
       const tip = k === 'twist' && !can.twist && !why ? 'Only wires twist: a set of two or more wires with no set inside it' : FLAG_TEXT[k][1];
       return `<button class="tick${on ? ' on' : ''}" data-act="set-flag" data-flag="${k}" aria-pressed="${on}" title="${esc(tip)}"${off ? ' disabled' : ''}><span class="tick-box"></span>${FLAG_TEXT[k][0]}</button>`;
+    }).join('');
+    const held = st ? M.holderOf(st) || 'none' : 'none';
+    const holders = [['none', 'None', 'Neither a cable nor a bundle'], ['cable', 'Cable', FLAG_TEXT.cable[1]], ['bundle', 'Bundle', FLAG_TEXT.bundle[1]]].map(([k, t, tip]) => {
+      const on = held === k, off = !!why || (!on && k !== 'none' && !can[k]) || (!st && k === 'none');
+      return `<button class="hold${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="set-holder" data-holder="${k}" title="${esc(tip)}"${off ? ' disabled' : ''}><span class="hold-dot"></span>${t}</button>`;
     }).join('');
     const run = st ? M.spanLength(A.spans.get(st.id) || []) : null;
     const head = st ? `<span class="mono-ref">${esc(st.label)}</span> ${ws.length} wires` : `${ws.length} wires selected`;
     return railHead('Wire set', head, `<div class="chips">${ws.map(w => `<span class="chip">${M.wireName(w)}</span>`).join('')}</div>`) +
       `<div class="rail-list"><div class="rail-sec">
       <div class="tick-row">${ticks}</div>
+      <div class="hold-row"><span class="hold-label">Held as</span><div class="hold-seg" role="radiogroup" aria-label="Held as">${holders}</div></div>
       <p class="f-hint">${why ? esc(why) : st ? esc(M.setWord(st)) + (M.setTraits(st) ? ', ' + esc(M.setTraits(st)) : '') + '.' : 'Tick one to make these wires a set.'}</p>
       ${st ? fld('Label', inp('set.label', st.label)) : ''}
       ${st && (st.cable || st.shield) ? fld('Description', inp('set.note', st.note, ` placeholder="${st.cable ? '2 x 26 AWG, PVC jacket' : 'Tinned copper braid'}"`)) + fld('Part number', inp('set.pn', st.pn)) : ''}
@@ -1063,6 +1071,13 @@
         break;
       case 'straight': { const to = $('#straight-to').value; const k = change(x => M.wireStraight(x, el.dataset.node, to)); toast(k ? `Added ${k} wire${k > 1 ? 's' : ''}.` : 'No free pin pairs to wire.'); break; }
       case 'set-flag': setFlag(el.dataset.flag, el.getAttribute('aria-pressed') !== 'true'); break;
+      case 'set-holder': {
+        // One of None, Cable, Bundle: picking one turns the other off (M.setFlag does); None turns
+        // off whichever is on.
+        const k = el.dataset.holder, st = S.sel && S.sel.kind === 'set' && M.set(h, [...S.sel.ids][0]), cur = st ? M.holderOf(st) : null;
+        if (k === 'none') { if (cur) setFlag(cur, false); } else if (k !== cur) setFlag(k, true);
+        break;
+      }
       case 'export-svg': U.download(baseName(h) + '.svg', S.lastSheet.svg, 'image/svg+xml'); break;
       case 'export-png': exportPng(S.lastSheet, baseName(h) + '.png'); break;
       case 'print': printSheet(S.lastSheet); break;
