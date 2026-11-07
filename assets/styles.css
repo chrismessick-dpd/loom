@@ -660,6 +660,12 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-badge.sel rect { stroke: var(--cv-sel); stroke-width: 1.8; filter: drop-shadow(0 0 5px var(--cv-glow)); }
 /* A nested set's end grips: drag to run the end past its parent's or in from it. */
 .lm-canvas .cv-setend { cursor: ew-resize; }
+/* A loose wire's anchors: small dots ringed in its color that slide along its curve. */
+.lm-canvas .cv-anchor { cursor: grab; }
+.lm-canvas .cv-anchor-hit { fill: transparent; }
+.lm-canvas .cv-anchor-dot { fill: var(--cv-paper); stroke-width: 1.6; transition: r 0.15s; }
+.lm-canvas .cv-anchor:hover .cv-anchor-dot, .lm-canvas.dragging .cv-anchor-dot { r: 4; }
+.lm-canvas .cv-anchor.dim { opacity: 0.6; }
 .lm-canvas .cv-setend-hit { fill: transparent; }
 .lm-canvas .cv-setend-grip { fill: var(--cv-sel); opacity: 0; transition: opacity 0.15s; pointer-events: none; }
 .lm-canvas .cv-setend:hover .cv-setend-grip, .lm-canvas .cv-setend.on .cv-setend-grip { opacity: 1; }

@@ -371,14 +371,16 @@
     // A wire-end dot (a splice port, a loose end, or where a wire meets a pin) drags that end.
     const endEl = e.button === 0 && !S.pending && e.target.closest('[data-end]');
     // A nested set's end grip drags that end past its parent's or in from it.
-    const setEndEl = e.button === 0 && !S.pending && !endEl && e.target.closest('[data-setend]');
+    // A loose wire's anchor (where it leaves the shared path for a pin) slides like a set's end.
+    const setEndEl = e.button === 0 && !S.pending && !endEl && e.target.closest('[data-setend], [data-anchor]');
     // A note's bubble drags the bubble.
     const noteEl = e.button === 0 && !S.pending && !S.placing && e.target.closest('[data-notebox]');
     // A wire's label slides along its wire; a click on one is a click on what's under it.
     const labelEl = e.button === 0 && !S.pending && !S.placing && !endEl && !setEndEl && e.target.closest('[data-label]');
     const itemEl = e.button === 0 && !endEl && !setEndEl && e.target.closest('[data-item]');
     const end = endEl ? { wire: endEl.dataset.end.split('|')[0], which: endEl.dataset.end.split('|')[1] } : null;
-    const setEnd = setEndEl ? { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] } : null;
+    const setEnd = !setEndEl ? null : setEndEl.dataset.anchor ? { wire: setEndEl.dataset.anchor.split('|')[0], side: setEndEl.dataset.anchor.split('|')[1] }
+      : { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] };
     gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null, label: labelEl ? labelEl.dataset.label : null };
     svgEl().setPointerCapture(e.pointerId);
   }
@@ -495,13 +497,14 @@
   const MIN_W = 12, SNAP = 10;
   function dragSetEnd(g, e) {
     const h = H(), d = g.setEnd;
+    if (d.wire) { dragAnchor(g, e); return; }
     if (!g.moved) {
       const st = M.set(h, d.id), p = st && M.parentOf(h, d.id);
       const it = st && lastLayout && lastLayout.items.find(i => i.kind === 'box' && i.path && i.sz.arc && i.sz.arc.has(d.id));
       if (!it) { gesture = null; return; }
       const A = M.analyze(h), a = it.sz.arc.get(d.id), P = it.path, side = d.side === 'r';
       const at = C.pathAt(P, side ? a.u1 : a.u0), q0 = toWorld({ clientX: g.x, clientY: g.y });
-      const packs = !!(st.cable || st.shield || st.bundle), lo = packs ? 0 : P.aL, hi = packs ? P.S : P.aL + P.Ls;
+      const packs = !!(st.cable || st.shield || st.bundle || st.twist), lo = packs ? 0 : P.aL, hi = packs ? P.S : P.aL + P.Ls;
       snapshot();
       g.moved = true;
       Object.assign(g, { it, P, off: { x: q0.x - at.x, y: q0.y - at.y }, pr: p ? M.reach(h, p) : { l: 0, r: 0 }, pa: p ? it.sz.arc.get(p.id) : null,
@@ -525,6 +528,33 @@
     const what = g.parent ? (v > 0 ? `runs ${v} mm past ${esc(g.parent)}` : v < 0 ? `stops ${-v} mm inside ${esc(g.parent)}` : `ends with ${esc(g.parent)}`)
       : (v < 0 ? `stops ${-v} mm short of the wire ends` : v > 0 ? `runs ${v} mm past the wire ends` : 'reaches the wire ends');
     tip.innerHTML = `<b>${esc(st.label)}</b> ${what} on the ${side ? 'right' : 'left'}` + (total != null ? ` · ${U.fmtLen(total)} in all` : '');
+  }
+  // Drag a loose wire's anchor along its box's path, as a set's end (above): where it leaves the
+  // shared path for its pin on that side, kept as w.anchors (mm in from that side's wire end, at the
+  // box's scale; Real proportions through sz.prop). Limits: the path's ends and MIN_W from its
+  // other anchor. A drawing handle, not a length: the wire's length is unchanged.
+  function dragAnchor(g, e) {
+    const h = H(), d = g.setEnd, w = M.wire(h, d.wire), side = d.side === 'r';
+    if (!w) { gesture = null; return; }
+    if (!g.moved) {
+      const it = lastLayout && lastLayout.items.find(i => i.kind === 'box' && i.path && i.sz.warc && i.sz.warc.has(w.id));
+      if (!it) { gesture = null; return; }
+      const a = it.sz.warc.get(w.id), P = it.path, at = C.pathAt(P, side ? a.u1 : a.u0), q0 = toWorld({ clientX: g.x, clientY: g.y });
+      snapshot();
+      g.moved = true;
+      Object.assign(g, { it, P, off: { x: q0.x - at.x, y: q0.y - at.y }, lo: side ? a.u0 + MIN_W : 0, hi: side ? P.S : a.u1 - MIN_W });
+      S.sel = { kind: 'wire', ids: new Set([w.id]) };
+      svgEl().classList.add('dragging');
+    }
+    const q = toWorld(e), sz = g.it.sz;
+    const u = Math.min(g.hi, Math.max(g.lo, C.project(g.P, { x: q.x - g.off.x, y: q.y - g.off.y })));
+    const mm = sz.prop ? (side ? sz.prop.L - sz.prop.inv(u) : sz.prop.inv(u)) : (side ? g.P.S - u : u) * sz.k;
+    const v = Math.max(0, Math.round(mm / 5) * 5);
+    w.anchors = Object.assign({}, w.anchors, { [d.side]: v });
+    renderCanvas();
+    const tip = $('#tip'), [l, r] = [w.from, w.to].map(x => esc(M.label(M.node(h, x.node)) + (x.pin ? ':' + x.pin : '')));
+    tip.style.display = 'block';
+    tip.innerHTML = `<b>${l} → ${r}</b> ${side ? 'right' : 'left'} anchor ${v ? `${v} mm in from its end` : 'at its end'}`;
   }
   // A finger lifting ends a pinch; the one left down does nothing until it lifts too.
   function endTouch(e) {

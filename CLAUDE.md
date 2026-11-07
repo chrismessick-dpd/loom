@@ -110,8 +110,17 @@ links to it so far. Before every commit:
     per unit), and each set's ends sit where `M.reach` puts them (`sz.arc`: `u0`, `u1`), so a set
     reaching its wire ends is drawn out to the end of each lead. Its wires fan to their pins from
     wherever it ends, arriving along the lead's tangent (`joins`, `tanAt`). A box whose sets have no
-    cable, shield or bundle (a twist alone) has no leads, and such sets stay on the straight part.
-    Twists are drawn only on the straight part. In Real proportions the path is the box.
+    cable, shield, bundle or twist has no leads. In Real proportions the path is the box.
+    - Twists ride leads too (branch `wire-ends`, Chris): a twist packs its wires like a shield, and
+      its helix runs by distance along the path (`twistSpan`: `ua`, `ub`), so it follows the curves.
+    - **Anchors on loose wires** (Chris: drag individual wires like cables). A stack (wires in no
+      set) gets a path and leads too, and each of its wires a left and a right anchor
+      (`w.anchors`: mm in from that side's wire end; `sz.warc`), a small dot ringed in its color
+      (`.cv-anchor`, canvas only). The wire rides the path between its anchors and fans to its pins
+      from them. Unset, an anchor sits at the box's edge, so a wire curves to its pin as before
+      until its anchor is dragged out along the curve (`dragAnchor` in `app.js`, as a set's end,
+      snapped to 5 mm). A drawing handle, not a length. Later: a length between a cable's end and
+      its wires' ends could build on them.
     - Lessons from `sets` (Chris: glitchy once ends crossed or parts moved): only packed wires ride
       a lead; there's no fixed breakout point the wires must meet; a lead is two circular arcs
       level at both ends, with a straight between when it climbs further than it runs (`biarc`),
@@ -125,7 +134,8 @@ links to it so far. Before every commit:
       normals and edge offsets, `at(u)`): the sheath (`jacket`, `capOf`), braid, lacing, set
       areas (paths), end grips (square to the path) and badge leaders. Notes on a set use its band's
       bounds (`setGeom`).
-    - A check moving P1 to 30 spots round its cables found no wire or band edge doubling back.
+    - A check moving P1, P2 and P4 to 54 spots, anchors pulled out, found no wire or band edge
+      doubling back.
   - **Dragging a set's ends** (Chris). Every set has a grip at each end (`setEnds`,
     `data-setend`; it shows on hover and while selected). Dragging it slides that end along its
     box's path (`dragSetEnd` in `app.js`): the pointer, less where the end was grabbed, is

@@ -41,11 +41,13 @@
   const fanLen = sp => Math.max(24, Math.min(90, (sp.i1 - sp.i0) * (PITCH - PACK) * 0.7));
   // The sets that pack their wires: cables, shields and bundles inside no other (an inner one packs
   // with it).
-  const packSpans = sz => (sz.spans || []).filter(sp => hasEnds(sp.s) && !sz.spans.some(o => o !== sp && hasEnds(o.s) && o.depth < sp.depth && o.i0 <= sp.i0 && o.i1 >= sp.i1));
+  const packSpans = sz => (sz.spans || []).filter(sp => rides(sp.s) && !sz.spans.some(o => o !== sp && rides(o.s) && o.depth < sp.depth && o.i0 <= sp.i0 && o.i1 >= sp.i1));
   // The badges: one per set, in a row under the box, left-aligned (Chris).
   const BADGE_H = 22, BADGE_GAP = 8;
   const badgeW = label => Math.max(34, tw(label, 11) + 30);
   const hasEnds = s => !!(s.cable || s.shield || s.bundle);
+  // The sets that pack their wires and ride a box's leads: those with ends, and twists (Chris).
+  const rides = s => hasEnds(s) || !!s.twist;
   // Wire labels size nothing (Chris): a box gives its rows a nominal run, ROW_W. Where some of its
   // wires twist inside a set that is inset or has ends, a box's labels sit LEAD further right by
   // default, for the leader lines from each label to where its wire's twist starts.
@@ -638,11 +640,12 @@
     const stagger = new Map();
     const rowYs = it => it.sz.rows.map((r, i) => (r.w ? rowY(it, i) : null)).filter(v => v != null);
     const midY = it => { const ys = rowYs(it); return (Math.min(...ys) + Math.max(...ys)) / 2; };
-    const reachOf = it => { const ys = rowYs(it), c = midY(it); return Math.max(...ys.map(y => Math.abs(y - c))) * PACK / PITCH + it.sz.R0 + 2; };
+    // How far a box's wires reach from its path's middle on a lead: packed in a set's box, at their
+    // rows in a stack.
+    const reachOf = it => { const ys = rowYs(it), c = midY(it), o = Math.max(...ys.map(y => Math.abs(y - c))); return it.b.kind === 'set' ? o * PACK / PITCH + it.sz.R0 + 2 : o + 4; };
     [0, 1].forEach(k => {
       const groups = new Map();
       boxes.forEach(b => {
-        if (b.kind !== 'set') return;
         const es = b.wires.map(w => leftFirst(w)[k]);
         if (new Set(es.map(e => e.node)).size !== 1) return;
         const ys = es.map(endY).filter(y => y != null);
@@ -675,15 +678,18 @@
         if (b <= MIN_BRK) return null;
       }
     }
-    // Every set box's path (it.path) and where each of its sets reaches along it (sz.arc: u0, u1).
-    // A set with no cable, shield or bundle stays on the straight part (only packed wires ride a
-    // lead). In Real proportions the path is the box and sz.ext (from proportion) says where.
+    // Every box's path (it.path) and where each of its sets reaches along it (sz.arc: u0, u1). Sets
+    // that pack (cables, shields, bundles, twists) ride the leads; any other stays on the straight
+    // part. A stack (wires in no set) gets a path too, and each of its wires a left and a right
+    // anchor (w.anchors: mm in from that side's wire end; unset, at the box's edge; sz.warc), handles that slide
+    // along the curves like a cable's ends (Chris): the wire rides the path between them and fans to
+    // its pins from them. In Real proportions the path is the box, sz.ext (from proportion) says
+    // where sets reach, and sz.prop where anchors sit.
     boxes.forEach(b => {
-      const it = b.item, sz = it.sz;
-      if (b.kind !== 'set') return;
+      const it = b.item, sz = it.sz, isSet = b.kind === 'set';
       const ys = sz.rows.map((r, i) => (r.w ? rowY(it, i) : null)).filter(v => v != null);
       const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-      const leads = !prop && setsUnder(h, b.set).some(x => hasEnds(x.s));
+      const leads = !prop && (!isSet || setsUnder(h, b.set).some(x => rides(x.s)));
       const need = reachOf(it);
       const lL = leads ? leadSide(it, 0, cy, need) : null, lR = leads ? leadSide(it, 1, cy, need) : null;
       const xa = prop || lL ? it.x : it.x + sz.lx, xb = prop || lR ? it.x + it.w : it.x + sz.lx + sz.rootW;
@@ -691,29 +697,43 @@
       const pts = (lL ? lL.pts : []).concat([{ x: xa, y: cy, nx: 0, ny: 1, s: aL }, { x: xb, y: cy, nx: 0, ny: 1, s: aL + Ls }],
         lR ? lR.pts.map(p => Object.assign({}, p, { s: p.s + aL + Ls })) : []);
       it.path = { pts, S, aL, Ls, aR, xa, xb, cy, lL, lR };
-      sz.arc = new Map();
+      sz.arc = new Map(); sz.warc = new Map();
+      const span = (u0, u1, lo, hi) => {
+        u0 = Math.min(hi, Math.max(lo, u0)); u1 = Math.max(lo, Math.min(hi, u1));
+        if (u1 - u0 < 12) { const c = Math.min(hi - 6, Math.max(lo + 6, (u0 + u1) / 2)); u0 = c - 6; u1 = c + 6; }
+        return { u0, u1 };
+      };
+      if (!isSet) {
+        const lens = b.wires.map(w => A.wireLen.get(w.id)).filter(v => v != null && v > 0), run = lens.length ? Math.max(...lens) : null;
+        sz.k = run ? Math.min(10, Math.max(0.3, run / S)) : 2;
+        b.wires.forEach(w => {
+          // Unset, an anchor sits at the box's edge, so the wire curves to its pin as it always did.
+          const an = w.anchors || {}, at = (v, side) => (v == null ? (side ? aL + Ls : aL) : prop && sz.prop ? sz.prop.map(side ? sz.prop.L - +v : +v) : side ? S - +v / sz.k : +v / sz.k);
+          sz.warc.set(w.id, span(at(an.l, 0), at(an.r, 1), 0, S));
+        });
+        return;
+      }
       if (prop) { sz.ext.forEach((e, id) => sz.arc.set(id, { u0: e.x0, u1: e.x1 })); return; }
       const run = M.setRun(A, b.set);
       sz.k = run ? Math.min(10, Math.max(0.3, run / S)) : 2;
       setsUnder(h, b.set).forEach(({ s: st }) => {
-        const r = M.reach(h, st), lo = hasEnds(st) ? 0 : aL, hi = hasEnds(st) ? S : aL + Ls;
-        let u0 = Math.min(hi, Math.max(lo, r.l / sz.k)), u1 = Math.max(lo, Math.min(hi, S - r.r / sz.k));
-        if (u1 - u0 < 12) { const c = Math.min(hi - 6, Math.max(lo + 6, (u0 + u1) / 2)); u0 = c - 6; u1 = c + 6; }
-        sz.arc.set(st.id, { u0, u1 });
+        const r = M.reach(h, st), lo = rides(st) ? 0 : aL, hi = rides(st) ? S : aL + Ls;
+        sz.arc.set(st.id, span(r.l / sz.k, S - r.r / sz.k, lo, hi));
       });
     });
 
-    // Packing (Chris: cables, shields and bundles hold their wires PACK apart, edges touching). Each
+    // Packing (Chris: cables, shields, bundles and twists hold their wires PACK apart, edges touching). Each
     // boxed wire's chain is the sets that pack it, innermost first, each with where it reaches, the
     // middle of its rows (c) and its fan length; the wire eases from its row into each over F before
     // the set's end. packAt gives its height at u for a base height (its row, or the helix).
     const chainOf = new Map();
     boxes.forEach(b => {
       const it = b.item;
-      if (b.kind !== 'set') return;
+      // A stack's wires: their anchors, which pack nothing but say where each leaves the path.
+      if (b.kind !== 'set') { it.sz.warc.forEach((a, id) => chainOf.set(id, [{ a, own: true, F: 1 }])); return; }
       it.sz.spans.slice().sort((x, y) => y.depth - x.depth).forEach(sp => {
         const a = it.sz.arc.get(sp.s.id);
-        if (!hasEnds(sp.s) || !a) return;
+        if (!rides(sp.s) || !a) return;
         const k = { sp, a, c: (rowY(it, sp.i0) + rowY(it, sp.i1)) / 2, F: fanLen(sp) };
         it.sz.rows.slice(sp.i0, sp.i1 + 1).forEach(r => { if (r.w) { if (!chainOf.has(r.w.id)) chainOf.set(r.w.id, []); chainOf.get(r.w.id).push(k); } });
       });
@@ -721,7 +741,7 @@
     const cover = (k, u) => (u < k.a.u0 ? smooth((u - k.a.u0 + k.F) / k.F) : u > k.a.u1 ? smooth((k.a.u1 + k.F - u) / k.F) : 1);
     function packAt(w, u, base) {
       let y = base;
-      (chainOf.get(w.id) || []).forEach(k => { const m = cover(k, u); if (m > 0) y += (k.c + (base - k.c) * PACK / PITCH - y) * m; });
+      (chainOf.get(w.id) || []).forEach(k => { const m = k.own ? 0 : cover(k, u); if (m > 0) y += (k.c + (base - k.c) * PACK / PITCH - y) * m; });
       return y;
     }
     // A boxed wire's point at u along its box's path: its packed height, as an offset across it.
@@ -771,18 +791,20 @@
       const { it, lIn, rIn } = e, P = it.path, y0 = boxRowY.get(w.id);
       if (!P) return { pts: [{ x: lIn.x, y: lIn.y }, { x: rIn.x, y: rIn.y }], J: { l: null, r: null } };
       const J = joins(w, it), out = [];
-      if (J.l != null) steps(J.l, P.aL, 3).forEach(u => out.push(wpt(w, it, u, y0)));
-      const tsp = twisty ? twistSpan(w, e.b, lIn, rIn) : null, at = tsp && helix(tsp, y0), dir = rIn.x >= lIn.x ? 1 : -1;
+      // The twist runs by distance along the path, leads included, so it follows the curves.
+      const tsp = twisty ? twistSpan(w) : null, hx = tsp && helix(tsp, y0), dir = rIn.x >= lIn.x ? 1 : -1;
+      const base = u => (tsp && u >= tsp.ua && u <= tsp.ub ? hx(u - tsp.ua) : { y: y0, front: false });
+      const onLead = (a, b) => steps(a, b, 3).forEach(u => { const v = base(u); out.push(Object.assign(wpt(w, it, u, v.y), { front: v.front })); });
+      if (J.l != null) onLead(J.l, P.aL);
       const xs = [lIn.x, rIn.x];
-      (chainOf.get(w.id) || []).forEach(k => [[k.a.u0 - k.F, k.a.u0], [k.a.u1, k.a.u1 + k.F]].forEach(([a, b]) => steps(a, b, 3).forEach(u => xs.push(xOfU(it, u)))));
-      if (tsp) { const n = Math.max(24, Math.ceil(tsp.run / 3)); for (let i = 0; i <= n; i++) xs.push(tsp.xa + tsp.dir * tsp.run * i / n); }
+      (chainOf.get(w.id) || []).forEach(k => { if (!k.own) [[k.a.u0 - k.F, k.a.u0], [k.a.u1, k.a.u1 + k.F]].forEach(([a, b]) => steps(a, b, 3).forEach(u => xs.push(xOfU(it, u)))); });
+      if (tsp) steps(tsp.ua, tsp.ub, 3).forEach(u => xs.push(xOfU(it, u)));
       const lo = Math.min(lIn.x, rIn.x) - 0.01, hi = Math.max(lIn.x, rIn.x) + 0.01;
       [...new Set(xs.filter(x => x >= lo && x <= hi).map(x => Math.round(x * 100) / 100))].sort((a, b) => (a - b) * dir).forEach(x => {
-        let base = y0, front = false;
-        if (tsp) { const dx = (x - tsp.xa) * tsp.dir; if (dx >= 0 && dx <= tsp.run) { const v = at(dx); base = v.y; front = v.front; } }
-        out.push({ x, y: packAt(w, uOfX(it, x), base), front });
+        const u = uOfX(it, x), v = base(u);
+        out.push({ x, y: packAt(w, u, v.y), front: v.front });
       });
-      if (J.r != null) steps(P.aL + P.Ls, J.r, 3).forEach(u => out.push(wpt(w, it, u, y0)));
+      if (J.r != null) onLead(P.aL + P.Ls, J.r);
       return { pts: out, J };
     }
     const whichOf = (w, e) => (e === w.from ? 'from' : 'to');
@@ -819,22 +841,19 @@
     const TURN = 40;
     // The stretch a twisted wire twists along, or null when it runs straight.
     // It runs inside its set's stretch of the box, clear of the set's lacing, sheath or braid ends.
-    function twistSpan(w, b, lIn, rIn) {
-      const t = twistOf.get(w.id);
-      if (!t || Math.abs(rIn.x - lIn.x) < 1) return null;
-      const dir = rIn.x > lIn.x ? 1 : -1, g = spanX(t.it, t.sp), pad = hasEnds(t.sp.s) ? END + 6 : 8;
-      const fan = t.it.fan || 0;
-      const lo = Math.max(g.x0 + pad, t.it.x + fan + 8), hi = Math.min(g.x1 - pad, t.it.x + t.it.w - fan - 8), run = hi - lo, n = t.ws.length;
-      const xa = dir > 0 ? lo : hi, xb = dir > 0 ? hi : lo;
-      return run < TURN * n * 0.6 ? null : { t, dir, xa, xb, run, n };
+    function twistSpan(w) {
+      const t = twistOf.get(w.id), it = t && t.it, P = it && it.path, a = P && it.sz.arc.get(t.sp.s.id);
+      if (!a) return null;
+      const pad = hasEnds(t.sp.s) ? END + 6 : 8, fan = it.fan || 0;
+      const ua = Math.max(a.u0 + pad, P.lL ? 0 : uOfX(it, it.x + fan + 8)), ub = Math.min(a.u1 - pad, P.lR ? P.S : uOfX(it, it.x + it.w - fan - 8));
+      const run = ub - ua, n = t.ws.length;
+      return run < TURN * n * 0.6 ? null : { t, ua, ub, run, n };
     }
     // Where a twisted wire's twist starts and ends on its row: the leader from its label runs to the
     // start while the label sits over the twist.
     function twistAt(w, end) {
-      const e = entry(w), s = e && twistSpan(w, e.b, e.lIn, e.rIn);
-      if (!s) return null;
-      const x = (end ? Math.max : Math.min)(s.xa, s.xb);
-      return { x, y: e.it.path ? packAt(w, uOfX(e.it, x), e.lIn.y) : e.lIn.y };
+      const e = entry(w), s = e && twistSpan(w);
+      return s ? wpt(w, e.it, end ? s.ub : s.ua, e.lIn.y) : null;
     }
     const twistStart = w => twistAt(w, false), twistEnd = w => twistAt(w, true);
     // The helix a twisted wire follows from its row y0: y dx along its twist (0 to run), and whether
@@ -856,10 +875,11 @@
     function wireAt(w, q) {
       const e = entry(w);
       if (!e) return null;
-      const s = twistSpan(w, e.b, e.lIn, e.rIn), pk = (x, y) => ({ x, y: e.it.path ? packAt(w, uOfX(e.it, x), y) : y });
-      if (!s) return pk(q.x, e.lIn.y);
-      const dx = Math.min(s.run, Math.max(0, (q.x - s.xa) * s.dir));
-      return pk(s.xa + s.dir * dx, helix(s, e.lIn.y)(dx).y);
+      const s = twistSpan(w), it = e.it, y0 = e.lIn.y;
+      if (!it.path) return { x: q.x, y: y0 };
+      if (!s) return { x: q.x, y: packAt(w, uOfX(it, q.x), y0) };
+      const u = Math.min(s.ub, Math.max(s.ua, uOfX(it, q.x)));
+      return wpt(w, it, u, helix(s, y0)(u - s.ua).y);
     }
     // The near-side stretches of a twisted wire's points (front), drawn over the other wires.
     function overOf(pts) {
@@ -894,6 +914,12 @@
       return g;
     }
     boxes.forEach(b => { if (b.item.path) b.item.band = sp => band(b.item, sp); });
+    // A loose wire's anchors, where it leaves its box's path for each pin (canvas dots, app.js).
+    function anchorsOf(w) {
+      const e = entry(w), a = e && e.it.sz.warc && e.it.sz.warc.get(w.id);
+      if (!a) return null;
+      return [['l', a.u0], ['r', a.u1]].map(([side, u]) => Object.assign(wpt(w, e.it, u, e.lIn.y), { side }));
+    }
     // Where a set's end sits (the middle of its band there), for placing parts by it (demo.js).
     function setEndAt(id, side) {
       for (const b of boxes) {
@@ -1011,7 +1037,7 @@
     }
     // The diagram's bounds take in the notes' bubbles.
     (h.callouts || []).forEach(c => { const p = noteAt(c); if (!p) return; const s = noteSize(c); box.x0 = Math.min(box.x0, p.x + c.dx - s.w / 2); box.x1 = Math.max(box.x1, p.x + c.dx + s.w / 2); box.y0 = Math.min(box.y0, p.y + c.dy - s.h / 2); box.y1 = Math.max(box.y1, p.y + c.dy + s.h / 2); });
-    return { items, itemOf, boxes, wirePath, twistStart, twistEnd, wireAt, lane, labelAt, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom, setEndAt };
+    return { items, itemOf, boxes, wirePath, twistStart, twistEnd, wireAt, lane, labelAt, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom, setEndAt, anchorsOf };
   }
 
   // A lane (layout's lane: points with arc length s): the point at s along it, and how far along it
@@ -1385,7 +1411,7 @@
     if (!L) return '';
     const sz = L.it.sz, c = sz.cols, r = sz.text.get(w.id), x0 = L.x - sz.inner / 2, ty = L.y - 5;
     const ts = Lo.twistStart(w), te = ts && Lo.twistEnd(w);
-    const to = ts && x0 - 4 > ts.x + 4 && L.x < te.x && (x0 - ts.x < 3 * LEAD ? { x: ts.x, y: ts.y - 2.6 } : Lo.wireAt(w, { x: x0, y: L.y }));
+    const to = ts && x0 - 4 > ts.x + 4 && L.x < te.x && (Math.hypot(x0 - ts.x, ty - ts.y) < 3 * LEAD ? { x: ts.x, y: ts.y - 2.6 } : Lo.wireAt(w, { x: x0, y: L.y }));
     const lead = to ? `<g class="cv-lead"><path d="M${f(x0 - 4)} ${f(ty - 4)}L${f(to.x)} ${f(to.y)}"/><circle cx="${f(to.x)}" cy="${f(to.y)}" r="2"/></g>` : '';
     const grab = opts.sheet ? '' : `<rect class="cv-lgrab" x="${f(x0 - 5)}" y="${f(ty - 12)}" width="${f(sz.inner + 10)}" height="15" rx="5"/>`;
     const fx = opts.fx ? ' cv-item' : '';
@@ -1440,6 +1466,13 @@
         if (it.kind === 'loose') dots += looseSvg(it, w, en.which, dim, rg) + hitEnd(it.x, it.y, w.id, en.which, opts);
         else if (it.kind === 'conn' && !opts.sheet) dots += `<circle class="cv-end${dim}${rg.cls}" cx="${f(en.at.x)}" cy="${f(en.at.y)}" r="3.4" data-end="${w.id}|${en.which}" data-wire="${w.id}"${rg.style}/>` + hitEnd(en.at.x, en.at.y, w.id, en.which, opts);
       });
+    });
+    // A loose wire's anchors (canvas only): a small dot at each, which slides along the curve.
+    if (!opts.sheet) h.wires.forEach(w => {
+      const an = Lo.anchorsOf(w);
+      if (!an) return;
+      const dim = dimIf(opts.focus && !opts.focus.wires.has(w.id)), c = M.colorInfo(w.color).base || '#9a9aa0';
+      an.forEach(p => { dots += `<g class="cv-anchor${dim}" data-anchor="${w.id}|${p.side}" data-wire="${w.id}"><circle class="cv-anchor-hit" cx="${f(p.x)}" cy="${f(p.y)}" r="8"/><circle class="cv-anchor-dot" cx="${f(p.x)}" cy="${f(p.y)}" r="2.8" style="stroke:${c}"/></g>`; });
     });
     const notes = (h.callouts || []).map(c => noteSvg(c, Lo, opts)).join('');
     return { svg: backs + wires + overs + fronts + ends + labels + dots + notes, box: Lo.box, layout: Lo };
