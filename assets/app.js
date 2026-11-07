@@ -30,6 +30,7 @@
 
   const ICON = {
     note: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4.5h14v8.5H9.5L6 16v-3H3z"/><path d="M6.5 8h7M6.5 10.5h4.5"/></svg>',
+    pencil: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M10.5 3.5l2 2L6 12H4v-2z"/></svg>',
     close: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
     sun: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3.4"/><path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M4.7 15.3 6 14M14 6l1.3-1.3"/></svg>',
     moon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M16 12.3A6.5 6.5 0 0 1 7.7 4a6.5 6.5 0 1 0 8.3 8.3z"/></svg>',
@@ -889,6 +890,11 @@
       <p class="f-hint">With a part number, it's listed in the BOM.</p>
       </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${esc(c.ref)}</button></div></div>`;
   }
+  // A set's automatic label: its own when it already is one (TP3), else the next free one.
+  const autoLabel = (h, st) => {
+    const p = M.setPrefix(st);
+    return new RegExp('^' + p + '\\d+$').test(st.label) ? st.label : M.nextRef(Object.assign({}, h, { sets: h.sets.filter(x => x !== st) }), p);
+  };
   // A set's chip color: what holds it, else what it is.
   const setKind = st => (st.cable ? 'cable' : st.bundle ? 'bundle' : st.twist ? 'twist' : 'shield');
   // A set and the sets inside it, as an indented tree; each line selects its set. on: the line to
@@ -933,13 +939,16 @@
       return `<button class="hold${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="set-holder" data-holder="${k}" title="${esc(tip)}"${off ? ' disabled' : ''}><span class="hold-dot"></span>${t}</button>`;
     }).join('');
     const run = st ? M.spanLength(A.spans.get(st.id) || []) : null;
-    const head = st ? `<span class="mono-ref">${esc(st.label)}</span> ${ws.length} wires` : `${ws.length} wires selected`;
+    // The label edits in place (Chris: subtle): it reads as the title until hovered, and clearing it
+    // brings back the automatic one (TP3, C1...).
+    const auto = st ? autoLabel(h, st) : '';
+    const tip = `Rename ${esc(st ? st.label : '')}${st && auto !== st.label ? `. Clear it to go back to ${esc(auto)}` : ''}`;
+    const head = st ? `<input class="title-edit" id="lm-title-edit" data-f="set.label" value="${esc(st.label)}" placeholder="${esc(auto)}" size="${Math.max(2, st.label.length)}" spellcheck="false" autocomplete="off" aria-label="Set label" title="${tip}"> ${ws.length} wires<label class="title-pen" for="lm-title-edit" title="${tip}">${ICON.pencil}</label>` : `${ws.length} wires selected`;
     return railHead('Wire set', head, `<div class="chips">${ws.map(w => `<span class="chip">${M.wireName(w)}</span>`).join('')}</div>`) +
       `<div class="rail-list"><div class="rail-sec">
       <div class="tick-row">${ticks}</div>
       <div class="hold-row"><span class="hold-label">Held as</span><div class="hold-seg" role="radiogroup" aria-label="Held as">${holders}</div></div>
       <p class="f-hint">${why ? esc(why) : st ? esc(M.setWord(st)) + (M.setTraits(st) ? ', ' + esc(M.setTraits(st)) : '') + '.' : 'Tick one to make these wires a set.'}</p>
-      ${st ? fld('Label', inp('set.label', st.label)) : ''}
       ${st && (st.cable || st.shield) ? fld('Description', inp('set.note', st.note, ` placeholder="${st.cable ? '2 x 26 AWG, PVC jacket' : 'Tinned copper braid'}"`)) + fld('Part number', inp('set.pn', st.pn)) : ''}
       ${lenField(h, A, ws, 'Wire length (mm)')}
       ${st ? coversField(h, A, st, run) : ''}
@@ -986,7 +995,7 @@
         if (!st) return;
         if (k === 'length') st.length = v === '' ? null : Math.max(0, Math.round(+v));
         else if (k === 'over.l' || k === 'over.r') M.setEnd(h, st.id, k.slice(5), Math.round(+v || 0));
-        else if (k === 'label') st.label = v.trim() || st.label;
+        else if (k === 'label') st.label = v.trim() || autoLabel(h, st);
         else st[k] = v;
       } else if (f.startsWith('w.') || f.startsWith('w:') || f.startsWith('ws.')) {
         let ids, k;
@@ -1263,6 +1272,7 @@
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); onAct('save'); return; }
+    if (typing && e.key === 'Escape' && document.activeElement.closest('.title-edit')) { const a = document.activeElement; a.value = a.defaultValue; a.blur(); return; }
     if (typing) { if (e.key === 'Enter' && document.activeElement.tagName === 'INPUT') document.activeElement.blur(); return; }
     if (!H()) return;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }

@@ -159,6 +159,20 @@ p.f-hint { margin: 0 0 12px; }
 .inline .input { flex: 1; min-width: 0; }
 .btn svg { width: 14px; height: 14px; }
 .mono-ref { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+/* A title that edits in place (a set's label): plain text until hovered, a ring while typing, and a
+   faint pencil at the end of the row that takes no room beside the label. */
+.rail-title:has(.title-edit) { display: flex; align-items: baseline; gap: calc(.3em + 4px); }
+.title-edit { font: inherit; font-family: var(--mono); font-weight: 600; color: var(--accent); background: transparent; border: 0; outline: none;
+  padding: 0 4px; margin: 0 -4px; border-radius: 5px; min-width: 2ch; field-sizing: content; transition: background .15s, box-shadow .15s; }
+.title-edit::placeholder { color: var(--accent); opacity: .45; }
+.title-edit:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.title-edit:focus { background: color-mix(in srgb, var(--accent) 7%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 60%, transparent); }
+.title-pen { margin-left: auto; align-self: center; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--text-3); cursor: text; opacity: 0; transition: opacity .15s, background .15s; }
+.title-pen svg { width: 13px; height: 13px; }
+.rail-head:hover .title-pen { opacity: .6; }
+.rail-head .title-pen:hover, .rail-head:has(.title-edit:hover) .title-pen { opacity: 1; }
+.rail-head:has(.title-edit:focus) .title-pen { opacity: 0; }
+@media (hover: none) { .title-pen { opacity: .5; } }
 .group-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
 .group-btns .btn { flex-direction: column; gap: 5px; border-radius: 12px; padding: 10px 6px; }
 .soon-note { border: 1.5px dashed var(--hair-2); border-radius: 12px; padding: 11px 12px; color: var(--text-3); font-size: 12px; line-height: 1.4; margin-top: 4px; }
