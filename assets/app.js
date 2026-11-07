@@ -180,14 +180,18 @@
     '<linearGradient id="lmfx-band" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--cv-band-lo)"/><stop offset="0.35" style="stop-color:var(--cv-band-hi2)"/><stop offset="1" style="stop-color:var(--cv-band-lo)"/></linearGradient>' +
     '<linearGradient id="lmfx-head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-head-hi)"/><stop offset="1" style="stop-color:var(--cv-head)"/></linearGradient>' +
     '<radialGradient id="lmfx-metal" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#fffbe8"/><stop offset="0.45" stop-color="#e3c27a"/><stop offset="1" stop-color="#9a7a3a"/></radialGradient>' +
+    '<linearGradient id="lmfx-crimp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f7f9"/><stop offset="0.45" stop-color="#cfd2d8"/><stop offset="0.55" stop-color="#9fa3ab"/><stop offset="1" stop-color="#dfe2e6"/></linearGradient>' +
+    '<radialGradient id="lmfx-face" cx="0.4" cy="0.35" r="0.75"><stop offset="0" style="stop-color:var(--cv-sheath-face)"/><stop offset="1" style="stop-color:var(--cv-sheath-face-lo)"/></radialGradient>' +
     '</defs>';
   const reduceMotion = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function renderCanvas() {
-    const h = H(), svg = svgEl();
-    const intro = !reduceMotion() && S.introFor !== h.id;
+  // hp: a harness to draw instead of the real one (a wire-end drag's preview), with extra render
+  // options; the real layout stays in lastLayout.
+  function renderCanvas(hp, extra) {
+    const h = hp || H(), svg = svgEl();
+    const intro = !hp && !reduceMotion() && S.introFor !== h.id;
     if (intro) { S.introFor = h.id; clearTimeout(S.introT); S.introT = setTimeout(() => { S.introT = null; if (S.view === 'build') renderCanvas(); }, 1700); }
-    const r = C.render(h, M.analyze(h), { sel: S.sel, pending: S.pending, fx: true, intro: intro || !!S.introT, fresh: S.fresh, lift: S.lift });
-    lastBox = r.box; lastLayout = r.layout;
+    const r = C.render(h, M.analyze(h), Object.assign({ sel: S.sel, pending: S.pending, fx: true, intro: intro || (!hp && !!S.introT), fresh: S.fresh, lift: S.lift }, extra));
+    if (!hp) { lastBox = r.box; lastLayout = r.layout; }
     const wrap = $('#canvas-wrap');
     const w = wrap.clientWidth || 800, hh = wrap.clientHeight || 600;
     if (!S.cam) fit(r.box, w, hh);
@@ -290,15 +294,60 @@
   let gesture = null;
   function onDown(e) {
     if (e.button > 2) return;
-    const itemEl = e.button === 0 && e.target.closest('[data-item]');
-    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl ? itemEl.dataset.item : null };
+    // A wire-end dot (a splice port, a loose end, or where a wire meets a pin) drags that end.
+    const endEl = e.button === 0 && !S.pending && e.target.closest('[data-end]');
+    const itemEl = e.button === 0 && !endEl && e.target.closest('[data-item]');
+    const end = endEl ? { wire: endEl.dataset.end.split('|')[0], which: endEl.dataset.end.split('|')[1] } : null;
+    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl ? itemEl.dataset.item : null, end };
     svgEl().setPointerCapture(e.pointerId);
+  }
+  // Where a dragged wire end would land: a splice (the side and port slot under the pointer), a
+  // connector's pin row, or else a loose end at the pointer, on the grid. Tested against the layout
+  // from the start of the drag (lo), so targets hold still while the preview changes. null: the
+  // wire's own other end, which an end can't move onto.
+  function dropTarget(lo, p, end, free) {
+    const h = H(), w = M.wire(h, end.wire);
+    if (!w) return null;
+    const oth = w[end.which === 'from' ? 'to' : 'from'].node, m = 12;
+    for (const it of lo.items) {
+      if (it.kind === 'splice') {
+        if (p.x < it.x - m || p.x > it.x + it.w + m || p.y < it.y - m || p.y > it.y + it.h + m) continue;
+        if (it.n.id === oth) return null;
+        // The ports as they stand, without this wire, and it slotted in where the pointer is.
+        const side = p.x < it.x + it.w / 2 ? 'l' : 'r', P = lo.portsOf(it.n.id);
+        const order = { l: P.l.filter(x => x.id !== w.id).map(x => x.id), r: P.r.filter(x => x.id !== w.id).map(x => x.id) };
+        const idx = Math.max(0, Math.min(order[side].length, Math.round((p.y - it.y - it.sz.port0) / C.G.PITCH)));
+        order[side].splice(idx, 0, w.id);
+        return { node: it.n.id, side, order };
+      }
+      if (it.kind === 'conn') {
+        if (p.x < it.x || p.x > it.x + it.w || p.y < it.y + it.sz.h0 || p.y > it.y + it.h) continue;
+        if (it.n.id === oth) return null;
+        const pin = M.pinList(it.n)[Math.floor((p.y - it.y - it.sz.h0) / C.G.ROW)];
+        return pin == null ? null : { node: it.n.id, pin };
+      }
+    }
+    const gs = gridOf(h), snap = v => (free || !gs ? Math.round(v) : Math.round(v / gs) * gs);
+    return { loose: true, x: snap(p.x), y: snap(p.y) };
+  }
+  // Draw the harness as it would be with the dragged end dropped here.
+  function previewEnd(g, e) {
+    g.target = dropTarget(g.lo, toWorld(e), g.end, e.ctrlKey || e.metaKey);
+    const hp = JSON.parse(JSON.stringify(H()));
+    if (g.target) M.moveEnd(hp, g.end.wire, g.end.which, g.target);
+    renderCanvas(hp, { drop: g.target && g.target.side ? g.target.node : null, carry: g.end.wire, dropPin: g.target && g.target.pin != null ? g.target : null });
   }
   function onMove(e) {
     const g = gesture;
     if (!g) { if (S.pending) drawGhost(e); return; }
     const dx = e.clientX - g.x, dy = e.clientY - g.y;
     if (!g.moved && Math.hypot(dx, dy) < 4) return;
+    if (g.end) {
+      if (!g.moved) { g.lo = lastLayout; svgEl().classList.add('dragging', 'dragging-end'); }
+      g.moved = true;
+      if (g.lo) previewEnd(g, e);
+      return;
+    }
     if (!g.moved && g.item) {
       const it = lastLayout && lastLayout.items.find(i => i.key === g.item);
       if (!it) g.item = null;
@@ -310,7 +359,7 @@
       const snap = v => (free ? Math.round(v) : Math.round(v / gs) * gs);
       // Snap the first port, not the top edge, so the part's ports land on grid lines.
       h.place = h.place || {};
-      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k + g.port0) - g.port0, v: 2 };
+      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k + g.port0) - g.port0, v: 3 };
       renderCanvas();
       return;
     }
@@ -324,7 +373,12 @@
     const g = gesture;
     gesture = null;
     S.lift = null;
-    svgEl().classList.remove('dragging');
+    svgEl().classList.remove('dragging', 'dragging-end');
+    if (g && g.end && g.moved) {
+      if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
+      renderAll();
+      return;
+    }
     if (g && g.item && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && !g.moved && g.button === 0) click(g.t, g.shift);
   }
@@ -584,6 +638,8 @@
     h.nodes.filter(M.isConn).forEach(n => { o += `<optgroup label="${esc(n.ref + ' ' + (n.name || ''))}">${M.pinList(n).map(p => opt(n.id + '|' + p, n.ref + '.' + p, cur)).join('')}</optgroup>`; });
     const sp = h.nodes.filter(n => n.kind === 'splice');
     if (sp.length) o += `<optgroup label="Splices">${sp.map(n => opt(n.id + '|', n.ref, cur)).join('')}</optgroup>`;
+    const lo = M.node(h, String(cur).split('|')[0]);
+    if (M.isLoose(lo)) o = opt(cur, 'Loose end', cur) + o;
     return o;
   }
 
@@ -747,8 +803,8 @@
         if (f.startsWith('w:')) { const m = /^w:([^.]+)\.(.+)$/.exec(f); ids = [m[1]]; k = m[2]; }
         else { ids = [...sel.ids]; k = f.slice(f.indexOf('.') + 1); }
         ids.map(id => M.wire(h, id)).forEach(w => {
-          if (k === 'from' || k === 'to') { const [node, pin] = v.split('|'); w[k] = { node, pin: pin || null }; }
-          else if (k === 'fromText' || k === 'toText') { const e = M.parseEnd(h, v); if (e) w[k.slice(0, -4)] = e; else toast(`"${v}" isn't an end in this harness. Use a ref and pin, like P1.3.`, 'error'); }
+          if (k === 'from' || k === 'to') { const [node, pin] = v.split('|'); M.moveEnd(h, w.id, k, { node, pin: pin || null }); }
+          else if (k === 'fromText' || k === 'toText') { const e = M.parseEnd(h, v); if (e) M.moveEnd(h, w.id, k.slice(0, -4), e); else toast(`"${v}" isn't an end in this harness. Use a ref and pin, like P1.3.`, 'error'); }
           else if (k === 'color.base' || k === 'color.stripe') {
             const row = el && el.closest('.color-row');
             const base = row ? row.querySelector('[data-f$="color.base"]').value : '', stripe = row ? row.querySelector('[data-f$="color.stripe"]').value : '';
@@ -983,7 +1039,7 @@
   svg.addEventListener('pointerdown', onDown);
   svg.addEventListener('pointermove', onMove);
   svg.addEventListener('pointerup', onUp);
-  svg.addEventListener('pointercancel', () => { gesture = null; });
+  svg.addEventListener('pointercancel', () => { const g = gesture; gesture = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
   svg.addEventListener('wheel', onWheel, { passive: false });
   svg.addEventListener('contextmenu', e => e.preventDefault()); // the right button pans
   let wasNarrow = narrow();
