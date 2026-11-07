@@ -127,10 +127,6 @@ body.has-banner .build-view { height: calc(100dvh - 56px - 33px); }
 .pl-row { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: center; margin-bottom: 6px; }
 .pl-num { font: 600 12px var(--mono); color: var(--text-3); text-align: right; }
 .pl-row .input { padding: 6px 9px; font-size: 12.5px; }
-.howto { margin: 16px 4px 0; padding: 12px; border-radius: 12px; background: var(--bg-sunk); font-size: 12px; color: var(--text-3); line-height: 1.45; }
-.howto b { color: var(--text-2); font-size: 12px; }
-.howto p { margin: 7px 0 0; display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
-.howto i { font-style: normal; font-weight: 700; color: var(--accent); text-align: center; }
 
 .canvas-wrap { grid-area: canvas; position: relative; min-width: 0; background: var(--canvas-bg); overflow: hidden; }
 .lm-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: default; user-select: none; }
@@ -427,6 +423,8 @@ button.chip.g-chip { cursor: pointer; }
 /* The grid recedes into the stage. */
 .lm-canvas .gd { opacity: var(--cv-gd, 0.16); }
 .lm-canvas .gd.major { opacity: var(--cv-gd-major, 0.32); }
+.lm-canvas .gl { fill: none; stroke: var(--cv-ink-2); stroke-width: 0.5; opacity: var(--cv-gd, 0.16); }
+.lm-canvas .gl.major { stroke-width: 0.9; opacity: var(--cv-gd-major, 0.32); }
 
 /* Cards: connector tables and box labels, rounded and lit from above. */
 .lm-canvas .cv-card { fill: var(--cv-paper); filter: var(--cv-card-shadow); }
@@ -622,18 +620,21 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-note-t { fill: var(--cv-ink); font: 11.5px var(--sans); pointer-events: none; }
 .lm-canvas .cv-note-pn { fill: var(--cv-ink-2); font: 600 10.5px var(--mono); pointer-events: none; }
 .lm-canvas.placing, .lm-canvas.placing * { cursor: crosshair !important; }
-/* How it works: a glass card over the canvas, open by default; the i button brings it back. */
-.howto-pop { position: absolute; top: 56px; right: 12px; width: 290px; z-index: 5; padding: 12px 14px 12px; border-radius: 16px; background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.8); backdrop-filter: blur(20px) saturate(1.8); border: 0.5px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--glass-shadow); font-size: 12px; color: var(--text-2); line-height: 1.45; }
-.howto-pop[hidden] { display: none; }
-.howto-pop .hp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
-.howto-pop .hp-head b { color: var(--text); font-size: 12.5px; }
-.howto-pop .hp-close { width: 24px; height: 24px; border: none; border-radius: 50%; background: none; color: var(--text-3); cursor: pointer; display: grid; place-items: center; }
-.howto-pop .hp-close:hover { background: var(--glass-on); color: var(--text); }
-.howto-pop .hp-close svg { width: 12px; height: 12px; }
-.howto-pop p { margin: 7px 0 0; display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
-.howto-pop i { font-style: normal; font-weight: 700; color: var(--accent); text-align: center; }
-.canvas-wrap .seg.glass .hud-fold.on { color: var(--accent); }
-@media (max-width: 860px) { .howto-pop { display: none; } }
+/* How it works: a ? button in the parts pane's bottom-right corner, and a card it pops up over the
+   bottom of the pane. */
+.parts-pane { position: relative; }
+.pane-help-btn { position: absolute; right: 12px; bottom: 12px; z-index: 6; width: 30px; height: 30px; border-radius: 50%; border: 0.5px solid var(--hair-2); background: var(--bg-elev); color: var(--text-2); font: 700 14px var(--sans); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
+.pane-help-btn:hover { color: var(--accent); }
+.pane-help-btn.on { background: var(--accent); color: #fff; border-color: transparent; }
+.pane-help { position: absolute; left: 10px; right: 10px; bottom: 52px; z-index: 5; max-height: 55%; overflow-y: auto; padding: 12px 14px; border-radius: 14px; background: var(--bg-elev); border: 0.5px solid var(--hair-2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); font-size: 12px; color: var(--text-2); line-height: 1.45; }
+.pane-help .hp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.pane-help .hp-head b { color: var(--text); font-size: 12.5px; }
+.pane-help .hp-close { width: 24px; height: 24px; border: none; border-radius: 50%; background: none; color: var(--text-3); cursor: pointer; display: grid; place-items: center; }
+.pane-help .hp-close:hover { background: var(--hair); color: var(--text); }
+.pane-help .hp-close svg { width: 12px; height: 12px; }
+.pane-help p { margin: 7px 0 0; display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
+.pane-help i { font-style: normal; font-weight: 700; color: var(--accent); text-align: center; }
+.pane-body { padding-bottom: 52px; }
 .lm-canvas .cv-leader { pointer-events: none; }
 .lm-canvas .cv-leader path { fill: none; stroke: var(--cv-ink-2); stroke-opacity: 0.7; stroke-width: 1; stroke-linejoin: round; }
 .lm-canvas .cv-leader circle { fill: var(--cv-ink-2); }

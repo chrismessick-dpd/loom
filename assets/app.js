@@ -30,7 +30,6 @@
 
   const ICON = {
     note: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4.5h14v8.5H9.5L6 16v-3H3z"/><path d="M6.5 8h7M6.5 10.5h4.5"/></svg>',
-    info: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v5"/><circle cx="10" cy="6.3" r="0.4" fill="currentColor"/></svg>',
     close: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
     sun: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3.4"/><path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M4.7 15.3 6 14M14 6l1.3-1.3"/></svg>',
     moon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M16 12.3A6.5 6.5 0 0 1 7.7 4a6.5 6.5 0 1 0 8.3 8.3z"/></svg>',
@@ -214,11 +213,13 @@
     const wrap = $('#canvas-wrap');
     const w = wrap.clientWidth || 800, hh = wrap.clientHeight || 600;
     if (!S.cam) fit(r.box, w, hh);
-    // The grid parts snap to: a dot at every step and a stronger one every fifth.
-    const gs = gridOf(h);
-    const grid = gs ? `<defs><pattern id="cv-grid" width="${gs * 5}" height="${gs * 5}" patternUnits="userSpaceOnUse">` +
-      [...Array(25)].map((_, i) => `<circle class="${i % 5 || Math.floor(i / 5) % 5 ? 'gd' : 'gd major'}" cx="${(i % 5) * gs}" cy="${Math.floor(i / 5) * gs}" r="${i ? 0.9 : 1.4}"/>`).join('') +
-      `</pattern></defs>` : '';
+    // The grid parts snap to: a dot at every step and a stronger one every fifth, or (Grid › Lines,
+    // fold.gridStyle, kept in this browser) a line at every step and a stronger one every fifth.
+    const gs = gridOf(h), P = gs * 5;
+    const marks = fold.gridStyle === 'lines'
+      ? [1, 2, 3, 4].map(i => `<path class="gl" d="M${i * gs} 0V${P}M0 ${i * gs}H${P}"/>`).join('') + `<path class="gl major" d="M0 0V${P}M0 0H${P}"/>`
+      : [...Array(25)].map((_, i) => `<circle class="${i % 5 || Math.floor(i / 5) % 5 ? 'gd' : 'gd major'}" cx="${(i % 5) * gs}" cy="${Math.floor(i / 5) * gs}" r="${i ? 0.9 : 1.4}"/>`).join('');
+    const grid = gs ? `<defs><pattern id="cv-grid" width="${P}" height="${P}" patternUnits="userSpaceOnUse">${marks}</pattern></defs>` : '';
     svg.classList.toggle('intro', intro);
     svg.classList.toggle('wiring', !!S.pending);
     // Wire labels (the checkbox by the zoom control): canvas only; the sheet always prints them.
@@ -316,23 +317,12 @@
   function renderHud() {
     const h = H(), gs = gridOf(h), placed = h && h.place && Object.keys(h.place).length;
     // Glass capsules, one per kind of control (docs/look-2026-11.md): the panel, the view, the grid.
-    $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold${fold.help === false ? '' : ' on'}" data-act="help" title="How it works" aria-label="How it works" aria-expanded="${fold.help !== false}">${ICON.info}</button>` +
-      `<button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
-    // How it works: a card over the canvas, open until closed (remembered in this browser).
-    const pop = $('#howto-pop');
-    if (pop) {
-      pop.hidden = fold.help === false;
-      pop.innerHTML = `<div class="hp-head"><b>How it works</b><button class="hp-close" data-act="help" title="Close" aria-label="Close">${ICON.close}</button></div>
-        <p><i>●</i> Click a pin, then a pin on another end or a splice, to run a wire.</p>
-        <p><i>⇧</i> Shift-click wires, then tick Twist or Shield, or pick Cable or Bundle, to make them a set. Sets nest: select a set and more wires to bundle them.</p>
-        <p><i>◉</i> Click a set's badge, or inside it, to edit it. Drag a set's ends to shorten it or run it past what holds it.</p>
-        <p><i>✎</i> Add › Note, then click a wire, set or connector to pin a note. Drag its bubble; click it to edit.</p>
-        <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p>`;
-    }
+    $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
     $('#hud').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel" aria-label="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
       `<div class="seg glass"><button class="hud-ico" data-act="fit" title="Fit the diagram (F)">${ICON.fit}<span>Fit</span></button>` +
       (placed ? `<button class="hud-ico" data-act="auto-layout" title="Forget the positions you dragged and lay the diagram out again">${ICON.relayout}<span>Auto layout</span></button>` : '') + `</div>` +
-      `<label class="seg glass hud-grid" title="Parts snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${ICON.grid}<select data-hud="grid" aria-label="Grid">${GRIDS.map(g => `<option value="${g}"${g === gs ? ' selected' : ''}>${g ? 'Grid ' + g : 'Grid off'}</option>`).join('')}</select></label>`;
+      `<label class="seg glass hud-grid" title="Parts snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${ICON.grid}<select data-hud="grid" aria-label="Grid"><optgroup label="Spacing">${GRIDS.map(g => `<option value="${g}"${g === gs ? ' selected' : ''}>${g ? 'Grid ' + g : 'Grid off'}</option>`).join('')}</optgroup>` +
+      `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${(fold.gridStyle === 'lines') === (k === 'lines') ? '● ' : '○ '}${t}</option>`).join('')}</optgroup></select></label>`;
   }
 
   // Pointer: drag a connector, splice or box to move it (snapping to the grid; Ctrl places it
@@ -624,7 +614,17 @@
     const body = tab === 'props'
       ? `<div class="pane-props">${propsHtml() || `<div class="pane-empty">Select a connector, splice, wire or box on the canvas to see its properties here.</div>`}</div>`
       : `<div class="pane-body">${partsHtml()}</div>`;
-    paint($('#parts-pane'), tabs + body);
+    // How it works (Chris): a ? button in the pane's bottom-right corner pops this card up over the
+    // bottom of the pane, in either tab. Open until closed, remembered in this browser (fold.help).
+    const open = fold.help !== false;
+    const help = (open ? `<div class="pane-help" role="dialog" aria-label="How it works"><div class="hp-head"><b>How it works</b><button class="hp-close" data-act="help" title="Close" aria-label="Close">${ICON.close}</button></div>
+        <p><i>●</i> Click a pin, then a pin on another end or a splice, to run a wire.</p>
+        <p><i>⇧</i> Shift-click wires, then tick Twist or Shield, or pick Cable or Bundle, to make them a set. Sets nest: select a set and more wires to bundle them.</p>
+        <p><i>◉</i> Click a set's badge, or inside it, to edit it. Drag a set's ends to shorten it or run it past what holds it.</p>
+        <p><i>✎</i> Add › Note, then click a wire, set or connector to pin a note. Drag its bubble; click it to edit.</p>
+        <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p></div>` : '') +
+      `<button class="pane-help-btn${open ? ' on' : ''}" data-act="help" title="How it works" aria-label="How it works" aria-expanded="${open}">?</button>`;
+    paint($('#parts-pane'), tabs + body + help);
   }
   // Redraw a panel, keeping the focused field and the scroll position.
   function paint(el, html) {
@@ -1128,7 +1128,7 @@
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
       case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;
-      case 'help': fold.help = fold.help === false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } renderHud(); break;
+      case 'help': fold.help = fold.help === false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } renderParts(); break;
       case 'from-board': openBoards(); break;
       case 'bm-close': closeModal(); break;
       case 'bm-back': BM.step = BM.boards ? 'boards' : 'loading'; renderModal(); break;
@@ -1227,7 +1227,17 @@
   document.addEventListener('change', e => {
     const el = e.target;
     if (el.id === 'file-input') { if (el.files[0]) openFile(el.files[0]); el.value = ''; return; }
-    if (el.dataset && el.dataset.hud === 'grid') { change(h => { h.grid = +el.value; }); return; }
+    if (el.dataset && el.dataset.hud === 'grid') {
+      // Dots or Lines: a view of this browser's, which keeps the spacing.
+      if (el.value === 'dots' || el.value === 'lines') {
+        fold.gridStyle = el.value;
+        try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ }
+        renderHud(); renderCanvas();
+        return;
+      }
+      change(h => { h.grid = +el.value; });
+      return;
+    }
     // Kept with the panel folds: a view setting for this browser, not part of the harness.
     // Real proportions: a view of this browser's, like the wire labels. Ticked, the canvas is laid
     // out to scale from the lengths; unticked, it's the arranged (casual) view with its dragged

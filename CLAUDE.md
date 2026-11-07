@@ -28,7 +28,8 @@ links to it so far. Before every commit:
   - Dragging came back the same day (Chris). Connectors, splices and boxes drag by any part of them
     (`data-item`), and their positions are saved in `h.place` (`n:<node id>` or `b:<box key>`),
     which win over the auto layout on the canvas and the sheet. They snap to `h.grid`: 0 (off),
-    5, 10 (default) or 20, set in the Grid control over the canvas. Ctrl places freely. Every port
+    5, 10 (default) or 20, set in the Grid control over the canvas, which also picks the grid's
+    look, Dots or Lines (`fold.gridStyle`, kept in this browser). Ctrl places freely. Every port
     (pin rows, box wire rows) is on one pitch, `G.PITCH` = 20, and a drag snaps a part's first port
     (`sz.port0`), not its top edge, so ports on different parts share grid lines and wires run
     straight. Grid steps must divide the pitch (an old 40 reads as 20). Auto layout also puts ports
@@ -150,8 +151,9 @@ links to it so far. Before every commit:
     Properties (`railNote`). With a part number it's a BOM line. The sheet prints notes. A note
     goes with the part it's pinned to; one on a dissolved set moves to its first wire. Refs are
     N1, N2…; the drawing's numbered notes are still `h.notes`.
-  - **How it works** is a glass card over the canvas (`#howto-pop`), open until closed; the ⓘ
-    button by the parts-pane toggle brings it back (`fold.help`, kept in this browser).
+  - **How it works** (Chris): a ? button in the right pane's bottom-right corner pops a card up over
+    the bottom of the pane, in either tab (`renderParts`, `.pane-help`); open until closed, kept in
+    this browser (`fold.help`).
   - **Properties.** Several wires or a set show the **Wire set** panel. It has Twist and Shield tick
     boxes, a **Held as** radio choice of None, Cable or Bundle (Chris: show the mutual exclusion), Label, Description and Part number (cable or shield), the wire length,
     each end's overhang with the total (`coversField`), Set color, and a clickable **Hierarchy**
