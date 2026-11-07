@@ -185,7 +185,9 @@ button.chip.g-chip { cursor: pointer; }
 /* The connection view on the canvas: the diagram as lit cards and real wires on a stage
    (docs/look-2026-11.md); the sheet keeps the plain WireViz look (sheet.js). Wire colors are real.
    --cv-paper is the card, --cv-rule the hairlines inside it, --cv-edge the rim that keeps dark wires
-   visible on the dark stage and light ones on the light stage. */
+   visible on the dark stage and light ones on the light stage. The dark stage was lifted on
+   2026-11-06 (Chris: too dark to see boxes and the grid): its cards are lighter than it, and its
+   grid dots (--cv-gd, --cv-gd-major) stronger. */
 .canvas-wrap.cv-paper {
   --cv-stage: radial-gradient(120% 95% at 50% 36%, #ffffff 0%, #f1f2f5 52%, #e2e5ea 100%);
   --cv-paper: #fff; --cv-ink: #1d1d1f; --cv-ink-2: #6e6e73; --cv-head: #f3f4f6; --cv-head-hi: #fff; --cv-rule: rgba(0, 0, 0, 0.09); --cv-card-edge: rgba(0, 0, 0, 0.1);
@@ -199,23 +201,25 @@ button.chip.g-chip { cursor: pointer; }
   background: var(--cv-stage);
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .canvas-wrap.cv-paper {
-  --cv-stage: radial-gradient(120% 95% at 50% 34%, #1c1f25 0%, #0f1115 52%, #07080a 100%);
-  --cv-paper: #1a1c20; --cv-ink: #ececf1; --cv-ink-2: #9a9aa2; --cv-head: #222429; --cv-head-hi: #2d3036; --cv-rule: rgba(255, 255, 255, 0.07); --cv-card-edge: rgba(255, 255, 255, 0.11);
+  --cv-stage: radial-gradient(120% 95% at 50% 34%, #272a31 0%, #1d2025 52%, #15171b 100%);
+  --cv-paper: #2c3037; --cv-ink: #ececf1; --cv-ink-2: #a3a3ab; --cv-head: #343840; --cv-head-hi: #3e434c; --cv-rule: rgba(255, 255, 255, 0.09); --cv-card-edge: rgba(255, 255, 255, 0.17);
+  --cv-gd: 0.3; --cv-gd-major: 0.55;
   --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
   --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
   --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: rgba(255, 255, 255, 0.14); --cv-sheath-mid: rgba(0, 0, 0, 0.32); --cv-sheath-lo: rgba(0, 0, 0, 0.55);
-  --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #14161a; --cv-lace: #d9d9df; --cv-copper: #d4935a;
+  --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #1f2227; --cv-lace: #d9d9df; --cv-copper: #d4935a;
   --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); --cv-band-lo: #0c0c0e; --cv-band-hi2: #3e3f45;
   --cv-card-shadow: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
   --glass-bg: rgba(44, 46, 52, 0.55); --glass-edge: rgba(255, 255, 255, 0.12); --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.2); --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); --glass-on: rgba(255, 255, 255, 0.14);
 } }
 :root[data-theme="dark"] .canvas-wrap.cv-paper {
-  --cv-stage: radial-gradient(120% 95% at 50% 34%, #1c1f25 0%, #0f1115 52%, #07080a 100%);
-  --cv-paper: #1a1c20; --cv-ink: #ececf1; --cv-ink-2: #9a9aa2; --cv-head: #222429; --cv-head-hi: #2d3036; --cv-rule: rgba(255, 255, 255, 0.07); --cv-card-edge: rgba(255, 255, 255, 0.11);
+  --cv-stage: radial-gradient(120% 95% at 50% 34%, #272a31 0%, #1d2025 52%, #15171b 100%);
+  --cv-paper: #2c3037; --cv-ink: #ececf1; --cv-ink-2: #a3a3ab; --cv-head: #343840; --cv-head-hi: #3e434c; --cv-rule: rgba(255, 255, 255, 0.09); --cv-card-edge: rgba(255, 255, 255, 0.17);
+  --cv-gd: 0.3; --cv-gd-major: 0.55;
   --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
   --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
   --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: rgba(255, 255, 255, 0.14); --cv-sheath-mid: rgba(0, 0, 0, 0.32); --cv-sheath-lo: rgba(0, 0, 0, 0.55);
-  --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #14161a; --cv-lace: #d9d9df; --cv-copper: #d4935a;
+  --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #1f2227; --cv-lace: #d9d9df; --cv-copper: #d4935a;
   --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); --cv-band-lo: #0c0c0e; --cv-band-hi2: #3e3f45;
   --cv-card-shadow: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
   --glass-bg: rgba(44, 46, 52, 0.55); --glass-edge: rgba(255, 255, 255, 0.12); --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.2); --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); --glass-on: rgba(255, 255, 255, 0.14);
@@ -399,8 +403,8 @@ button.chip.g-chip { cursor: pointer; }
 @media (max-width: 860px) { .canvas-wrap .hud-ico span, .canvas-wrap .board-hud.right { display: none; } .canvas-wrap .tip { max-width: calc(100% - 24px); bottom: 54px; } }
 
 /* The grid recedes into the stage. */
-.lm-canvas .gd { opacity: 0.16; }
-.lm-canvas .gd.major { opacity: 0.32; }
+.lm-canvas .gd { opacity: var(--cv-gd, 0.16); }
+.lm-canvas .gd.major { opacity: var(--cv-gd-major, 0.32); }
 
 /* Cards: connector tables and box labels, rounded and lit from above. */
 .lm-canvas .cv-card { fill: var(--cv-paper); filter: var(--cv-card-shadow); }
