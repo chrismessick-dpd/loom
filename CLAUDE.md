@@ -61,6 +61,9 @@ links to it so far. Before every commit:
     side, a whole number of turns of about 40 units per wire, easing level into and out of the
     straight runs. The near-side stretches (`over`, `.w-over`) are drawn over the other wires, so
     they alternate over and under. A group wire on a row apart from the rest stays straight.
+    A bundle of more than two wires (not one twisted set) is laced instead of banded (`lacing`):
+    at each end a tie loops round the wires, a lens knotted at the top with two short tails, its
+    far side drawn under the wires (in `boxBack`) and its near side, knot and tails over them.
     A bundle that is nothing but one twisted set (`b.twistOnly`) gets no bands, and its twist
     runs nearly the box's width; a cable keeps its sheath.
   - A bundle's label table (B1, count, gauge, length) sits under its wires; a cable's stays on top

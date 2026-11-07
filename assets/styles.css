@@ -237,6 +237,10 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-band rect { fill: var(--cv-band); stroke: var(--cv-sheath-edge); stroke-width: 1; }
 .lm-canvas .cv-band line { stroke: var(--cv-band-hi); stroke-width: 2; stroke-linecap: round; }
 .lm-canvas .cv-band { pointer-events: none; }
+/* Lacing ties on bundles of more than two wires (conn.js lacing). */
+.lm-canvas .cv-lace, .lm-canvas .cv-lace path { fill: none; stroke: var(--cv-ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.lm-canvas .cv-lace .cv-lace-knot { fill: var(--cv-paper); stroke: var(--cv-ink); stroke-width: 1.6; }
+.lm-canvas .cv-lace.sel, .lm-canvas .cv-lace.sel path, .lm-canvas .cv-lace.sel .cv-lace-knot { stroke: var(--cv-sel); }
 .lm-canvas .cv-sheath.sel, .lm-canvas .cv-band.sel rect, .lm-canvas .cv-frame.sel { stroke: var(--cv-sel); stroke-width: 2.4; }
 /* From a twisted wire's row text to where its twist starts. */
 .lm-canvas .cv-lead { fill: none; stroke: var(--cv-ink-2); stroke-width: 0.9; stroke-linecap: round; pointer-events: none; }

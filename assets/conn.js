@@ -510,7 +510,25 @@
   const looseSvg = (it, w, which, cls) => `<circle class="cv-port cv-loose${cls}" cx="${f(it.x)}" cy="${f(it.y)}" r="${PORT_R}" data-end="${w.id}|${which}" data-wire="${w.id}"/>`;
   function boxBack(it, opts) {
     const b = it.b, sel = boxSel(it, opts);
-    return `<rect class="cv-box${b.kind === 'cable' ? ' cable' : ''}${sel ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>`;
+    return `<rect class="cv-box${b.kind === 'cable' ? ' cable' : ''}${sel ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>` +
+      lacing(it, opts, 'back');
+  }
+  // A bundle of more than two wires (not a cable, not one twisted set) is laced: at each end a tie
+  // loops around the wires, a little lens tied off in a knot at the top with two short tails. Its
+  // far side runs behind the wires (part 'back', drawn under them) and its near side, knot and
+  // tails in front, so it reads as wrapped round them.
+  const laced = b => b.kind === 'bundle' && !b.twistOnly && b.wires.length > 2;
+  function lacing(it, opts, part) {
+    if (!laced(it.b)) return '';
+    const cls = (boxSel(it, opts) ? ' sel' : '') + dimIf(boxDim(it, opts));
+    const top = it.y + it.sz.h0 + 5, bot = it.y + it.sz.rowsBot - 5, H = bot - top, c = BOX_END.bundle / 2;
+    return [it.x + c, it.x + it.w - c].map(kx => {
+      const bx = kx - 2;
+      if (part === 'back') return `<path class="cv-lace${cls}" d="M${f(kx)} ${f(top)}C${f(kx + 9)} ${f(top + H * 0.25)} ${f(bx + 8)} ${f(bot - H * 0.3)} ${f(bx)} ${f(bot)}"/>`;
+      return `<g class="cv-lace${cls}"><path d="M${f(kx)} ${f(top)}C${f(kx - 10)} ${f(top + H * 0.3)} ${f(bx - 9)} ${f(bot - H * 0.25)} ${f(bx)} ${f(bot)}"/>` +
+        `<path d="M${f(kx - 1)} ${f(top - 1)}Q${f(kx - 4)} ${f(top - 6)} ${f(kx - 7)} ${f(top - 8)}M${f(kx + 1.5)} ${f(top - 1.5)}Q${f(kx + 5)} ${f(top - 5)} ${f(kx + 9)} ${f(top - 5.5)}"/>` +
+        `<circle class="cv-lace-knot" cx="${f(kx)}" cy="${f(top)}" r="2.4"/></g>`;
+    }).join('');
   }
   const boxDim = (it, opts) => !!opts.focus && !it.b.wires.some(w => opts.focus.wires.has(w.id));
   // Over the wires, the rows get a picture of what holds them: a cable's sheath, dark and see-through
@@ -523,6 +541,7 @@
       return `<rect class="cv-sheath${cls}" x="${f(x)}" y="${f(top + 2)}" width="${f(w)}" height="${f(hh)}" rx="${f(Math.min(14, hh / 2))}" ry="${f(hh / 2)}"/>`;
     }
     if (b.twistOnly) return '';
+    if (laced(b)) return lacing(it, opts, 'front');
     const bw = 13, inset = (BOX_END.bundle - bw) / 2, hh = bot - top - 4;
     return [x + inset, x + w - inset - bw].map(bx =>
       `<g class="cv-band${cls}"><rect x="${f(bx)}" y="${f(top + 3)}" width="${bw}" height="${f(hh - 2)}" rx="3"/>` +
