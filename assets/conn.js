@@ -20,6 +20,9 @@
   // sheath or a braid keeps END at its ends for them. BADGE is the room under the wires for the
   // outermost set's badge.
   const NEST = 24, END = 24, BADGE = 30;
+  // A nested set running past its parent's end is drawn OUT past it plus its overhang to scale, at
+  // most OVER_MAX; no set is drawn narrower than MIN_SET_W.
+  const OUT = 6, OVER_MAX = 240, MIN_SET_W = 60;
   // A cable reaches CABLE_R above its first wire and below its last, so its sheath clears the
   // first row's text (Chris).
   const CABLE_R = 18;
@@ -156,10 +159,34 @@
       const all = setsUnder(h, b.set);
       const D = Math.max(0, ...all.map(x => x.depth));
       lead = all.some(x => x.s.twist && (x.depth > 0 || hasEnds(x.s))) ? LEAD : 0;
-      const badges = all.reduce((t, x) => t + badgeW(x.s.label) + BADGE_GAP, -BADGE_GAP);
-      w = Math.max(rowW + lead + 2 * (END + D * NEST), badges, 120);
+      w = Math.max(rowW + lead + 2 * (END + D * NEST), 120);
     }
-    const sz = { w, text, lead, cols };
+    const sz = { w, text, lead, cols, rootW: w, lx: 0, k: 1, ext: new Map() };
+    if (b.kind === 'set') {
+      // Where each set's ends sit, from the box's left. The outermost set spans rootW. A nested
+      // set at 0 overhang sits NEST inside its parent's ends; one that runs past (over > 0) is
+      // drawn OUT past them plus its overhang to the scale of the outermost set (k mm per unit,
+      // 2 when its length isn't known), up to OVER_MAX; one that stops inside moves in from the
+      // nested spot. The box grows to hold them all (lx: room added on the left).
+      const L = M.setLength(h, A, b.set);
+      sz.k = L ? Math.min(10, Math.max(0.3, L / w)) : 2;
+      const ext = (st, p) => {
+        const o = M.ov(st);
+        if (!p) return { x0: 0, x1: w };
+        const side = (end, v, dir) => (v > 0 ? end + dir * (OUT + Math.min(v / sz.k, OVER_MAX)) : end - dir * NEST + dir * Math.max(v / sz.k, -OVER_MAX));
+        let x0 = side(p.x0, o.l, -1), x1 = side(p.x1, o.r, 1);
+        if (x1 - x0 < MIN_SET_W) { const c = (x0 + x1) / 2; x0 = c - MIN_SET_W / 2; x1 = c + MIN_SET_W / 2; }
+        return { x0, x1 };
+      };
+      const walk = (st, p) => { const e = ext(st, p); sz.ext.set(st.id, e); st.sets.forEach(id => { const c = M.set(h, id); if (c) walk(c, e); }); };
+      walk(b.set, null);
+      const xs = [...sz.ext.values()], lo = Math.min(0, ...xs.map(e => e.x0)), hi = Math.max(w, ...xs.map(e => e.x1));
+      sz.lx = -lo;
+      sz.ext.forEach(e => { e.x0 -= lo; e.x1 -= lo; });
+      const all = setsUnder(h, b.set), badges = all.reduce((t, x) => t + badgeW(x.s.label) + BADGE_GAP, -BADGE_GAP);
+      sz.w = Math.max(hi - lo, sz.lx + badges);
+    }
+    w = sz.w;
     arrange(h, b, sz, w2 => w2.no);
     return sz;
   }
@@ -350,8 +377,27 @@
       i.key = i.kind === 'box' ? 'b:' + i.b.key : 'n:' + i.n.id;
       const p = place[i.key];
       if (p && isFinite(p.x) && isFinite(p.y)) {
-        i.x = p.x; i.y = p.y + (i.kind === 'box' ? tableShift(i.b, p) : 0); i.placed = true;
+        // A box's stored x is its outermost set's left end, so a set running past it on the left
+        // grows the box leftward and leaves the wires where they were.
+        i.x = p.x - (i.kind === 'box' ? i.sz.lx || 0 : 0); i.y = p.y + (i.kind === 'box' ? tableShift(i.b, p) : 0); i.placed = true;
       }
+    });
+    // A stack (wires in no set: just their labels) that nobody dragged follows its ends once one of
+    // them was dragged (Chris: the labels on a splice's outputs stayed put when P2 moved, bending
+    // the wires). It centers between the parts on its left and right, with its rows centered on
+    // their wires and on the pitch. A set's box stays where the layout or a drag put it, so it
+    // doesn't slide onto other parts.
+    boxes.forEach(b => {
+      const it = b.item;
+      if (it.placed || b.kind !== 'stack') return;
+      const ends = b.wires.flatMap(w => leftFirst(w).map((e, i) => ({ e, i, it: itemOf.get(e.node) }))).filter(o => o.it);
+      if (!ends.some(o => o.it.placed)) return;
+      const L = ends.filter(o => !o.i), R = ends.filter(o => o.i);
+      if (!L.length || !R.length) return;
+      const lx = Math.max(...L.map(o => o.it.x + o.it.w)), rx = Math.min(...R.map(o => o.it.x));
+      const ys = ends.map(o => endY(o.e)).filter(y => y != null);
+      it.x = Math.round((lx + rx) / 2 - it.w / 2);
+      if (ys.length) it.y = Math.round((ys.reduce((t, y) => t + y, 0) / ys.length - G.BROW * (it.sz.rows.length - 1) / 2) / PITCH) * PITCH - it.sz.port0;
     });
     // Splice ports nobody arranged follow the wires they lead to, so the wires don't cross.
     const yOfWire = (w, id) => {
@@ -614,7 +660,7 @@
   const looseSvg = (it, w, which, cls, rg) => `<circle class="cv-port cv-loose${cls}${rg ? rg.cls : ''}" cx="${f(it.x)}" cy="${f(it.y)}" r="${PORT_R}" data-end="${w.id}|${which}" data-wire="${w.id}"${rg ? rg.style : ''}/>`;
   // A box's sets, drawn round their rows. Each set's stretch of the box is inset NEST per level in.
   const wireYAt = (it, i) => it.y + it.sz.port0 + PITCH * i;
-  const spanX = (it, sp) => ({ x0: it.x + sp.depth * NEST, x1: it.x + it.w - sp.depth * NEST });
+  const spanX = (it, sp) => { const e = it.sz.ext.get(sp.s.id); return e ? { x0: it.x + e.x0, x1: it.x + e.x1 } : { x0: it.x, x1: it.x + it.w }; };
   function spanGeom(it, sp) {
     const g = spanX(it, sp), top = wireYAt(it, sp.i0) - sp.R, bot = wireYAt(it, sp.i1) + sp.R, hh = bot - top;
     return { x: g.x0, w: g.x1 - g.x0, top, bot, rx: Math.min(14, hh / 2), ry: hh / 2 };
@@ -684,6 +730,19 @@
       return `<rect class="cv-setarea${on ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(g.x)}" y="${f(g.top)}" width="${f(g.w)}" height="${f(g.bot - g.top)}" rx="${f(g.rx)}" data-set="${esc(sp.s.id)}"><title>${esc(name)}</title></rect>`;
     }).join('');
   }
+  // A grip at each end of every nested set (canvas only), to drag that end past its parent's or
+  // in from it (app.js). It shows on hover, and stays while its set is selected.
+  function setEnds(it, opts) {
+    if (opts.sheet) return '';
+    return it.sz.spans.filter(sp => sp.depth).map(sp => {
+      const g = spanGeom(it, sp), on = spanSel(sp, opts) ? ' on' : '';
+      return ['l', 'r'].map(k => {
+        const x = k === 'l' ? g.x : g.x + g.w;
+        return `<g class="cv-setend${on}" data-setend="${esc(sp.s.id)}|${k}" data-set="${esc(sp.s.id)}"><rect class="cv-setend-hit" x="${f(x - 6)}" y="${f(g.top)}" width="12" height="${f(g.bot - g.top)}"/>` +
+          `<rect class="cv-setend-grip" x="${f(x - 2)}" y="${f(g.top + g.ry - 8)}" width="4" height="16" rx="2"/></g>`;
+      }).join('');
+    }).join('');
+  }
   // The badges: one per set in the box, in a row under it from the left, outermost first and then
   // down the tree (Chris). Each is a pill with a dot in its set's color (the Properties chip colors)
   // and its label, and a leader runs from it up to the bottom edge of its set, ending in a dot.
@@ -691,7 +750,7 @@
   const setKind = st => (st.cable ? 'cable' : st.bundle ? 'bundle' : st.twist ? 'twist' : 'shield');
   function badgeRow(it) {
     const y = wireYAt(it, it.sz.rows.length - 1) + it.sz.R0 + 8;
-    let x = it.x;
+    let x = it.x + (it.sz.lx || 0);
     return it.sz.spans.map(sp => {
       const w = badgeW(sp.s.label), g = spanGeom(it, sp), cx = x + w / 2;
       // The leader meets its set's bottom edge straight above the badge, or as near as it can.
@@ -721,9 +780,10 @@
   }
   function boxFront(it, opts, Lo, hatch) {
     const sz = it.sz, x = it.x, w = it.w, F = opts.focus;
-    let o = it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) + badges(it, opts) : '';
+    let o = it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) + setEnds(it, opts) + badges(it, opts) : '';
     const c = sz.cols, inner = c.from + c.c + c.to + 40;
-    const x0 = x + (w - inner + sz.lead) / 2;
+    // The text is centered on the outermost set.
+    const x0 = x + (sz.lx || 0) + (sz.rootW - inner + sz.lead) / 2;
     sz.rows.forEach((r, i) => {
       if (!r.w) return;
       // The text sits above the wire and isn't clickable (Chris): a wire is picked by its line in

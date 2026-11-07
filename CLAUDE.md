@@ -41,7 +41,10 @@ links to it so far. Before every commit:
     under 860 px, where the right pane is hidden and the rail shows the selection.
   - Boxes: one per outermost wire set (`kind: 'set'`, key `g:<set id>`), and the wires in no set run
     in a plain stack per end pair (`kind: 'stack'`, key `p:<pair>`, or `s:<pair>` for a wire alone),
-    with no badge or decoration. See *Wire sets* below.
+    with no badge or decoration. See *Wire sets* below. A stack nobody dragged follows its ends
+    once one of them is dragged: it centers between them, rows level with their wires (Chris: a
+    splice's output labels stayed put when P2 moved). A set's box doesn't, so it can't slide onto
+    other parts.
   - The canvas and the drawing sheet use the same diagram. The sheet stays a plain paper diagram;
     the canvas adds a finish (see *Canvas finish* below).
   - The formboard renderer (`render.js`), breakouts in the UI, coverings in the UI and the
@@ -61,11 +64,30 @@ links to it so far. Before every commit:
     exactly one set's wires select that set (`wiresSel` in `app.js`).
   - **Labels.** C for a cable, B for a bundle, TP for twisted, SH for shielded. A label made from
     the prefix follows it when the prefix changes; one typed by hand stays (`relabel`).
-  - **Lengths.** A set covers the segments its wires share (`A.spans`). `s.length` (Properties ›
-    Covers) can make it shorter, so an inner set can run on past its bundle. The BOM uses it
-    (`setLength`): a cable shorter than its wires leaves the rest as loose wire, and a shield
-    braid is listed only outside any cable. The diagram doesn't show where along the run a set
-    stops; that needs a layout (formboard) view.
+  - **Lengths** (`setLength`). An outermost set covers `s.length` (Properties › Covers), or by
+    default the run its wires share (`A.spans`). A nested set covers its parent's length plus
+    `s.over.l` and `s.over.r`, how far each end runs past the parent's (Chris; negative stops
+    inside), so TP1 can run 100 mm past B1: B1's 150 + 100. The demo (`VERSION` 9) shows it: B1
+    covers 150 mm of the 250 mm run, and TP1 runs 15 mm past it on the left and 85 mm on the
+    right. The demo also places P2's left side at P3's right side, S1's middle at TP1's right
+    end, and the S1 → P2 labels a fifth of the way from S1 to P2, level with S1's output ports, taken from the auto layout
+    (`demo.js`). Tree edits keep totals:
+    `dissolveSet` adds a parent's overhangs to its children's, or turns a child's total into its
+    own length when it becomes outermost; `makeSet` turns an outermost set's own length into an
+    overhang when it's wrapped; old nested `s.length` values convert in `normalize`. Checks warns
+    when a set covers more than its wires' run. The BOM uses `setLength`: a cable shorter than its
+    wires leaves the rest as loose wire, and a shield braid is listed only outside any cable.
+  - **Dragging a set's ends** (Chris). Each nested set has a grip at each end (`setEnds`,
+    `data-setend`; it shows on hover and while selected). Dragging it sets that overhang
+    (`dragSetEnd` in `app.js`): measured from the drag's start, to the outermost set's scale
+    (`sz.k`, mm per unit: its length over its drawn width, or 2 when unknown), snapped to 5 mm,
+    and kept between a 10 mm set and its wires' run; `#tip` reads the overhang and the total, and
+    one undo reverts it. Within `NEST` of the parent's end is 0; past it by `OUT` is positive. In
+    the box (`sz.ext`), a set at 0 sits `NEST` inside its parent, one running past is drawn `OUT`
+    past the parent's end plus its overhang to scale (at most `OVER_MAX`), and the box grows to
+    hold it (`sz.lx` on the left). A box's `h.place` x is its outermost set's left end, so a left
+    overhang doesn't move the wires. Outermost sets' ends don't drag: their length is Covers. The
+    diagram is still schematic; where along the run a set sits needs a layout (formboard) view.
   - **Drawing** (`conn.js`). `arrange` orders a box's rows by the set tree, so each set's rows are
     contiguous (`sz.spans`, outermost first). Neighboring sets whose drawings would touch get an
     empty row on the pitch. Each level in is inset `NEST` at both ends, and reaches `R` above its

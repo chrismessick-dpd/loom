@@ -575,6 +575,12 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-badge.k-shield .cv-badge-dot { fill: #9a4ad0; }
 .lm-canvas .cv-badge:hover rect { stroke: var(--cv-sel); stroke-opacity: 0.6; }
 .lm-canvas .cv-badge.sel rect { stroke: var(--cv-sel); stroke-width: 1.8; filter: drop-shadow(0 0 5px var(--cv-glow)); }
+/* A nested set's end grips: drag to run the end past its parent's or in from it. */
+.lm-canvas .cv-setend { cursor: ew-resize; }
+.lm-canvas .cv-setend-hit { fill: transparent; }
+.lm-canvas .cv-setend-grip { fill: var(--cv-sel); opacity: 0; transition: opacity 0.15s; pointer-events: none; }
+.lm-canvas .cv-setend:hover .cv-setend-grip, .lm-canvas .cv-setend.on .cv-setend-grip { opacity: 1; }
+.lm-canvas.dragging .cv-setend-grip { opacity: 1; }
 .lm-canvas .cv-leader { pointer-events: none; }
 .lm-canvas .cv-leader path { fill: none; stroke: var(--cv-ink-2); stroke-opacity: 0.7; stroke-width: 1; stroke-linejoin: round; }
 .lm-canvas .cv-leader circle { fill: var(--cv-ink-2); }

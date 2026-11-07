@@ -4,7 +4,7 @@
 (function (LM) {
   'use strict';
   const M = LM.model;
-  const VERSION = 3; // bump when the demo changes, so stored copies rebuild
+  const VERSION = 9; // bump when the demo changes, so stored copies rebuild
 
   function harness() {
     const h = M.blank('Display & Sensor Harness');
@@ -33,10 +33,31 @@
     const r = w(p4, '1', p5, '1', '24VAC_R', 'RD', '22');
     const cm = w(p4, '2', p5, '2', '24VAC_C', 'BU', '22');
     // The I2C pair is twisted and shielded, and laced into a bundle with 3V3 and TOUCH_INT.
-    M.makeSet(h, [sda.id, scl.id], { twist: true, shield: true });
-    M.makeSet(h, [v33.id, sda.id, scl.id, tint.id], { bundle: true });
+    // The bundle is laced over 150 mm of the 250 mm run, and the pair runs just past it on the
+    // left (15 mm) and on past it to the right (85 mm): 250 mm in all, connector to connector.
+    const pair = M.makeSet(h, [sda.id, scl.id], { twist: true, shield: true });
+    const bundle = M.makeSet(h, [v33.id, sda.id, scl.id, tint.id], { bundle: true, length: 150 });
+    pair.over = { l: 15, r: 85 };
     M.makeSet(h, [ntc.id, rtn.id], { cable: true, note: '2 x 26 AWG, PVC jacket' });
     M.makeSet(h, [r.id, cm.id], { twist: true });
+
+    // Placed by hand (Chris): P2's left side at P3's right side, S1's middle at TP1's right end,
+    // and the S1 → P2 labels' left side a fifth of the way from S1's right side to P2's left, their
+    // rows level with S1's output ports so the wires leave S1 parallel.
+    // Taken from the auto layout and snapped to the 10 grid, so they follow it.
+    const lay = () => LM.conn.layout(h, M.analyze(h));
+    const up = v => Math.ceil(v / 10) * 10, near = v => Math.round(v / 10) * 10;
+    let lo = lay();
+    const at = n => lo.items.find(i => i.n && i.n.id === n.id);
+    h.place = { ['n:' + p2.id]: { x: up(at(p3).x + at(p3).w), y: at(p2).y, v: 3 } };
+    lo = lay();
+    const box = lo.items.find(i => i.kind === 'box' && i.b.set && i.b.set.id === bundle.id);
+    h.place['n:' + s1.id] = { x: near(box.x + box.sz.ext.get(pair.id).x1 - at(s1).w / 2), y: at(s1).y, v: 3 };
+    lo = lay();
+    const key = 'b:p:' + [s1.id, p2.id].sort().join('|'), labels = lo.items.find(i => i.key === key);
+    const s1R = at(s1).x + at(s1).w;
+    const first = labels.sz.rows.find(r => r.w).w, port = lo.endY(first.from.node === s1.id ? first.from : first.to);
+    h.place[key] = { x: near(s1R + (at(p2).x - s1R) / 5), y: port - labels.sz.port0, v: 3 };
     return h;
   }
   LM.demo = { harness, VERSION };

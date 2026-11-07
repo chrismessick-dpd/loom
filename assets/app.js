@@ -312,9 +312,12 @@
     if (e.button > 2) return;
     // A wire-end dot (a splice port, a loose end, or where a wire meets a pin) drags that end.
     const endEl = e.button === 0 && !S.pending && e.target.closest('[data-end]');
-    const itemEl = e.button === 0 && !endEl && e.target.closest('[data-item]');
+    // A nested set's end grip drags that end past its parent's or in from it.
+    const setEndEl = e.button === 0 && !S.pending && !endEl && e.target.closest('[data-setend]');
+    const itemEl = e.button === 0 && !endEl && !setEndEl && e.target.closest('[data-item]');
     const end = endEl ? { wire: endEl.dataset.end.split('|')[0], which: endEl.dataset.end.split('|')[1] } : null;
-    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl ? itemEl.dataset.item : null, end };
+    const setEnd = setEndEl ? { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] } : null;
+    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl ? itemEl.dataset.item : null, end, setEnd };
     svgEl().setPointerCapture(e.pointerId);
   }
   // Where a dragged wire end would land: a splice (the side and port slot under the pointer), a
@@ -367,10 +370,12 @@
       if (g.lo) previewEnd(g, e);
       return;
     }
+    if (g.setEnd) { dragSetEnd(g, dx); return; }
     if (!g.moved && g.item) {
       const it = lastLayout && lastLayout.items.find(i => i.key === g.item);
       if (!it) g.item = null;
-      else { snapshot(); g.start = { x: it.x, y: it.y }; g.port0 = it.sz.port0 || 0; S.lift = g.item; svgEl().classList.add('dragging'); }
+      // A box's stored x is its outermost set's left end (conn.js), past any set running out on the left.
+      else { snapshot(); g.start = { x: it.x + (it.kind === 'box' ? it.sz.lx || 0 : 0), y: it.y }; g.port0 = it.sz.port0 || 0; S.lift = g.item; svgEl().classList.add('dragging'); }
     }
     g.moved = true;
     if (g.item) {
@@ -388,11 +393,47 @@
     S.cam.x = g.cam0.x - dx / S.cam.k; S.cam.y = g.cam0.y - dy / S.cam.k;
     setView();
   }
+  // Drag a nested set's end: everything is measured from the drag's start (the layout then, its
+  // scale and the parent's end), so the value follows the pointer even as the box grows. Past the
+  // parent's end by OUT, the overhang is the distance times the scale; within NEST of it, 0; further
+  // in, negative. Snapped to 5 mm, and kept between a 10 mm set and the run its wires share. One
+  // snapshot, so one undo puts it back. The tip reads the overhang and the total.
+  const OUT = 6, NEST = 24;
+  function dragSetEnd(g, dx) {
+    const h = H(), d = g.setEnd;
+    if (!g.moved) {
+      const st = M.set(h, d.id), p = st && M.parentOf(h, d.id);
+      const it = p && lastLayout && lastLayout.items.find(i => i.kind === 'box' && i.sz.ext && i.sz.ext.has(d.id));
+      if (!it) { gesture = null; return; }
+      const A = M.analyze(h), pe = it.sz.ext.get(p.id), ce = it.sz.ext.get(d.id);
+      snapshot();
+      g.moved = true;
+      Object.assign(g, { k: it.sz.k, parentX: it.x + (d.side === 'r' ? pe.x1 : pe.x0), endX: it.x + (d.side === 'r' ? ce.x1 : ce.x0),
+        PL: M.setLength(h, A, p), run: M.setRun(A, st), other: M.ov(st)[d.side === 'r' ? 'l' : 'r'], parentLabel: p.label });
+      S.sel = { kind: 'set', ids: new Set([d.id]) };
+      svgEl().classList.add('dragging');
+    }
+    const at = g.endX + dx / S.cam.k, rel = d.side === 'r' ? at - g.parentX : g.parentX - at;
+    let v = rel > OUT ? (rel - OUT) * g.k : rel >= -NEST ? 0 : (rel + NEST) * g.k;
+    v = Math.round(v / 5) * 5;
+    if (g.PL != null) {
+      v = Math.max(v, 10 - g.PL - g.other);
+      if (g.run != null) v = Math.min(v, g.run - g.PL - g.other);
+    }
+    const st = M.set(h, d.id);
+    st.over = Object.assign(M.ov(st), { [d.side]: v });
+    renderCanvas();
+    const tip = $('#tip'), total = g.PL == null ? null : g.PL + g.other + v;
+    tip.style.display = 'block';
+    tip.innerHTML = `<b>${esc(st.label)}</b> ${v > 0 ? `runs ${v} mm past` : v < 0 ? `stops ${-v} mm inside` : 'ends with'} ${esc(g.parentLabel)} on the ${d.side === 'r' ? 'right' : 'left'}` +
+      (total != null ? ` · ${U.fmtLen(total)} in all` : '');
+  }
   function onUp() {
     const g = gesture;
     gesture = null;
     S.lift = null;
     svgEl().classList.remove('dragging', 'dragging-end');
+    if (g && g.setEnd && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
       renderAll();
@@ -639,11 +680,11 @@
     return `<div class="color-row"><span class="swatch" style="background:${c.base || 'transparent'}">${c.stripe ? `<i style="background:${c.stripe}"></i>` : ''}</span>${base}${stripe}</div>`;
   }
   // Length for a set of wires: editable when they all run along one segment, else the routed total.
-  function lenField(h, A, ws) {
+  function lenField(h, A, ws, label) {
     const rs = ws.map(w => A.routes.get(w.id));
     if (rs.every(r => r && r.segs.length === 1 && r.segs[0] === rs[0].segs[0])) {
       const s = rs[0].segs[0];
-      return fld('Length (mm)', inp('len.' + s.id, s.length, ' type="number" min="0" step="5" placeholder="Not set"'), s.length != null ? U.fmtLen(s.length) + ', connector face to face.' : 'Connector face to face.');
+      return fld(label || 'Length (mm)', inp('len.' + s.id, s.length, ' type="number" min="0" step="5" placeholder="Not set"'), s.length != null ? U.fmtLen(s.length) + ', connector face to face.' : 'Connector face to face.');
     }
     const lens = ws.map(w => A.wireLen.get(w.id));
     return fld('Length', `<div class="f-hint">${lens.every(x => x != null) ? [...new Set(lens)].map(U.fmtLen).join(', ') : 'Not set on every part of the route.'} Set it on each box the wire runs through.</div>`);
@@ -768,6 +809,16 @@
   // A set, or several wires that aren't one (st null). Ticking a property on loose wires makes them
   // a set, taking in any set wholly inside the selection, so a bundle can hold a twisted pair.
   // Cable and Bundle exclude each other; unticking the last property dissolves the set.
+  // How much a set covers. An outermost set: its own length (empty: the run its wires share). A
+  // nested one: how far each end runs past its parent's (negative stops inside), which dragging
+  // its ends on the canvas also sets, and the total.
+  function coversField(h, A, st, run) {
+    const p = M.parentOf(h, st.id);
+    if (!p) return fld('Covers (mm)', inp('set.length', st.length, ` type="number" min="0" step="5" placeholder="${run == null ? 'Not set' : run}"`), run == null ? 'Its wires share no length yet.' : `Empty covers the ${esc(U.fmtLen(run))} its wires run together.`);
+    const o = M.ov(st), PL = M.setLength(h, A, p), total = M.setLength(h, A, st);
+    return `<div class="row2">${fld(`Past ${esc(p.label)}, left (mm)`, inp('set.over.l', o.l, ' type="number" step="5"'))}${fld('Right (mm)', inp('set.over.r', o.r, ' type="number" step="5"'))}</div>` +
+      `<div class="f-hint">${total == null ? `Set ${esc(p.label)}'s length to see this one's.` : `Covers ${esc(U.fmtLen(total))}: ${esc(p.label)}'s ${PL} mm${o.l ? (o.l > 0 ? ' + ' : ' − ') + Math.abs(o.l) + ' left' : ''}${o.r ? (o.r > 0 ? ' + ' : ' − ') + Math.abs(o.r) + ' right' : ''}.`} Negative stops inside. Drag its ends on the canvas to set these.</div>`;
+  }
   function railSet(h, A, st, ws) {
     const ids = ws.map(w => w.id);
     const why = st ? '' : M.whyNot(h, ids), m = st ? null : M.membersFor(h, ids);
@@ -786,8 +837,8 @@
       <p class="f-hint">${why ? esc(why) : st ? esc(M.setWord(st)) + (M.setTraits(st) ? ', ' + esc(M.setTraits(st)) : '') + '.' : 'Tick one to make these wires a set.'}</p>
       ${st ? fld('Label', inp('set.label', st.label)) : ''}
       ${st && (st.cable || st.shield) ? fld('Description', inp('set.note', st.note, ` placeholder="${st.cable ? '2 x 26 AWG, PVC jacket' : 'Tinned copper braid'}"`)) + fld('Part number', inp('set.pn', st.pn)) : ''}
-      ${lenField(h, A, ws)}
-      ${st ? fld('Covers (mm)', inp('set.length', st.length, ` type="number" min="0" step="5" placeholder="${run == null ? 'Not set' : run}"`), run == null ? 'Its wires share no length yet.' : `Empty covers the ${esc(U.fmtLen(run))} its wires run together. Less lets it end sooner, so an inner set can run on past it.`) : ''}
+      ${lenField(h, A, ws, 'Wire length (mm)')}
+      ${st ? coversField(h, A, st, run) : ''}
       ${fld('Set color', colorSelects('ws.color', ''))}
       ${st ? `<div class="f-label">Hierarchy</div>${setTree(h, M.setChain(h, st)[0], st.id)}` : ''}
       </div><div class="rail-actions"><span></span>${st
@@ -826,6 +877,7 @@
         const st = M.set(h, one()), k = f.slice(4);
         if (!st) return;
         if (k === 'length') st.length = v === '' ? null : Math.max(0, Math.round(+v));
+        else if (k === 'over.l' || k === 'over.r') st.over = Object.assign(M.ov(st), { [k.slice(5)]: Math.round(+v || 0) });
         else if (k === 'label') st.label = v.trim() || st.label;
         else st[k] = v;
       } else if (f.startsWith('w.') || f.startsWith('w:') || f.startsWith('ws.')) {

@@ -176,8 +176,11 @@
   // directly and every set in at most one parent, so the sets form a forest; h.sets is flat and the
   // tree is in the member lists. A set with no property means nothing and dissolves (its members
   // move up to its parent), and one whose only member is another set merges into it.
-  // Each set covers its own length (s.length, mm): by default the run all of its wires share, but
-  // it can be set shorter, so a twisted, shielded pair can run on past the end of its bundle.
+  // Lengths (mm). An outermost set covers s.length, or by default the run all of its wires share.
+  // A set inside another covers its parent's length plus s.over.l and s.over.r: how far each of its
+  // ends runs past the parent's (Chris; negative stops inside). So a twisted, shielded pair can run
+  // on 100 mm past the end of its bundle: its length is the bundle's plus 100. s.length means
+  // nothing on a nested set; tree edits move lengths between the two so totals stay put.
   const FLAGS = ['twist', 'shield', 'cable', 'bundle'];
   const holderOf = s => (s.cable ? 'cable' : s.bundle ? 'bundle' : null);
   const hasFlag = s => FLAGS.some(k => s[k]);
@@ -251,12 +254,22 @@
     let s = matchSet(h, ids);
     if (!s) {
       const m = membersFor(h, ids);
-      s = { id: props.id || U.uid('g'), label: '', wires: m.wires, sets: m.sets, twist: false, shield: false, cable: false, bundle: false, length: null, note: '', pn: '' };
+      s = { id: props.id || U.uid('g'), label: '', wires: m.wires, sets: m.sets, twist: false, shield: false, cable: false, bundle: false, length: null, over: { l: 0, r: 0 }, note: '', pn: '' };
       if (m.parent) {
         m.parent.wires = m.parent.wires.filter(id => !m.wires.includes(id));
         m.parent.sets = m.parent.sets.filter(id => !m.sets.includes(id)).concat(s.id);
       } else h.sets.forEach(x => { x.wires = x.wires.filter(id => !m.wires.includes(id)); });
       h.sets.push(s);
+      // Outermost sets taken into the new one keep their totals: an own length becomes an overhang
+      // past the new set's ends (on the right). Sets taken from a parent keep theirs, since the new
+      // set starts as long as that parent.
+      if (!m.parent) {
+        const kept = m.sets.map(id => set(h, id)).filter(c => c && c.length != null);
+        if (kept.length) {
+          const NL = setLength(h, analyze(h), s);
+          kept.forEach(c => { c.over = { l: 0, r: NL == null ? 0 : c.length - NL }; c.length = null; });
+        }
+      }
     }
     const before = s.label ? setPrefix(s) : null;
     Object.keys(props).forEach(k => { if (k !== 'id' && (k !== 'label' || props.label)) s[k] = props[k]; });
@@ -286,11 +299,19 @@
     tidySets(h);
     return set(h, id) || null;
   }
-  // Remove a set; its wires and sets move up to its parent. Wires are never deleted here.
+  // Remove a set; its wires and sets move up to its parent. Wires are never deleted here. Its child
+  // sets keep their lengths: their overhangs add its own, or, when they become outermost, their
+  // total becomes their own length.
+  const ov = s => ({ l: (s.over && +s.over.l) || 0, r: (s.over && +s.over.r) || 0 });
   function dissolveSet(h, id) {
     const s = set(h, id);
     if (!s) return;
-    const p = parentOf(h, id);
+    const p = parentOf(h, id), kids = s.sets.map(x => set(h, x)).filter(Boolean), so = ov(s);
+    if (p) kids.forEach(c => { const co = ov(c); c.over = { l: co.l + so.l, r: co.r + so.r }; });
+    else if (kids.some(c => s.length != null || ov(c).l || ov(c).r)) {
+      const A = analyze(h), SL = setLength(h, A, s);
+      kids.forEach(c => { const co = ov(c); c.length = SL == null ? null : Math.max(0, SL + co.l + co.r); c.over = { l: 0, r: 0 }; });
+    }
     if (p) { p.sets = p.sets.filter(x => x !== id).concat(s.sets); p.wires = p.wires.concat(s.wires); }
     h.sets = h.sets.filter(x => x !== s);
   }
@@ -329,8 +350,16 @@
       }
     }
   }
-  // The length a set covers: its own when set, else the run its wires share (null: unknown).
-  const setLength = (h, A, s) => (s.length != null ? s.length : spanLength(A.spans.get(s.id) || []));
+  // The length a set covers (null: unknown). Outermost: its own, else the run its wires share.
+  // Nested: its parent's plus its overhangs.
+  function setLength(h, A, s) {
+    const p = parentOf(h, s.id);
+    if (!p) return s.length != null ? s.length : spanLength(A.spans.get(s.id) || []);
+    const pl = setLength(h, A, p), o = ov(s);
+    return pl == null ? null : Math.max(0, pl + o.l + o.r);
+  }
+  // The run a set's wires share, which it can't cover more than.
+  const setRun = (A, s) => spanLength(A.spans.get(s.id) || []);
   // Wire pin n of one connector to pin n of the other, for every pin both have free.
   function wireStraight(h, aId, bId) {
     const a = node(h, aId), b = node(h, bId);
@@ -469,7 +498,10 @@
     h.sets.forEach(s => {
       const ref = { kind: 'set', id: s.id }, span = A.spans.get(s.id) || [], run = spanLength(span);
       if (!span.length) add('warn', `${s.label}'s wires share no segment, so it covers nothing.`, ref);
-      else if (s.length != null && run != null && s.length > run) add('warn', `${s.label} is set to cover ${s.length} mm, but its wires only run ${run} mm together.`, ref);
+      else {
+        const len = setLength(h, A, s);
+        if (len != null && run != null && len > run) add('warn', `${s.label} covers ${len} mm, but its wires only run ${run} mm together.`, ref);
+      }
     });
     return out.sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev]);
   }
@@ -547,8 +579,20 @@
       ['wires', 'sets'].forEach(k => { if (!Array.isArray(s[k])) s[k] = []; });
       ['label', 'note', 'pn'].forEach(k => { s[k] = s[k] || ''; });
       if (s.length == null || !isFinite(s.length)) s.length = null;
+      s.over = ov(s);
     });
     tidySets(h);
+    // Before overhangs, a nested set's length was its own s.length (Covers). It becomes an
+    // overhang on the right past its parent, outermost first so each parent's length is final.
+    const old = h.sets.filter(s => s.length != null && parentOf(h, s.id));
+    if (old.length) {
+      const A = analyze(h);
+      old.sort((a, b) => setChain(h, a).length - setChain(h, b).length).forEach(s => {
+        const PL = setLength(h, A, parentOf(h, s.id));
+        s.over = { l: 0, r: PL == null ? 0 : s.length - PL };
+        s.length = null;
+      });
+    }
     h.schema = SCHEMA;
     return h;
   }
@@ -570,7 +614,7 @@
     isConn, isLoose, node, seg, wire, set, other, nextRef, blank, addConnector, addNode, connect, splitSegment, removeNode, removeSegment, moveEnd,
     addWire, removeWires, wireStraight,
     holderOf, setWord, setPrefix, setTraits, parentOf, setOfWire, roots, wiresIn, chainOf, setChain, matchSet, crossing, membersFor, whyNot,
-    makeSet, setFlag, dissolveSet, tidySets, setLength, pinList, label, wireName, endText, parseEnd,
+    makeSet, setFlag, dissolveSet, tidySets, setLength, setRun, ov, setRun, ov, pinList, label, wireName, endText, parseEnd,
     analyze, spanLength, checks, fromTo, bom, qtyText, normalize,
   };
 })(window.LM = window.LM || {});
