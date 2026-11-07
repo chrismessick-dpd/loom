@@ -480,7 +480,7 @@
       (fx ? `<path class="w-shade" d="${d}"/>` : '') + `<path class="w-edge"${pl} d="${d}"/>` +
       `<path class="w-base"${pl} style="stroke:${c.base || '#9a9aa0'}" d="${d}"/>` +
       (c.stripe ? `<path class="w-stripe" style="stroke:${c.stripe}" d="${d}"/>` : '') +
-      (fx ? `<path class="w-gloss"${pl} d="${d}"/>` + (cls && /\s(sel|carry)\b/.test(cls) ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : '') : '') + '</g>';
+      (fx ? `<path class="w-gloss"${pl} d="${d}"/>` + (cls && /\s(sel|carry)\b/.test(cls) ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : cls && /\ssetsel\b/.test(cls) ? `<path class="w-pulse soft" pathLength="1" d="${d}"/>` : '') : '') + '</g>';
   }
   // Canvas-only ids, kept apart from anything a sheet or print SVG defines.
   const fxId = (kind, id) => 'lmfx-' + kind + '-' + String(id).replace(/[^\w-]/g, '_');
@@ -679,12 +679,16 @@
     const x0 = x + (w - inner + sz.lead) / 2;
     sz.rows.forEach((r, i) => {
       if (!r.w) return;
-      // The text sits above the wire. A twisted wire gets a leader from the text's left to where
-      // its twist starts, since the twist runs under the other rows' text.
+      // The text sits above the wire and isn't clickable (Chris): a wire is picked by its line in
+      // the open, and a click inside a set picks the set. A stack (wires in no set) keeps an
+      // invisible grab behind each row, outside the row's data-wire, so it still drags. A twisted
+      // wire gets a leader from the text's left to where its twist starts, since the twist runs
+      // under the other rows' text.
       const wy = wireYAt(it, i), top = wy - G.BROW + 3, ty = wy - 5;
       const ts = Lo && Lo.twistStart(r.w);
       const lead = ts && x0 - 4 > ts.x + 4 ? `<path class="cv-lead" d="M${f(x0 - 4)} ${f(ty - 4)}L${f(ts.x)} ${f(ts.y - 2.6)}"/>` : '';
-      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(it.b.kind === 'set' ? x0 - 6 : x)}" y="${f(top)}" width="${f(it.b.kind === 'set' ? inner + 12 : w)}" height="${G.BROW}"/>` + lead +
+      if (it.b.kind !== 'set' && !opts.sheet) o += `<rect class="cv-grab" x="${f(x0 - 6)}" y="${f(top)}" width="${f(inner + 12)}" height="${G.BROW}"/>`;
+      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}">` + lead +
         `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + 20 + c.c / 2)}" y="${f(ty)}" text-anchor="middle">${esc(r.color)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text></g>`;
@@ -724,7 +728,9 @@
       const dim = dimIf(opts.focus && !opts.focus.wires.has(w.id));
       const fresh = fx && (opts.intro || opts.fresh === w.id);
       // `carry`: the wire whose end is being dragged (canvas only), lit like a selection.
-      const cls = (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + dim + (fresh ? ' fresh' : '') + (fx && opts.carry === w.id ? ' carry' : '');
+      // A selected set's wires carry a softer pulse (setsel).
+      const inSet = opts.sel && opts.sel.kind === 'set' && opts.focus && opts.focus.wires.has(w.id);
+      const cls = (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + (inSet ? ' setsel' : '') + dim + (fresh ? ' fresh' : '') + (fx && opts.carry === w.id ? ' carry' : '');
       wires += wireSvg(w, p.d, cls, fx, fresh, opts.intro ? i : null);
       overs += overSvg(w, p.over, cls, fx);
       const rg = ring(opts, w, fresh);

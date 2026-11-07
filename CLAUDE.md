@@ -78,8 +78,13 @@ links to it so far. Before every commit:
   - **Set areas** (`setAreas`, canvas only). Each set's bounds are a hit area over the wires,
     outermost first, so the innermost set under the pointer wins. Hovering an area tints it and
     titles it, a click selects that set, and shift-click adds its wires to the selection (or takes
-    them out). Inside a box, a wire is picked by its row's text (`.cv-hit` covers only the text);
-    outside boxes, by its line. The areas sit inside the box's `data-item`, so they drag it.
+    them out). Row text is never clickable (`.cv-wrow` has no pointer events, Chris): a wire is
+    picked by its line in the open. A stack (wires in no set) keeps an invisible `.cv-grab` behind
+    each row so it still drags. The areas sit inside the box's `data-item`, so they drag it.
+  - **Selection look** (Chris). A selected wire's pulse (`.w-pulse`) is half its first strength
+    (opacity 0.5, a smaller glow). A selected set's wires carry one at half that (`.w-pulse.soft`,
+    wire class `setsel`). What a selection isn't about dims half as much as before (`.dim` 0.6,
+    wires 0.56, pins 0.65).
   - **Properties.** Several wires or a set show the **Wire set** panel. It has Twist, Shield, Cable
     and Bundle ticks, Label, Description and Part number (cable or shield), the wire length,
     Covers, Set color, and a clickable **Hierarchy** tree (`setTree`). Delete on a set dissolves
