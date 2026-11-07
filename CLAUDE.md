@@ -39,17 +39,48 @@ links to it so far. Before every commit:
     selection's fields and its Delete button). A new selection switches to Properties, and clearing
     it goes back to Parts (`renderParts`, `propsHtml`). The left rail shows only the harness, except
     under 860 px, where the right pane is hidden and the rail shows the selection.
-  - Boxes follow option (b): one box per cable group, and other wires are bundled per end pair
-    (`B1`, `B2`…). A wire alone between its two ends gets no box or table (Chris), just its label
-    row over the wire; Properties shows the rest. The layout gives it a `single` slot in the box
-    column (`boxesOf(h, A, true)`), which keeps the parts around it apart, holds the label and drags
-    like a box. `boxesOf` without that flag (the app's parts list and selections) leaves singles out.
+  - Boxes: one per outermost wire set (`kind: 'set'`, key `g:<set id>`), and the wires in no set run
+    in a plain stack per end pair (`kind: 'stack'`, key `p:<pair>`, or `s:<pair>` for a wire alone),
+    with no badge or decoration. See *Wire sets* below.
   - The canvas and the drawing sheet use the same diagram. The sheet stays a plain paper diagram;
     the canvas adds a finish (see *Canvas finish* below).
   - The formboard renderer (`render.js`), breakouts in the UI, coverings in the UI and the
     Formboard/Wiring sheet toggle are gone. The model still has segments, breakouts and coverings,
     so a Layout view can come back.
-- **Diagram look (2026-11-06, Chris):**
+- **Wire sets (2026-11-06, branch `sets`, Chris):** `h.groups` became `h.sets`, a forest of nested
+  sets (schema 2; `normalize` converts old groups, `fromGroups`).
+  - **Model.** A set is `{ id, label, wires, sets, twist, shield, cable, bundle, length, note, pn }`.
+    Its members are wires and child sets; a wire is in one set directly, and a set in one parent.
+    Cable and bundle exclude each other. A twist needs two or more wires of its own and no sets
+    inside. A bundle needs two members. A set with no property dissolves (its members move up),
+    and a set whose only member is a set merges into it (`tidySets`).
+  - **Making sets** (`makeSet`). Ticking a property on selected wires makes a set. Each wire is
+    lifted to the biggest set wholly inside the selection, so selecting a twisted pair and two
+    more wires and ticking Bundle puts the pair inside the bundle. A selection that holds part of
+    a set and also wires outside it is refused (`whyNot`, `crossing`). Two or more wires that are
+    exactly one set's wires select that set (`wiresSel` in `app.js`).
+  - **Labels.** C for a cable, B for a bundle, TP for twisted, SH for shielded. A label made from
+    the prefix follows it when the prefix changes; one typed by hand stays (`relabel`).
+  - **Lengths.** A set covers the segments its wires share (`A.spans`). `s.length` (Properties ›
+    Covers) can make it shorter, so an inner set can run on past its bundle. The BOM uses it
+    (`setLength`): a cable shorter than its wires leaves the rest as loose wire, and a shield
+    braid is listed only outside any cable. The diagram doesn't show where along the run a set
+    stops; that needs a layout (formboard) view.
+  - **Drawing** (`conn.js`). `arrange` orders a box's rows by the set tree, so each set's rows are
+    contiguous (`sz.spans`, outermost first). Neighboring sets whose drawings would touch get an
+    empty row on the pitch. Each level in is inset `NEST` at both ends, and reaches `R` above its
+    first wire and below its last. Each set draws its parts outermost first: lacing for a bundle
+    (`lacing`), the sheath for a cable, and a crosshatch braid for a shield (`holders`; the braid
+    goes over the sheath). The pattern ids are `lm-braid-canvas` and `lm-braid-sheet`. A twisted
+    set's wires twist inside its stretch. The box's label table is gone. Only the outermost set
+    gets a round badge under its wires (`badge`, `data-set`), and clicking the badge selects that
+    set.
+  - **Properties.** Several wires or a set show the **Wire set** panel. It has Twist, Shield, Cable
+    and Bundle ticks, Label, Description and Part number (cable or shield), the wire length,
+    Covers, Set color, and a clickable **Hierarchy** tree (`setTree`). Delete on a set dissolves
+    it (`dissolveSet`) and never deletes wires. A wire's chips link to its sets. The Parts tab
+    lists the wire sets as trees, and its Ends list is gone.
+- **Diagram look (2026-11-06, Chris; the bundle, table and Wire bundle notes predate wire sets):**
   - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
     the view the drawing prints; the front when it prints both).
   - A cable's wire rows sit under a dark, see-through sheath drawn as a cylinder: its right end is
@@ -174,7 +205,7 @@ use, and the CSP in `index.html` allows just those.
 
 | File | What |
 | --- | --- |
-| `assets/model.js` | The graph: nodes (connector, splice, breakout), segments (length, covering), wires (pin to pin, routed through segments) and groups (twist, shield, cable). Also `analyze`, `checks`, `fromTo` and `bom`. |
+| `assets/model.js` | The graph: nodes (connector, splice, breakout), segments (length, covering), wires (pin to pin, routed through segments) and nested wire sets (twist, shield, cable or bundle). Also `analyze`, `checks`, `fromTo` and `bom`. |
 | `assets/conn.js` | The connection diagram: boxes, column layout and SVG, for the canvas and the sheet. |
 | `assets/boards.js` | Board connectors from Signoff EE's stored fab packages (GitHub, read only) or the demo packages. |
 | `assets/vendor/` | Fabcheck's `ipc356.js` and `assembly.js`. Don't edit; run `tools/sync_vendor.py`. |

@@ -18,6 +18,8 @@
 .lm-sheet .cv-band line{stroke:rgba(255,255,255,.3);stroke-width:2;stroke-linecap:round}
 .lm-sheet .cv-lace,.lm-sheet .cv-lace path{fill:none;stroke:#1d1d1f;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.lm-sheet .cv-lace .cv-lace-knot{fill:#fff;stroke:#1d1d1f;stroke-width:1.6}
 .lm-sheet .cv-lead{fill:none;stroke:#6e6e73;stroke-width:.9;stroke-linecap:round}
+.lm-sheet .cv-badge rect{fill:#fff;stroke:#1d1d1f;stroke-width:1.4}.lm-sheet .cv-badge text{font:600 11.5px ${MONO}}
+.lm-sheet .cv-braid path,.lm-sheet .cv-braid ellipse{stroke:#1d1d1f;stroke-width:.8;stroke-opacity:.75}.lm-sheet .cv-braid-line{fill:none;stroke:#1d1d1f;stroke-width:.7;stroke-opacity:.6}
 .lm-sheet .cv-sp-line{fill:none;stroke:#1d1d1f;stroke-width:1.3;stroke-linecap:round}.lm-sheet .cv-port{fill:#fff;stroke:#1d1d1f;stroke-width:1.4}
 .lm-sheet .cv-wrow text,.lm-sheet .cv-halo{paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
 .lm-sheet .cv-sketch .fv-body,.lm-sheet .cv-sketch .fv-latch,.lm-sheet .cv-sketch .fv-flange,.lm-sheet .cv-sketch .fv-cav,.lm-sheet .cv-sketch .fv-hole,.lm-sheet .cv-sketch .fv-key,.lm-sheet .cv-sketch .fv-collar{stroke-width:inherit}
@@ -162,7 +164,7 @@
       { label: 'Color', w: 104, get: r => r.color.name || '—', swatch: r => r.color },
       { label: 'Gauge', w: 112, get: r => M.gaugeText(r.gauge) || '—' },
       { label: 'Length', w: 118, get: r => U.fmtLen(r.length) },
-      { label: 'Group', w: 60, get: r => r.groups },
+      { label: 'Set', w: 60, get: r => r.sets },
     ], ft, 'No wires yet.');
     const t2 = table(MG + 16 + lw + 20, y, rw, [
       { label: 'Item', w: 34, get: r => r.item },

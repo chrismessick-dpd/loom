@@ -4,11 +4,11 @@
 (function (LM) {
   'use strict';
   const M = LM.model;
-  const VERSION = 2; // bump when the demo changes, so stored copies rebuild
+  const VERSION = 3; // bump when the demo changes, so stored copies rebuild
 
   function harness() {
     const h = M.blank('Display & Sensor Harness');
-    h.nodes = []; h.segments = []; h.wires = []; h.groups = [];
+    h.nodes = []; h.segments = []; h.wires = []; h.sets = [];
     Object.assign(h, { id: 'hdemo1', demoVersion: VERSION, pn: '2100430-001', rev: 'A', drawnBy: 'Dovetail', date: '2026-11-06' });
     const c = (ref, p, labels) => { const n = M.addConnector(h, 0, 0, p); n.ref = ref; labels.forEach((l, i) => { if (l) n.pinLabels[String(i + 1)] = l; }); return n; };
     const p1 = c('P1', { name: 'Main PCBA J6', family: 'jst-gh', pins: 8, mate: 'SM08B-GHS-TB' }, ['3V3', 'GND', 'I2C_SDA', 'I2C_SCL', 'TOUCH_INT', '', 'NTC', 'NTC_RTN']);
@@ -21,21 +21,22 @@
     [[p1, p2, 250], [p1, s1, 190], [s1, p2, 60], [p1, p3, 500], [p4, p5, 260]].forEach(([a, b, len]) => M.connect(h, a.id, b.id, len));
 
     const w = (a, ap, b, bp, signal, color, gauge) => M.addWire(h, { node: a.id, pin: ap }, { node: b.id, pin: bp }, { signal, color, gauge });
-    w(p1, '1', p2, '1', '3V3', 'RD', '28');
+    const v33 = w(p1, '1', p2, '1', '3V3', 'RD', '28');
     w(p1, '2', s1, null, 'GND', 'BK', '28');
     w(s1, null, p2, '2', 'GND', 'BK', '28');
     w(s1, null, p2, '6', 'GND', 'BK', '28');
     const sda = w(p1, '3', p2, '3', 'I2C_SDA', 'BU', '28');
     const scl = w(p1, '4', p2, '4', 'I2C_SCL', 'YE', '28');
-    w(p1, '5', p2, '5', 'TOUCH_INT', 'GN', '28');
+    const tint = w(p1, '5', p2, '5', 'TOUCH_INT', 'GN', '28');
     const ntc = w(p1, '7', p3, '1', 'NTC', 'WH', '26');
     const rtn = w(p1, '8', p3, '2', 'NTC_RTN', 'BN', '26');
     const r = w(p4, '1', p5, '1', '24VAC_R', 'RD', '22');
     const cm = w(p4, '2', p5, '2', '24VAC_C', 'BU', '22');
-    M.addGroup(h, 'twist', [sda.id, scl.id]);
-    const cab = M.addGroup(h, 'cable', [ntc.id, rtn.id]);
-    cab.note = '2 x 26 AWG, PVC jacket';
-    M.addGroup(h, 'twist', [r.id, cm.id]);
+    // The I2C pair is twisted and shielded, and laced into a bundle with 3V3 and TOUCH_INT.
+    M.makeSet(h, [sda.id, scl.id], { twist: true, shield: true });
+    M.makeSet(h, [v33.id, sda.id, scl.id, tint.id], { bundle: true });
+    M.makeSet(h, [ntc.id, rtn.id], { cable: true, note: '2 x 26 AWG, PVC jacket' });
+    M.makeSet(h, [r.id, cm.id], { twist: true });
     return h;
   }
   LM.demo = { harness, VERSION };

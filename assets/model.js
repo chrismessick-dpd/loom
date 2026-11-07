@@ -1,12 +1,12 @@
 // The harness model. A harness is a graph: nodes (connectors, splices and breakouts) joined by
 // segments, each with a length and a covering. Wires run from a pin (or a splice) to another, and
 // their routes are found through the segments, so splits, merges and several ends on one side are
-// all the same thing. Twists, shields and cables are groups of wires; a group covers the segments
-// all of its wires share, so a pair untwists where its wires part at a breakout.
+// all the same thing. Wires are grouped into sets, which nest (see *Sets* below); a set covers the
+// segments all of its wires share, so a pair untwists where its wires part at a breakout.
 (function (LM) {
   'use strict';
   const U = LM.util, L = LM.library;
-  const SCHEMA = 1;
+  const SCHEMA = 2;
 
   // IEC 60757 codes. A striped wire is "WH/BU" (base/stripe).
   const COLORS = {
@@ -18,8 +18,6 @@
   const AWG = { 10: 5.26, 12: 3.31, 14: 2.08, 16: 1.31, 18: 0.82, 20: 0.52, 22: 0.33, 24: 0.2, 26: 0.13, 28: 0.08, 30: 0.05, 32: 0.03 };
   const GAUGES = Object.keys(AWG).sort((a, b) => a - b);
   const COVERS = { none: 'None', sleeve: 'Braided sleeving', heatshrink: 'Heat shrink', spiral: 'Spiral wrap', tape: 'Harness tape' };
-  const GROUP_KINDS = { twist: 'Twisted', shield: 'Shield', cable: 'Cable' };
-  const GROUP_PREFIX = { twist: 'TP', shield: 'SH', cable: 'C' };
   const DEFAULT_NOTES = [
     'Build to IPC/WHMA-A-620, Class 2.',
     'Lengths run from connector face to connector face or breakout center. Tolerance ±5 mm up to 300 mm, ±10 mm up to 1000 mm, ±1% over 1000 mm.',
@@ -43,20 +41,20 @@
   const node = (h, id) => h.nodes.find(n => n.id === id);
   const seg = (h, id) => h.segments.find(s => s.id === id);
   const wire = (h, id) => h.wires.find(w => w.id === id);
-  const group = (h, id) => h.groups.find(g => g.id === id);
+  const set = (h, id) => h.sets.find(s => s.id === id);
   const other = (s, id) => (s.a === id ? s.b : s.a);
 
   function nextRef(h, prefix) {
     let max = 0;
     const re = new RegExp('^' + prefix + '(\\d+)$');
-    h.nodes.concat(h.groups).forEach(x => { const m = re.exec(x.ref || x.label || ''); if (m) max = Math.max(max, +m[1]); });
+    h.nodes.concat(h.sets || []).forEach(x => { const m = re.exec(x.ref || x.label || ''); if (m) max = Math.max(max, +m[1]); });
     return prefix + (max + 1);
   }
   function blank(title) {
     const h = {
       schema: SCHEMA, id: U.uid('h'), title: title || 'New harness', pn: '', rev: 'A', drawnBy: '', date: U.today(),
       allowancePct: 5, notes: DEFAULT_NOTES.slice(), defaults: { gauge: '24', color: 'BK' },
-      nodes: [], segments: [], wires: [], groups: [], updated: Date.now(),
+      nodes: [], segments: [], wires: [], sets: [], updated: Date.now(),
     };
     const a = addConnector(h, 160, 240, { family: 'jst-ph', pins: 4 });
     const b = addConnector(h, 640, 240, { family: 'jst-ph', pins: 4 });
@@ -114,7 +112,7 @@
     }
     h.wires = h.wires.filter(w => w.from.node !== id && w.to.node !== id);
     h.nodes = h.nodes.filter(x => x !== n);
-    tidyGroups(h);
+    tidySets(h);
     tidyLoose(h);
   }
   function tidyLoose(h) {
@@ -167,23 +165,172 @@
   }
   function removeWires(h, ids) {
     h.wires = h.wires.filter(w => !ids.includes(w.id));
-    tidyGroups(h);
+    tidySets(h);
     tidyLoose(h);
   }
-  // A wire is in at most one group of each kind.
-  function addGroup(h, kind, wireIds) {
-    h.groups.forEach(g => { if (g.kind === kind) g.wires = g.wires.filter(id => !wireIds.includes(id)); });
-    const g = { id: U.uid('g'), kind, label: nextRef(h, GROUP_PREFIX[kind]), wires: wireIds.slice() };
-    h.groups.push(g);
-    tidyGroups(h);
-    return g;
+
+  // ── Sets ──────────────────────────────────────────────────────────────────
+  // A set is a group of wires with properties: twisted, shielded, and held as a cable or a bundle
+  // (one or the other). Sets nest: a set's members are wires (s.wires) and other sets (s.sets), so a
+  // bundle can hold a twisted, shielded pair and two single wires. Every wire is in at most one set
+  // directly and every set in at most one parent, so the sets form a forest; h.sets is flat and the
+  // tree is in the member lists. A set with no property means nothing and dissolves (its members
+  // move up to its parent), and one whose only member is another set merges into it.
+  // Each set covers its own length (s.length, mm): by default the run all of its wires share, but
+  // it can be set shorter, so a twisted, shielded pair can run on past the end of its bundle.
+  const FLAGS = ['twist', 'shield', 'cable', 'bundle'];
+  const holderOf = s => (s.cable ? 'cable' : s.bundle ? 'bundle' : null);
+  const hasFlag = s => FLAGS.some(k => s[k]);
+  // Its word and its label's prefix, from the outermost thing it is.
+  const setWord = s => (s.cable ? 'Cable' : s.bundle ? 'Wire bundle' : 'Wire set');
+  const setPrefix = s => (s.cable ? 'C' : s.bundle ? 'B' : s.twist ? 'TP' : 'SH');
+  // "twisted, shielded": the properties a set's word doesn't already say.
+  const setTraits = s => [s.twist && 'twisted', s.shield && 'shielded'].filter(Boolean).join(', ');
+  const parentOf = (h, id) => h.sets.find(p => p.sets.includes(id)) || null;
+  const setOfWire = (h, wid) => h.sets.find(p => p.wires.includes(wid)) || null;
+  const roots = h => h.sets.filter(s => !parentOf(h, s.id));
+  // Every wire under a set, its own first, then each child set's.
+  function wiresIn(h, s) {
+    const out = s.wires.slice();
+    s.sets.forEach(id => { const c = set(h, id); if (c) out.push(...wiresIn(h, c)); });
+    return out;
   }
-  function removeGroup(h, id) { h.groups = h.groups.filter(g => g.id !== id); }
-  function tidyGroups(h) {
-    const ids = new Set(h.wires.map(w => w.id));
-    h.groups.forEach(g => { g.wires = g.wires.filter(id => ids.has(id)); });
-    h.groups = h.groups.filter(g => g.wires.length >= (g.kind === 'twist' ? 2 : 1));
+  // The sets a wire (or a set) sits in, outermost first.
+  function chainOf(h, wid) {
+    const out = [];
+    for (let s = setOfWire(h, wid); s; s = parentOf(h, s.id)) out.unshift(s);
+    return out;
   }
+  function setChain(h, s) {
+    const out = [];
+    for (let x = s; x; x = parentOf(h, x.id)) out.unshift(x);
+    return out;
+  }
+  const sameIds = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+  // The set whose wires are exactly these, or null.
+  const matchSet = (h, ids) => h.sets.find(s => sameIds(wiresIn(h, s), ids)) || null;
+  // A set the selection only partly covers while also reaching outside it, which a new set can't
+  // cross: { set, inside, outside } (wire ids of that set), or null.
+  function crossing(h, ids) {
+    const want = new Set(ids);
+    for (const s of h.sets) {
+      const ws = wiresIn(h, s), inside = ws.filter(id => want.has(id));
+      if (inside.length && inside.length < ws.length && ids.some(id => !ws.includes(id))) return { set: s, inside, outside: ws.filter(id => !want.has(id)) };
+    }
+    return null;
+  }
+  // What a new set over these wires would hold: each wire lifted to the biggest set wholly inside
+  // the selection. { wires, sets, parent } (parent: the smallest set around them all, or null).
+  function membersFor(h, ids) {
+    const want = new Set(ids), wires = [], sets = [];
+    let parent;
+    ids.forEach(wid => {
+      let m = { wire: wid }, p = setOfWire(h, wid);
+      while (p && wiresIn(h, p).every(id => want.has(id))) { m = { set: p.id }; p = parentOf(h, p.id); }
+      if (m.wire) wires.push(m.wire); else if (!sets.includes(m.set)) sets.push(m.set);
+      if (parent === undefined) parent = p;
+    });
+    return { wires, sets, parent: parent || null };
+  }
+  // Why these wires can't become a set of their own, or '' when they can (or already are one).
+  function whyNot(h, ids) {
+    if (!ids.length) return 'Select some wires first.';
+    const x = crossing(h, ids);
+    if (x) return `${x.set.label} also holds ${x.outside.map(id => wireName(wire(h, id))).join(', ')}. Select all of ${x.set.label}'s wires, or none of them.`;
+    if (matchSet(h, ids)) return '';
+    const m = membersFor(h, ids);
+    if (m.parent && m.parent.twist) return `These wires are part of the twisted set ${m.parent.label}, which can't hold a set inside it.`;
+    return '';
+  }
+  // Make a set over these wires with the given properties, or add the properties to the set that
+  // already holds exactly them. Returns the set, or null when it can't be made (whyNot says why).
+  function makeSet(h, ids, props) {
+    ids = [...new Set(ids)].filter(id => wire(h, id));
+    if (!ids.length || whyNot(h, ids)) return null;
+    props = props || {};
+    let s = matchSet(h, ids);
+    if (!s) {
+      const m = membersFor(h, ids);
+      s = { id: props.id || U.uid('g'), label: '', wires: m.wires, sets: m.sets, twist: false, shield: false, cable: false, bundle: false, length: null, note: '', pn: '' };
+      if (m.parent) {
+        m.parent.wires = m.parent.wires.filter(id => !m.wires.includes(id));
+        m.parent.sets = m.parent.sets.filter(id => !m.sets.includes(id)).concat(s.id);
+      } else h.sets.forEach(x => { x.wires = x.wires.filter(id => !m.wires.includes(id)); });
+      h.sets.push(s);
+    }
+    const before = s.label ? setPrefix(s) : null;
+    Object.keys(props).forEach(k => { if (k !== 'id' && (k !== 'label' || props.label)) s[k] = props[k]; });
+    if (props.cable) s.bundle = false;
+    if (props.bundle) s.cable = false;
+    relabel(h, s, before);
+    tidySets(h);
+    return set(h, s.id) || null;
+  }
+  // A label made from the set's prefix follows it when the prefix changes (TP1 → B2); one typed
+  // by hand stays.
+  function relabel(h, s, before) {
+    if (!hasFlag(s)) return;
+    const p = setPrefix(s);
+    if (!s.label || (before && before !== p && new RegExp('^' + before + '\\d+$').test(s.label))) { s.label = ''; s.label = nextRef(h, p); }
+  }
+  // Tick or untick a property. Cable and bundle exclude each other. Unticking the last one
+  // dissolves the set; returns the set, or null once it's gone.
+  function setFlag(h, id, key, on) {
+    const s = set(h, id);
+    if (!s || !FLAGS.includes(key)) return null;
+    const before = setPrefix(s);
+    s[key] = !!on;
+    if (on && key === 'cable') s.bundle = false;
+    if (on && key === 'bundle') s.cable = false;
+    relabel(h, s, before);
+    tidySets(h);
+    return set(h, id) || null;
+  }
+  // Remove a set; its wires and sets move up to its parent. Wires are never deleted here.
+  function dissolveSet(h, id) {
+    const s = set(h, id);
+    if (!s) return;
+    const p = parentOf(h, id);
+    if (p) { p.sets = p.sets.filter(x => x !== id).concat(s.sets); p.wires = p.wires.concat(s.wires); }
+    h.sets = h.sets.filter(x => x !== s);
+  }
+  // Keep the forest sound: wires that exist, in one set each; sets in one parent each, no loops;
+  // a twist needs two wires of its own and no sets; a bundle needs two members; sets with no
+  // property dissolve; a set whose only member is a set merges into it (keeping a cable and a
+  // shield; a bundle or a twist around one member means nothing).
+  function tidySets(h) {
+    if (!Array.isArray(h.sets)) h.sets = [];
+    const live = new Set(h.wires.map(w => w.id)), ids = new Set(h.sets.map(s => s.id));
+    const seenW = new Set(), seenS = new Set();
+    h.sets.forEach(s => {
+      s.wires = (s.wires || []).filter(id => live.has(id) && !seenW.has(id) && seenW.add(id));
+      s.sets = (s.sets || []).filter(id => ids.has(id) && id !== s.id && !seenS.has(id) && seenS.add(id));
+    });
+    // A loop (a set inside itself) is cut where it closes.
+    h.sets.forEach(s => {
+      const seen = new Set([s.id]);
+      for (let p = parentOf(h, s.id); p; p = parentOf(h, p.id)) {
+        if (seen.has(p.id)) { p.sets = p.sets.filter(x => x !== s.id); break; }
+        seen.add(p.id);
+      }
+    });
+    for (let again = true; again;) {
+      again = false;
+      for (const s of h.sets) {
+        if (s.twist && (s.wires.length < 2 || s.sets.length)) s.twist = false;
+        if (s.bundle && s.wires.length + s.sets.length < 2) s.bundle = false;
+        if (!wiresIn(h, s).length || !hasFlag(s)) { dissolveSet(h, s.id); again = true; break; }
+        if (!s.wires.length && s.sets.length === 1) {
+          const c = set(h, s.sets[0]);
+          if (s.cable) { c.cable = true; c.bundle = false; c.note = c.note || s.note; c.pn = c.pn || s.pn; c.label = s.label; }
+          if (s.shield) c.shield = true;
+          dissolveSet(h, s.id); again = true; break;
+        }
+      }
+    }
+  }
+  // The length a set covers: its own when set, else the run its wires share (null: unknown).
+  const setLength = (h, A, s) => (s.length != null ? s.length : spanLength(A.spans.get(s.id) || []));
   // Wire pin n of one connector to pin n of the other, for every pin both have free.
   function wireStraight(h, aId, bId) {
     const a = node(h, aId), b = node(h, bId);
@@ -254,14 +401,16 @@
       r.segs.forEach(s => segWires.get(s.id).push(w));
       wireLen.set(w.id, r.segs.some(s => s.length == null) ? null : r.segs.reduce((t, s) => t + s.length, 0));
     });
+    // A set runs along the segments all of its wires share.
     const spans = new Map();
-    h.groups.forEach(g => {
-      const rs = g.wires.map(id => routes.get(id)).filter(Boolean);
-      if (!rs.length || rs.length < g.wires.length) { spans.set(g.id, []); return; }
-      spans.set(g.id, rs[0].segs.filter(s => rs.every(r => r.segs.includes(s))));
+    h.sets.forEach(st => {
+      const ids = wiresIn(h, st), rs = ids.map(id => routes.get(id)).filter(Boolean);
+      if (!rs.length || rs.length < ids.length) { spans.set(st.id, []); return; }
+      spans.set(st.id, rs[0].segs.filter(s => rs.every(r => r.segs.includes(s))));
     });
-    const groupsOf = new Map(h.wires.map(w => [w.id, h.groups.filter(g => g.wires.includes(w.id))]));
-    return { byId, adj, loop, route, routes, segWires, spans, wireLen, groupsOf };
+    // The sets each wire is in, outermost first.
+    const setsOf = new Map(h.wires.map(w => [w.id, chainOf(h, w.id)]));
+    return { byId, adj, loop, route, routes, segWires, spans, wireLen, setsOf };
   }
   const spanLength = segs => (segs.some(s => s.length == null) ? null : segs.reduce((t, s) => t + s.length, 0));
 
@@ -317,8 +466,10 @@
     h.segments.forEach(s => {
       if (s.length == null && !isLoose(A.byId.get(s.a)) && !isLoose(A.byId.get(s.b))) add('warn', `The wires from ${label(A.byId.get(s.a))} to ${label(A.byId.get(s.b))} have no length.`, { kind: 'seg', id: s.id });
     });
-    h.groups.forEach(g => {
-      if (!(A.spans.get(g.id) || []).length) add('warn', `${g.label}'s wires share no segment, so it covers nothing.`, { kind: 'group', id: g.id });
+    h.sets.forEach(s => {
+      const ref = { kind: 'set', id: s.id }, span = A.spans.get(s.id) || [], run = spanLength(span);
+      if (!span.length) add('warn', `${s.label}'s wires share no segment, so it covers nothing.`, ref);
+      else if (s.length != null && run != null && s.length > run) add('warn', `${s.label} is set to cover ${s.length} mm, but its wires only run ${run} mm together.`, ref);
     });
     return out.sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev]);
   }
@@ -328,7 +479,7 @@
     A = A || analyze(h);
     return h.wires.slice().sort((a, b) => a.no - b.no).map(w => ({
       wire: w, name: wireName(w), from: endText(h, w.from), to: endText(h, w.to), signal: w.signal || '', color: colorInfo(w.color),
-      gauge: w.gauge || '', length: A.wireLen.get(w.id), groups: A.groupsOf.get(w.id).map(g => g.label).join(', '),
+      gauge: w.gauge || '', length: A.wireLen.get(w.id), sets: A.setsOf.get(w.id).map(s => s.label).join(' › '),
     }));
   }
   function bom(h, A) {
@@ -349,21 +500,26 @@
     });
     const splices = h.nodes.filter(n => n.kind === 'splice');
     if (splices.length) add('splice', { desc: 'Splice, crimped or soldered, with heat shrink', pn: '', unit: 'ea', refs: splices.map(n => n.ref) }, splices.length);
-    // Wire runs outside any cable; a cable's conductors are bought as the cable.
+    // Loose wire for the length outside any cable; a cable's conductors (and a shield inside it)
+    // are bought as the cable. A cable set shorter than its run leaves the rest as loose wire.
     h.wires.forEach(w => {
       const r = A.routes.get(w.id);
       if (!r) return;
-      const inCable = new Set(A.groupsOf.get(w.id).filter(g => g.kind === 'cable').flatMap(g => A.spans.get(g.id) || []));
-      const len = r.segs.filter(s => !inCable.has(s)).reduce((t, s) => t + (s.length || 0), 0);
+      const total = r.segs.reduce((t, s) => t + (s.length || 0), 0);
+      const inCable = Math.max(0, ...A.setsOf.get(w.id).filter(s => s.cable).map(s => setLength(h, A, s) || 0));
+      const len = Math.max(0, total - inCable);
       if (!len) return;
       const c = colorInfo(w.color);
       add('w|' + w.gauge + '|' + c.code, { desc: `Wire, ${gaugeText(w.gauge) || 'gauge not set'}, ${c.name || 'color not set'}`, pn: '', unit: 'mm', refs: [] }, len * allow);
     });
-    h.groups.filter(g => g.kind !== 'twist').forEach(g => {
-      const len = spanLength(A.spans.get(g.id) || []);
+    h.sets.forEach(s => {
+      const inCable = setChain(h, s).some(x => x.cable);
+      if (!s.cable && !(s.shield && !inCable)) return;
+      const len = setLength(h, A, s);
       if (!len) return;
-      const desc = g.kind === 'cable' ? `Cable, ${g.wires.length} conductor${g.wires.length > 1 ? 's' : ''}${g.note ? ', ' + g.note : ''}` : `Shield braid${g.note ? ', ' + g.note : ''}`;
-      add('g|' + g.id, { desc, pn: g.pn || '', unit: 'mm', refs: [g.label] }, len * allow);
+      const n = wiresIn(h, s).length;
+      const desc = s.cable ? `${s.shield ? 'Shielded cable' : 'Cable'}, ${n} conductor${n > 1 ? 's' : ''}${s.note ? ', ' + s.note : ''}` : `Shield braid${s.note ? ', ' + s.note : ''}`;
+      add('g|' + s.id, { desc, pn: s.pn || '', unit: 'mm', refs: [s.label] }, len * allow);
     });
     h.segments.filter(s => s.cover && s.cover !== 'none' && s.length).forEach(s => {
       add('c|' + s.cover, { desc: COVERS[s.cover], pn: '', unit: 'mm', refs: [] }, s.length * allow);
@@ -378,19 +534,43 @@
     if (!h || typeof h !== 'object' || !Array.isArray(h.nodes)) throw new Error("This file isn't a Loom harness.");
     h.schema = h.schema || SCHEMA;
     h.id = h.id || U.uid('h');
-    ['segments', 'wires', 'groups'].forEach(k => { if (!Array.isArray(h[k])) h[k] = []; });
+    ['segments', 'wires'].forEach(k => { if (!Array.isArray(h[k])) h[k] = []; });
+    if (!Array.isArray(h.sets)) h.sets = [];
     if (!Array.isArray(h.notes)) h.notes = DEFAULT_NOTES.slice();
     h.defaults = Object.assign({ gauge: '24', color: 'BK' }, h.defaults || {});
     if (h.allowancePct == null) h.allowancePct = 5;
     h.wires.forEach((w, i) => { if (!w.no) w.no = i + 1; });
     h.nodes.forEach(n => { if (isConn(n) && (!n.pinLabels || typeof n.pinLabels !== 'object')) n.pinLabels = {}; });
+    if (Array.isArray(h.groups)) fromGroups(h);
+    h.sets.forEach(s => {
+      FLAGS.forEach(k => { s[k] = !!s[k]; });
+      ['wires', 'sets'].forEach(k => { if (!Array.isArray(s[k])) s[k] = []; });
+      ['label', 'note', 'pn'].forEach(k => { s[k] = s[k] || ''; });
+      if (s.length == null || !isFinite(s.length)) s.length = null;
+    });
+    tidySets(h);
+    h.schema = SCHEMA;
     return h;
+  }
+  // Schema 1 had flat groups (twist, shield, cable), a wire in at most one of each kind. Biggest
+  // first, each becomes a set: groups over the same wires merge, a group inside another nests, and
+  // one that crosses a bigger one's edge is dropped. Ids carry over, so a cable's dragged position
+  // (h.place b:g:<id>) still applies.
+  function fromGroups(h) {
+    const rank = { cable: 0, shield: 1, twist: 2 };
+    h.groups.slice().sort((a, b) => (b.wires || []).length - (a.wires || []).length || rank[a.kind] - rank[b.kind]).forEach(g => {
+      if (!(g.kind in rank)) return;
+      makeSet(h, g.wires || [], { id: g.id, label: g.label, [g.kind]: true, note: g.note || '', pn: g.pn || '' });
+    });
+    delete h.groups;
   }
 
   LM.model = {
-    SCHEMA, COLORS, AWG, GAUGES, COVERS, GROUP_KINDS, DEFAULT_NOTES, colorInfo, gaugeText,
-    isConn, isLoose, node, seg, wire, group, other, nextRef, blank, addConnector, addNode, connect, splitSegment, removeNode, removeSegment, moveEnd,
-    addWire, removeWires, addGroup, removeGroup, wireStraight, pinList, label, wireName, endText, parseEnd,
+    SCHEMA, COLORS, AWG, GAUGES, COVERS, FLAGS, DEFAULT_NOTES, colorInfo, gaugeText,
+    isConn, isLoose, node, seg, wire, set, other, nextRef, blank, addConnector, addNode, connect, splitSegment, removeNode, removeSegment, moveEnd,
+    addWire, removeWires, wireStraight,
+    holderOf, setWord, setPrefix, setTraits, parentOf, setOfWire, roots, wiresIn, chainOf, setChain, matchSet, crossing, membersFor, whyNot,
+    makeSet, setFlag, dissolveSet, tidySets, setLength, pinList, label, wireName, endText, parseEnd,
     analyze, spanLength, checks, fromTo, bom, qtyText, normalize,
   };
 })(window.LM = window.LM || {});

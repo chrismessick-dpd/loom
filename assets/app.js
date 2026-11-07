@@ -93,11 +93,24 @@
   function tidySel() {
     const h = H();
     if (!S.sel || !h) { if (!h) S.sel = null; return; }
-    const have = { node: h.nodes, seg: h.segments, wire: h.wires, group: h.groups }[S.sel.kind] || [];
+    const have = { node: h.nodes, seg: h.segments, wire: h.wires, set: h.sets }[S.sel.kind] || [];
     const ids = new Set([...S.sel.ids].filter(id => have.some(x => x.id === id)));
     S.sel = ids.size ? { kind: S.sel.kind, ids } : null;
   }
   const select = (kind, ids) => { S.sel = kind ? { kind, ids: new Set([].concat(ids)) } : null; renderAll(); };
+  // The wires a selection is about: its wires, or a set's.
+  function selWireIds(h, sel) {
+    if (!sel) return [];
+    if (sel.kind === 'wire') return [...sel.ids];
+    if (sel.kind === 'set') return [...sel.ids].flatMap(id => { const st = M.set(h, id); return st ? M.wiresIn(h, st) : []; });
+    return [];
+  }
+  // A selection of wires; two or more that are exactly one set's wires select that set.
+  function wiresSel(h, ids) {
+    if (!ids.length) return null;
+    const st = ids.length > 1 && M.matchSet(h, ids);
+    return st ? { kind: 'set', ids: new Set([st.id]) } : { kind: 'wire', ids: new Set(ids) };
+  }
   function openHarness(id) {
     S.cur = id; S.sel = null; S.pending = null; S.past = []; S.future = []; S.cam = null;
     persist();
@@ -398,21 +411,19 @@
       if (n && n.kind === 'splice') { finishWire({ node: n.id, pin: null }); return; }
     }
     if (S.pending) { S.pending = null; renderAll(); return; }
-    const wire = t.closest('[data-wire]'), boxEl = t.closest('[data-box]');
-    if (wire) {
+    // A set's badge selects the set. Shift-click adds a wire to the selection or takes it out.
+    const badgeEl = t.closest('[data-set]'), wire = t.closest('[data-wire]');
+    if (badgeEl) select('set', badgeEl.dataset.set);
+    else if (wire) {
       const id = wire.dataset.wire;
-      if (shift && S.sel && S.sel.kind === 'wire') { const ids = new Set(S.sel.ids); ids.has(id) ? ids.delete(id) : ids.add(id); S.sel = ids.size ? { kind: 'wire', ids } : null; renderAll(); }
-      else select('wire', id);
-    } else if (boxEl) pickBox(boxEl.dataset.box);
-    else if (nodeEl) select('node', nodeEl.dataset.node);
+      if (shift && S.sel && (S.sel.kind === 'wire' || S.sel.kind === 'set')) {
+        const ids = new Set(selWireIds(h, S.sel));
+        ids.has(id) ? ids.delete(id) : ids.add(id);
+        S.sel = wiresSel(h, [...ids]);
+        renderAll();
+      } else select('wire', id);
+    } else if (nodeEl) select('node', nodeEl.dataset.node);
     else select(null);
-  }
-  // A cable's box selects the cable; a bundle's box selects its wires.
-  function pickBox(key) {
-    const b = C.boxesOf(H(), M.analyze(H())).find(x => x.key === key);
-    if (!b) return;
-    if (b.group) select('group', b.group.id);
-    else select('wire', b.wires.map(w => w.id));
   }
   function finishWire(end) {
     const from = S.pending;
@@ -489,28 +500,18 @@
     if (focus) { const f2 = el.querySelector(`[data-f="${focus}"]`); if (f2) f2.focus(); }
   }
   function partsHtml() {
-    const h = H(), A = M.analyze(h);
+    const h = H();
     const sel = id => S.sel && S.sel.kind === 'node' && S.sel.ids.has(id);
-    const conns = h.nodes.filter(M.isConn).sort((a, b) => a.ref.localeCompare(b.ref, 'en', { numeric: true }));
     const splices = h.nodes.filter(n => n.kind === 'splice');
-    let o = `<div class="side-head"><span class="side-label">Ends</span><span class="side-count">${conns.length}</span></div>`;
-    o += conns.map(n => `<div class="lay${sel(n.id) ? ' on' : ''}" data-pick="node:${n.id}"><span class="lay-ico">${ICON.conn}</span><span class="nm"><b>${esc(n.ref)}</b> ${esc(n.name || L.family(n.family).name)}</span><span class="lay-n">${n.pins}</span></div>`).join('');
+    let o = '';
     if (splices.length) {
       o += `<div class="side-head"><span class="side-label">Splices</span></div>`;
       o += splices.map(n => `<div class="lay${sel(n.id) ? ' on' : ''}" data-pick="node:${n.id}"><span class="lay-ico">${ICON.splice}</span><span class="nm"><b>${esc(n.ref)}</b></span></div>`).join('');
     }
-    const boxes = C.boxesOf(h, A);
-    if (boxes.length) {
-      o += `<div class="side-head"><span class="side-label">Cables and bundles</span></div>`;
-      o += boxes.map(b => {
-        const on = S.sel && ((b.group && S.sel.kind === 'group' && S.sel.ids.has(b.group.id)) || (!b.group && S.sel.kind === 'wire' && b.wires.every(w => S.sel.ids.has(w.id))));
-        return `<div class="lay${on ? ' on' : ''}" data-box="${esc(b.key)}"><span class="g-chip g-${b.group ? 'cable' : 'bundle'}">${esc(b.label)}</span><span class="nm">${b.wires.length} wire${b.wires.length > 1 ? 's' : ''} · ${esc(M.endText(h, { node: b.wires[0].from.node }))}–${esc(M.endText(h, { node: b.wires[0].to.node }))}</span></div>`;
-      }).join('');
-    }
-    const tw = h.groups.filter(g => g.kind !== 'cable');
-    if (tw.length) {
-      o += `<div class="side-head"><span class="side-label">Twists and shields</span></div>`;
-      o += tw.map(g => `<div class="lay${S.sel && S.sel.kind === 'group' && S.sel.ids.has(g.id) ? ' on' : ''}" data-pick="group:${g.id}"><span class="g-chip g-${g.kind}">${esc(g.label)}</span><span class="nm">${g.wires.map(id => M.wireName(M.wire(h, id))).join(', ')}</span></div>`).join('');
+    const roots = M.roots(h);
+    if (roots.length) {
+      o += `<div class="side-head"><span class="side-label">Wire sets</span><span class="side-count">${h.sets.length}</span></div>`;
+      o += roots.map(r => setTree(h, r, S.sel && S.sel.kind === 'set' ? [...S.sel.ids][0] : null)).join('');
     }
     o += `<div class="side-head"><span class="side-label">Add</span></div><div class="palette">
       <button data-act="add-conn">${ICON.conn}<span>Connector</span></button>
@@ -518,8 +519,8 @@
       <button data-act="add-splice">${ICON.splice}<span>Splice</span></button></div>`;
     o += `<div class="howto"><b>How it works</b>
       <p><i>●</i> Click a pin, then a pin on another end or a splice, to run a wire.</p>
-      <p><i>⇧</i> Shift-click wires, then make them a cable, twisted pair or shield.</p>
-      <p><i>▭</i> Click a box header to edit its cable or bundle, including length.</p>
+      <p><i>⇧</i> Shift-click wires, then tick Twist, Shield, Cable or Bundle to make them a set. Sets nest: select a set and more wires to bundle them.</p>
+      <p><i>◉</i> Click a set's badge to edit it.</p>
       <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p></div>`;
     return o;
   }
@@ -648,8 +649,8 @@
     const h = H(), A = M.analyze(h), sel = S.sel;
     if (!sel) return '';
     if (sel.kind === 'node') { const n = M.node(h, [...sel.ids][0]); return M.isConn(n) ? railConnector(h, A, n) : railJunction(h, A, n); }
-    if (sel.kind === 'wire') return sel.ids.size > 1 ? railWires(h, A, [...sel.ids].map(id => M.wire(h, id))) : railWire(h, A, M.wire(h, [...sel.ids][0]));
-    if (sel.kind === 'group') return railGroup(h, A, M.group(h, [...sel.ids][0]));
+    if (sel.kind === 'wire') return sel.ids.size > 1 ? railSet(h, A, null, [...sel.ids].map(id => M.wire(h, id))) : railWire(h, A, M.wire(h, [...sel.ids][0]));
+    if (sel.kind === 'set') { const st = M.set(h, [...sel.ids][0]); return railSet(h, A, st, M.wiresIn(h, st).map(id => M.wire(h, id))); }
     return '';
   }
   // The left rail is the harness. On a narrow screen the right pane is hidden, so the rail shows the
@@ -725,47 +726,58 @@
       <div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${isSplice ? esc(n.ref) : 'breakout'}</button></div></div>`;
   }
   function railWire(h, A, w) {
-    const gs = A.groupsOf.get(w.id);
-    return railHead('Wire', `<span class="mono-ref">${M.wireName(w)}</span> ${esc(w.signal || '')}`, `<div class="chips"><span class="chip">${U.fmtLen(A.wireLen.get(w.id))}</span>${gs.map(g => `<button class="chip g-chip g-${g.kind}" data-pick="group:${g.id}">${esc(g.label)}</button>`).join('')}</div>`) +
+    const gs = A.setsOf.get(w.id);
+    return railHead('Wire', `<span class="mono-ref">${M.wireName(w)}</span> ${esc(w.signal || '')}`, `<div class="chips"><span class="chip">${U.fmtLen(A.wireLen.get(w.id))}</span>${gs.map(g => `<button class="chip g-chip g-${setKind(g)}" data-pick="set:${g.id}" title="${esc(M.setWord(g))}">${esc(g.label)}</button>`).join('')}</div>`) +
       `<div class="rail-list"><div class="rail-sec">
       <div class="row2">${fld('From', `<select class="input" data-f="w.from">${endOptions(h, w.from.node + '|' + (w.from.pin || ''))}</select>`)}${fld('To', `<select class="input" data-f="w.to">${endOptions(h, w.to.node + '|' + (w.to.pin || ''))}</select>`)}</div>
       ${fld('Signal', inp('w.signal', w.signal, ' placeholder="e.g. I2C_SDA"'))}
       ${fld('Color', colorSelects('w.color', w.color))}
       ${fld('Gauge', gaugeSelect('w.gauge', w.gauge))}
       ${lenField(h, A, [w])}
-      <div class="cat-label">Group with others</div>
-      <p class="f-hint">Shift-click other wires, then make them a cable, twisted pair or shield.</p>
+      <div class="cat-label">Sets</div>
+      <p class="f-hint">Shift-click other wires to make a set with this one: twisted, shielded, a cable or a bundle.</p>
       </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${M.wireName(w)}</button></div></div>`;
   }
-  function railWires(h, A, ws) {
-    // Exactly one bundle's wires (a click on its label) reads as that bundle.
-    const ids = new Set(ws.map(w => w.id));
-    const bx = C.boxesOf(h, A).find(b => b.kind === 'bundle' && b.wires.length === ids.size && b.wires.every(w => ids.has(w.id)));
-    return railHead(bx ? 'Wire bundle' : 'Wires', bx ? `<span class="mono-ref">${esc(bx.label)}</span> ${ws.length} wires` : `${ws.length} wires selected`, `<div class="chips">${ws.map(w => `<span class="chip">${M.wireName(w)}</span>`).join('')}</div>`) +
-      `<div class="rail-list"><div class="rail-sec">
-      <div class="group-btns">
-        <button class="btn" data-act="group" data-kind="twist"><span class="g-chip g-twist">TP</span>Twist</button>
-        <button class="btn" data-act="group" data-kind="shield"><span class="g-chip g-shield">SH</span>Shield</button>
-        <button class="btn" data-act="group" data-kind="cable"><span class="g-chip g-cable">C</span>Cable</button>
-      </div>
-      <p class="f-hint">A cable gets its own box on the diagram. Twisted pairs and shields are tagged on their rows.</p>
-      ${lenField(h, A, ws)}
-      ${fld('Set color', colorSelects('ws.color', ''))}
-      ${fld('Set gauge', gaugeSelect('ws.gauge', ''))}
-      </div><div class="cat-label">Selected</div>${wireRows(h, A, ws)}
-      <div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${ws.length} wires</button></div></div>`;
+  // A set's chip color: what holds it, else what it is.
+  const setKind = st => (st.cable ? 'cable' : st.bundle ? 'bundle' : st.twist ? 'twist' : 'shield');
+  // A set and the sets inside it, as an indented tree; each line selects its set. on: the line to
+  // mark.
+  function setTree(h, root, on) {
+    const line = (st, d) => `<button class="st-row${st.id === on ? ' on' : ''}" data-pick="set:${st.id}" style="--d:${d}">` +
+      `<span class="g-chip g-${setKind(st)}">${esc(st.label)}</span><span class="st-name">${esc(M.setWord(st))}${M.setTraits(st) ? ', ' + esc(M.setTraits(st)) : ''}</span>` +
+      `<span class="st-n">${M.wiresIn(h, st).length} wires</span></button>` +
+      st.sets.map(id => M.set(h, id)).filter(Boolean).map(c => line(c, d + 1)).join('');
+    return `<div class="set-tree">${line(root, 0)}</div>`;
   }
-  function railGroup(h, A, g) {
-    const span = A.spans.get(g.id) || [];
-    const ws = g.wires.map(id => M.wire(h, id)).filter(Boolean);
-    return railHead(M.GROUP_KINDS[g.kind], `<span class="g-chip g-${g.kind}">${esc(g.label)}</span>`, `<div class="chips"><span class="chip">Covers ${U.fmtLen(M.spanLength(span))}</span><span class="chip">${span.length} segment${span.length === 1 ? '' : 's'}</span></div>`) +
+  const FLAG_TEXT = { twist: ['Twist', 'Twisted together'], shield: ['Shield', 'A braided shield around them'], cable: ['Cable', 'Bought as one cable, in a jacket'], bundle: ['Bundle', 'Laced together'] };
+  // A set, or several wires that aren't one (st null). Ticking a property on loose wires makes them
+  // a set, taking in any set wholly inside the selection, so a bundle can hold a twisted pair.
+  // Cable and Bundle exclude each other; unticking the last property dissolves the set.
+  function railSet(h, A, st, ws) {
+    const ids = ws.map(w => w.id);
+    const why = st ? '' : M.whyNot(h, ids), m = st ? null : M.membersFor(h, ids);
+    const nW = st ? st.wires.length : m.wires.length, nS = st ? st.sets.length : m.sets.length;
+    const can = { twist: nW >= 2 && !nS, shield: true, cable: true, bundle: nW + nS >= 2 };
+    const ticks = M.FLAGS.map(k => {
+      const on = !!(st && st[k]), off = !!why || (!on && !can[k]);
+      const tip = k === 'twist' && !can.twist && !why ? 'Only wires twist: a set of two or more wires with no set inside it' : FLAG_TEXT[k][1];
+      return `<button class="tick${on ? ' on' : ''}" data-act="set-flag" data-flag="${k}" aria-pressed="${on}" title="${esc(tip)}"${off ? ' disabled' : ''}><span class="tick-box"></span>${FLAG_TEXT[k][0]}</button>`;
+    }).join('');
+    const run = st ? M.spanLength(A.spans.get(st.id) || []) : null;
+    const head = st ? `<span class="mono-ref">${esc(st.label)}</span> ${ws.length} wires` : `${ws.length} wires selected`;
+    return railHead('Wire set', head, `<div class="chips">${ws.map(w => `<span class="chip">${M.wireName(w)}</span>`).join('')}</div>`) +
       `<div class="rail-list"><div class="rail-sec">
-      ${fld('Label', inp('g.label', g.label))}
-      ${fld('Kind', segBtns('g.kind', g.kind, Object.entries(M.GROUP_KINDS)))}
-      ${g.kind !== 'twist' ? fld('Description', inp('g.note', g.note, ` placeholder="${g.kind === 'cable' ? '26 AWG, PVC jacket' : 'Tinned copper braid'}"`)) + fld('Part number', inp('g.pn', g.pn)) : ''}
-      ${ws.length ? lenField(h, A, ws) : ''}
-      </div><div class="cat-label">Wires</div>${wireRows(h, A, ws)}
-      <div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Ungroup</button></div></div>`;
+      <div class="tick-row">${ticks}</div>
+      <p class="f-hint">${why ? esc(why) : st ? esc(M.setWord(st)) + (M.setTraits(st) ? ', ' + esc(M.setTraits(st)) : '') + '.' : 'Tick one to make these wires a set.'}</p>
+      ${st ? fld('Label', inp('set.label', st.label)) : ''}
+      ${st && (st.cable || st.shield) ? fld('Description', inp('set.note', st.note, ` placeholder="${st.cable ? '2 x 26 AWG, PVC jacket' : 'Tinned copper braid'}"`)) + fld('Part number', inp('set.pn', st.pn)) : ''}
+      ${lenField(h, A, ws)}
+      ${st ? fld('Covers (mm)', inp('set.length', st.length, ` type="number" min="0" step="5" placeholder="${run == null ? 'Not set' : run}"`), run == null ? 'Its wires share no length yet.' : `Empty covers the ${esc(U.fmtLen(run))} its wires run together. Less lets it end sooner, so an inner set can run on past it.`) : ''}
+      ${fld('Set color', colorSelects('ws.color', ''))}
+      ${st ? `<div class="f-label">Hierarchy</div>${setTree(h, M.setChain(h, st)[0], st.id)}` : ''}
+      </div><div class="rail-actions"><span></span>${st
+        ? `<button class="btn btn-danger" data-act="delete" title="Removes the set. Its wires and any sets inside it stay.">${ICON.trash}Delete ${esc(st.label)}</button>`
+        : `<button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${ws.length} wires</button>`}</div></div>`;
   }
 
   // Field edits from the rail (and the wire table, which uses w:<id>.<field>).
@@ -795,13 +807,16 @@
       } else if (f.startsWith('s.')) {
         const s = M.seg(h, one()), k = f.slice(2);
         s[k] = k === 'length' ? (v === '' ? null : Math.max(0, Math.round(+v))) : v;
-      } else if (f.startsWith('g.')) {
-        const g = M.group(h, one()), k = f.slice(2);
-        g[k] = v;
+      } else if (f.startsWith('set.')) {
+        const st = M.set(h, one()), k = f.slice(4);
+        if (!st) return;
+        if (k === 'length') st.length = v === '' ? null : Math.max(0, Math.round(+v));
+        else if (k === 'label') st.label = v.trim() || st.label;
+        else st[k] = v;
       } else if (f.startsWith('w.') || f.startsWith('w:') || f.startsWith('ws.')) {
         let ids, k;
         if (f.startsWith('w:')) { const m = /^w:([^.]+)\.(.+)$/.exec(f); ids = [m[1]]; k = m[2]; }
-        else { ids = [...sel.ids]; k = f.slice(f.indexOf('.') + 1); }
+        else { ids = selWireIds(h, sel); k = f.slice(f.indexOf('.') + 1); }
         ids.map(id => M.wire(h, id)).forEach(w => {
           if (k === 'from' || k === 'to') { const [node, pin] = v.split('|'); M.moveEnd(h, w.id, k, { node, pin: pin || null }); }
           else if (k === 'fromText' || k === 'toText') { const e = M.parseEnd(h, v); if (e) M.moveEnd(h, w.id, k.slice(0, -4), e); else toast(`"${v}" isn't an end in this harness. Use a ref and pin, like P1.3.`, 'error'); }
@@ -834,14 +849,14 @@
       `<span class="wf-hint">Edit the wire list. Type ends as a ref and pin, like P1.3, or a splice, like S1.</span></summary>
       <div class="wf-body"><div class="wf-acts"><button class="btn" data-act="csv-wires">${ICON.save}CSV</button></div>
       <datalist id="ends">${list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
-      <div class="card table-wrap"><table class="table compact wtable"><thead><tr><th>Wire</th><th>From</th><th>To</th><th>Signal</th><th>Color</th><th>Gauge</th><th class="num">Length</th><th>Group</th><th></th></tr></thead><tbody>
+      <div class="card table-wrap"><table class="table compact wtable"><thead><tr><th>Wire</th><th>From</th><th>To</th><th>Signal</th><th>Color</th><th>Gauge</th><th class="num">Length</th><th>Set</th><th></th></tr></thead><tbody>
       ${rows.map(r => { const w = r.wire; return `<tr data-row="${w.id}"><td class="mono">${r.name}</td>
         <td><input class="cell-in mono" list="ends" data-f="w:${w.id}.fromText" value="${esc(r.from)}"></td>
         <td><input class="cell-in mono" list="ends" data-f="w:${w.id}.toText" value="${esc(r.to)}"></td>
         <td><input class="cell-in" data-f="w:${w.id}.signal" value="${esc(r.signal)}" placeholder="Signal"></td>
         <td>${colorSelects('w:' + w.id + '.color', w.color)}</td>
         <td>${gaugeSelect('w:' + w.id + '.gauge', w.gauge)}</td>
-        <td class="num">${U.fmtLen(r.length)}</td><td>${esc(r.groups)}</td>
+        <td class="num">${U.fmtLen(r.length)}</td><td>${esc(r.sets)}</td>
         <td><button class="icon-btn" data-act="del-wire" data-id="${w.id}" title="Delete ${r.name}">${ICON.trash}</button></td></tr>`; }).join('')}
       <tr class="add-wire"><td class="pc-muted">New</td><td><input class="cell-in mono" list="ends" id="nw-from" placeholder="P1.1"></td><td><input class="cell-in mono" list="ends" id="nw-to" placeholder="P2.1"></td>
         <td><input class="cell-in" id="nw-signal" placeholder="Signal"></td><td colspan="5"><button class="btn" data-act="add-wire">Add wire</button></td></tr>
@@ -951,11 +966,11 @@
         if (confirm(`Delete "${h.title}" from this browser? Save a file first if you want to keep it.`)) { delete S.store[h.id]; S.cur = null; persist(); renderAll(); }
         break;
       case 'straight': { const to = $('#straight-to').value; const k = change(x => M.wireStraight(x, el.dataset.node, to)); toast(k ? `Added ${k} wire${k > 1 ? 's' : ''}.` : 'No free pin pairs to wire.'); break; }
-      case 'group': change(x => { const g = M.addGroup(x, el.dataset.kind, [...S.sel.ids]); S.sel = { kind: 'group', ids: new Set([g.id]) }; }); break;
+      case 'set-flag': setFlag(el.dataset.flag, el.getAttribute('aria-pressed') !== 'true'); break;
       case 'export-svg': U.download(baseName(h) + '.svg', S.lastSheet.svg, 'image/svg+xml'); break;
       case 'export-png': exportPng(S.lastSheet, baseName(h) + '.png'); break;
       case 'print': printSheet(S.lastSheet); break;
-      case 'csv-wires': U.download(baseName(h) + '_wires.csv', U.csv([['Wire', 'From', 'To', 'Signal', 'Color', 'Gauge (AWG)', 'Length (mm)', 'Group']].concat(M.fromTo(h).map(r => [r.name, r.from, r.to, r.signal, r.color.code, r.gauge, r.length == null ? '' : r.length, r.groups]))), 'text/csv'); break;
+      case 'csv-wires': U.download(baseName(h) + '_wires.csv', U.csv([['Wire', 'From', 'To', 'Signal', 'Color', 'Gauge (AWG)', 'Length (mm)', 'Set']].concat(M.fromTo(h).map(r => [r.name, r.from, r.to, r.signal, r.color.code, r.gauge, r.length == null ? '' : r.length, r.sets]))), 'text/csv'); break;
       case 'csv-bom': U.download(baseName(h) + '_bom.csv', U.csv([['Item', 'Qty', 'Unit', 'Description', 'Part number', 'Refs']].concat(M.bom(h).map(r => [r.item, r.unit === 'mm' ? (r.qty / 1000).toFixed(2) : r.qty, r.unit === 'mm' ? 'm' : 'ea', r.desc, r.pn, r.refs.join(' ')]))), 'text/csv'); break;
       case 'del-wire': change(x => M.removeWires(x, [el.dataset.id])); break;
       case 'add-wire': {
@@ -967,6 +982,22 @@
       case 'paste': pasteWires($('#paste').value); break;
     }
   }
+  // Tick or untick a property of the selected set, or make the selected wires a set.
+  function setFlag(flag, on) {
+    const sel = S.sel;
+    if (!sel) return;
+    change(h => {
+      const ids = selWireIds(h, sel);
+      if (sel.kind === 'set') {
+        const st = M.setFlag(h, [...sel.ids][0], flag, on);
+        S.sel = st ? { kind: 'set', ids: new Set([st.id]) } : wiresSel(h, ids);
+      } else if (on) {
+        const st = M.makeSet(h, ids, { [flag]: true });
+        if (st) S.sel = { kind: 'set', ids: new Set([st.id]) };
+        else toast(M.whyNot(h, ids) || "Couldn't make a set of these wires.", 'error');
+      }
+    });
+  }
   function deleteSel() {
     if (!S.sel) return;
     const ids = [...S.sel.ids], kind = S.sel.kind;
@@ -974,7 +1005,7 @@
       if (kind === 'node') ids.forEach(id => M.removeNode(h, id));
       if (kind === 'seg') ids.forEach(id => M.removeSegment(h, id));
       if (kind === 'wire') M.removeWires(h, ids);
-      if (kind === 'group') ids.forEach(id => M.removeGroup(h, id));
+      if (kind === 'set') ids.forEach(id => M.dissolveSet(h, id));
       S.sel = null;
     });
   }
@@ -1000,8 +1031,6 @@
     if (sf) { setField(sf.dataset.setf, sf.dataset.v); return; }
     const p = t.closest('[data-pick]');
     if (p) { const [kind, id] = p.dataset.pick.split(':'); select(kind, id); return; }
-    const bx = t.closest('#parts-pane [data-box]');
-    if (bx) { pickBox(bx.dataset.box); return; }
     const c = t.closest('[data-check]');
     if (c) goToCheck(+c.dataset.check);
   });
