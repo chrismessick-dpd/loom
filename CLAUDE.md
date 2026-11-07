@@ -110,7 +110,8 @@ links to it so far. Before every commit:
     plain pills. Clicking a badge selects its set; the selected one and its leader glow. Hovering
     a badge lights its set's area as hovering the set does (`lightBadgeSet` in `app.js`).
   - **Twist leaders** (`.cv-lead`) are drawn in the main ink at 1.4 with a dot where the twist
-    starts (Chris: more prominent).
+    starts (Chris: more prominent). Where rows twist, the row text moves left to just past where
+    the first twist starts (staying right of a break), so the leaders stay short in a wide box.
   - **Set areas** (`setAreas`, canvas only). Each set's bounds are a hit area over the wires,
     outermost first, so the innermost set under the pointer wins. Hovering an area tints it and
     titles it, a click selects that set, and shift-click adds its wires to the selection (or takes

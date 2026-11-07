@@ -879,8 +879,15 @@
     const sz = it.sz, x = it.x, w = it.w, F = opts.focus;
     let o = (it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) : '') + breakMark(it) + (it.b.kind === 'set' ? setEnds(it, opts) + badges(it, opts) : '');
     const c = sz.cols, inner = c.from + c.c + c.to + 40;
-    // The text is centered on the outermost set.
-    const x0 = x + (sz.textC != null ? sz.textC : (sz.lx || 0) + sz.rootW / 2) - (inner - sz.lead) / 2;
+    // The text is centered on the outermost set, but where rows twist it moves left to just past
+    // where the first twist starts, so the leaders from text to twist stay short (Chris: in a wide
+    // box they ran the length of the helix). It stays right of a break.
+    let x0 = x + (sz.textC != null ? sz.textC : (sz.lx || 0) + sz.rootW / 2) - (inner - sz.lead) / 2;
+    const starts = Lo ? sz.rows.map(r => r.w && Lo.twistStart(r.w)).filter(Boolean) : [];
+    if (starts.length) {
+      const near = Math.min(...starts.map(t => t.x)) + LEAD + 8;
+      if (x0 > near) x0 = Math.max(near, it.brk ? x + it.brk.x + BREAK_W / 2 + 10 : -Infinity);
+    }
     sz.rows.forEach((r, i) => {
       if (!r.w) return;
       // The text sits above the wire and isn't clickable (Chris): a wire is picked by its line in
