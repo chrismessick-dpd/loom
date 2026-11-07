@@ -206,7 +206,7 @@ button.chip.g-chip { cursor: pointer; }
   --cv-edge: rgba(29, 29, 31, 0.82); --cv-shade: rgba(30, 40, 55, 0.13); --cv-gloss: rgba(255, 255, 255, 0.6);
   --cv-sel: #00727f; --cv-sel-soft: rgba(0, 114, 127, 0.12); --cv-glow: rgba(0, 160, 180, 0.55);
   --cv-sheath: rgba(29, 29, 31, 0.38); --cv-sheath-edge: rgba(29, 29, 31, 0.6); --cv-sheath-hi: rgba(120, 124, 132, 0.22); --cv-sheath-mid: rgba(29, 29, 31, 0.3); --cv-sheath-lo: rgba(29, 29, 31, 0.48);
-  --cv-sheath-face: rgba(255, 255, 255, 0.55); --cv-sheath-face-lo: rgba(29, 29, 31, 0.16); --cv-halo: #f4f5f8; --cv-lace: #3a3a3e; --cv-copper: #b87333;
+  --cv-sheath-face: rgba(255, 255, 255, 0.55); --cv-sheath-face-lo: rgba(29, 29, 31, 0.16); --cv-halo: #f4f5f8; --cv-lace: #3a3a3e; --cv-gold: #c9a227;
   --cv-band: #2c2c2e; --cv-band-hi: rgba(255, 255, 255, 0.3); --cv-band-lo: #1c1c1f; --cv-band-hi2: #55565c;
   --cv-card-shadow: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.06)) drop-shadow(0 6px 14px rgba(25, 35, 50, 0.1));
   --glass-bg: rgba(255, 255, 255, 0.62); --glass-edge: rgba(0, 0, 0, 0.08); --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(0, 0, 0, 0.03); --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(25, 35, 50, 0.12); --glass-on: rgba(0, 0, 0, 0.07);
@@ -221,7 +221,7 @@ button.chip.g-chip { cursor: pointer; }
   --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
   --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
   --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: rgba(255, 255, 255, 0.14); --cv-sheath-mid: rgba(0, 0, 0, 0.32); --cv-sheath-lo: rgba(0, 0, 0, 0.55);
-  --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #1f2227; --cv-lace: #d9d9df; --cv-copper: #d4935a;
+  --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #1f2227; --cv-lace: #d9d9df; --cv-gold: #e2bd52;
   --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); --cv-band-lo: #0c0c0e; --cv-band-hi2: #3e3f45;
   --cv-card-shadow: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
   --glass-bg: rgba(44, 46, 52, 0.55); --glass-edge: rgba(255, 255, 255, 0.12); --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.2); --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); --glass-on: rgba(255, 255, 255, 0.14);
@@ -235,7 +235,7 @@ button.chip.g-chip { cursor: pointer; }
   --cv-edge: rgba(205, 207, 215, 0.72); --cv-shade: rgba(0, 0, 0, 0.55); --cv-gloss: rgba(255, 255, 255, 0.42);
   --cv-sel: #3fc1cf; --cv-sel-soft: rgba(63, 193, 207, 0.18); --cv-glow: rgba(63, 193, 207, 0.75);
   --cv-sheath: rgba(0, 0, 0, 0.45); --cv-sheath-edge: rgba(200, 200, 210, 0.45); --cv-sheath-hi: rgba(255, 255, 255, 0.14); --cv-sheath-mid: rgba(0, 0, 0, 0.32); --cv-sheath-lo: rgba(0, 0, 0, 0.55);
-  --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #1f2227; --cv-lace: #d9d9df; --cv-copper: #d4935a;
+  --cv-sheath-face: rgba(255, 255, 255, 0.22); --cv-sheath-face-lo: rgba(255, 255, 255, 0.05); --cv-halo: #1f2227; --cv-lace: #d9d9df; --cv-gold: #e2bd52;
   --cv-band: #0e0e10; --cv-band-hi: rgba(255, 255, 255, 0.22); --cv-band-lo: #0c0c0e; --cv-band-hi2: #3e3f45;
   --cv-card-shadow: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
   --glass-bg: rgba(44, 46, 52, 0.55); --glass-edge: rgba(255, 255, 255, 0.12); --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.2); --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); --glass-on: rgba(255, 255, 255, 0.14);
@@ -496,8 +496,9 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-contact { fill: url(#lmfx-metal); stroke: var(--wc, var(--cv-ink-2)); stroke-width: 1.5; }
 .lm-canvas .cv-contact:hover, .lm-canvas .cv-contact:has(+ .cv-hitend:hover) { stroke: var(--cv-sel); stroke-width: 2.2; filter: drop-shadow(0 0 4px var(--cv-glow)); }
 .lm-canvas .cv-loose.cv-contact { filter: drop-shadow(0 0 3px var(--wc)); }
-/* Splices: copper conductors meeting in a silver crimp sleeve under the ref. */
-.lm-canvas .cv-sp-line { stroke: var(--cv-copper); stroke-width: 2.2; }
+/* Splices: gold conductors meeting in a silver crimp sleeve under the ref. */
+/* The lines inside are gold (Chris). */
+.lm-canvas .cv-sp-line { stroke: var(--cv-gold); stroke-width: 2.2; filter: drop-shadow(0 0.5px 0.5px rgba(0, 0, 0, 0.25)); }
 .lm-canvas .cv-crimp { fill: url(#lmfx-crimp); stroke: rgba(0, 0, 0, 0.28); stroke-width: 0.8; }
 .lm-canvas .cv-splice .cv-ref { fill: #1d1d1f; font-size: 11.5px; }
 .lm-canvas .cv-splice.drop .cv-frame { stroke: var(--cv-sel); stroke-width: 2; filter: drop-shadow(0 0 6px var(--cv-glow)); }

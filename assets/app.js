@@ -625,7 +625,7 @@
       if (a2.y != null) { p = a2; snapped = true; }
     } else if (nodeEl && !pin) {
       const it = lastLayout.itemOf.get(nodeEl.dataset.node);
-      if (it && it.kind === 'splice') { p = { x: it.x + it.w / 2, y: it.y + it.h / 2 }; snapped = true; }
+      if (it && it.kind === 'splice') { p = { x: it.x + it.w / 2, y: it.y + it.sz.port0 }; snapped = true; }
     }
     const a = lastLayout.anchor(S.pending, p.x);
     if (a.y == null) return;

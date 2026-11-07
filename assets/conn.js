@@ -281,16 +281,17 @@
     // the next block, and both sides are centered on the junction line, where the ref sits and the
     // inside lines meet. A lone wire runs straight in; a side with an even count can't straddle a
     // pitch line, so its port just above the middle sits on the junction (two outputs: the top one
-    // runs straight through, the other branches a pitch down). The box is centered on the junction,
-    // so it may have a spare pitch above. port0 is the junction's offset from the top, on the pitch;
+    // runs straight through, the other branches a pitch down). The box wraps its outermost ports
+    // with the same margin above and below (Chris). port0 is the junction's offset from the top;
     // `dy(side, i)` is a port's offset from it.
     const SP_W = 64;
     const spliceSize = n => {
       const S = sides.get(n.id), cnt = { l: S.l.length, r: S.r.length };
       const above = k => Math.floor(Math.max(0, cnt[k] - 1) / 2);
-      const ext = Math.max(...['l', 'r'].map(k => Math.max(0, cnt[k] - 1) - above(k))) * PITCH;
+      const up = Math.max(...['l', 'r'].map(above)) * PITCH;
+      const down = Math.max(...['l', 'r'].map(k => Math.max(0, cnt[k] - 1) - above(k))) * PITCH;
       const dy = (k, i) => (i - above(k)) * PITCH;
-      return { w: SP_W, h: 2 * ext + 30, h0: 0, port0: ext + 15, dy };
+      return { w: SP_W, h: up + down + 30, h0: 0, port0: up + 15, dy };
     };
     h.nodes.filter(n => M.isConn(n) || n.kind === 'splice' || M.isLoose(n)).forEach(n => {
       const kind = M.isConn(n) ? 'conn' : n.kind === 'splice' ? 'splice' : 'loose';
@@ -372,7 +373,7 @@
       list.forEach(it => {
         // A box centers its wire rows (not its whole height, table and all) on the wires feeding
         // it, so wires that leave parallel, a splice's outputs say, run straight into its rows.
-        const mid = it.kind === 'box' ? it.sz.port0 + G.BROW * (it.sz.rows.length - 1) / 2 : it.h / 2;
+        const mid = it.kind === 'box' ? it.sz.port0 + G.BROW * (it.sz.rows.length - 1) / 2 : it.kind === 'splice' ? it.sz.port0 : it.h / 2;
         const want = it.bary == null ? bottom + G.GAP_Y : it.bary - mid;
         it.y = isFinite(bottom) ? Math.max(bottom + G.GAP_Y, want) : (it.bary == null ? 0 : want);
         it.y = onPitch(it);
@@ -760,7 +761,7 @@
   const hitEnd = (x, y, id, which, opts) => (opts.sheet ? '' : `<circle class="cv-hitend" cx="${f(x)}" cy="${f(y)}" r="9" data-end="${id}|${which}" data-wire="${id}"/>`);
   function spliceSvg(it, opts, Lo) {
     const n = it.n, sel = opts.sel && opts.sel.kind === 'node' && opts.sel.ids.has(n.id);
-    const x = it.x, y = it.y, w = it.w, cx = x + w / 2, cy = y + it.h / 2, half = Math.max(9, tw(n.ref, 13) / 2) + 5;
+    const x = it.x, y = it.y, w = it.w, cx = x + w / 2, cy = y + it.sz.port0, half = Math.max(9, tw(n.ref, 13) / 2) + 5;
     const P = Lo.portsOf(n.id), F = opts.focus;
     let lines = '', ports = '';
     ['l', 'r'].forEach(k => P[k].forEach(wr => {

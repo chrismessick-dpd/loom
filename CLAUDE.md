@@ -96,7 +96,7 @@ links to it so far. Before every commit:
     old Covers value (`s.length`) converts in `normalize` to an overhang on the right, or stays
     while the run isn't known. The BOM uses `setLength`: a cable shorter than its wires leaves
     the rest as loose wire, and a shield braid is listed only outside any cable. The demo
-    (`VERSION` 10): B1 covers 150 mm of the 250 mm run, 15 mm in from the left end and 85 mm
+    (`VERSION` 11): B1 covers 150 mm of the 250 mm run, 15 mm in from the left end and 85 mm
     from the right, and TP1 runs past it to both ends. The demo also places P2's left side at
     P3's right side, S1's middle at TP1's right end, and the S1 → P2 labels a fifth of the way
     from S1 to P2, level with S1's output ports, taken from the auto layout (`demo.js`).
@@ -233,7 +233,7 @@ links to it so far. Before every commit:
     bright inner rim (`.cv-rim`), in both themes.
   - **Ends and splices.** Every wire-end dot (pin ends, splice ports and loose ends) is a metal
     contact ringed in its wire's color (`ring`, `--wc`), and it glows when grabbable. A splice's
-    conductors are copper and meet in a silver crimp sleeve (`.cv-crimp`). A cable's cut end is a lit
+    conductors are gold and meet in a silver crimp sleeve (`.cv-crimp`). A cable's cut end is a lit
     face (`lmfx-face`), and lacing is a light cord. While a wire end is dragged, its wire is lit
     (`carry`) and the pin it would land on fills in (`dropPin`, `.land`).
   - **The stage and the glass.** The stage is a lit gradient (`--cv-stage`). Glass capsules (`.glass`)
@@ -252,7 +252,7 @@ links to it so far. Before every commit:
     apart, so wires leave parallel into the next block, and both sides are centered on the junction
     line, where the ref sits (Chris). A lone wire runs straight in. With an even count, the port
     just above the middle sits on the junction (two outputs: the top runs straight through). The box
-    is centered on the junction, so it may have a spare pitch above (`spliceSize`: `port0` is the
+    wraps its outermost ports with the same margin above and below (Chris) (`spliceSize`: `port0` is the
     junction, `dy` a port's offset from it). Drops slot in by the ports above the pointer.
     `n.ports` (`{ l, r }`, wire ids)
     holds the order a drag left; wires not listed go on the side facing their other end, sorted
