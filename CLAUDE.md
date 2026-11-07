@@ -20,7 +20,7 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
-- **Configure a connector (2026-11-07, Chris; branch `connector-config`, not committed):** a Configure button
+- **Configure a connector (2026-11-07, Chris; merged to local `main` from branch `connector-config` in `b7aa21d`, not pushed):** a Configure button
   in a connector's Properties header (`.cfg-open`; the face tile and a custom part's Positions field open it
   too) opens `assets/configure.js` (`LM.configure`), a window over the app (`#cfg-modal`). It sets the ref,
   name and type: the Generic families as tiles with their faces, any series from a list, or **Custom**. The
