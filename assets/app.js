@@ -6,7 +6,9 @@
   const M = LM.model, U = LM.util, L = LM.library, C = LM.conn, esc = U.esc;
   const $ = s => document.querySelector(s);
   const DEMO = /[?&]demo\b/.test(location.search);
-  const NS = DEMO ? 'loom.demo.' : 'loom.v1.';
+  // Branch `sets` only: its own storage, so its schema-2 harnesses never reach main's Loom on the
+  // same origin, which would drop their sets. Put back 'loom.demo.' / 'loom.v1.' when merging.
+  const NS = DEMO ? 'loom.sets-demo.' : 'loom.sets.';
 
   const S = {
     store: {}, cur: null, view: 'build', sel: null, pending: null, cam: null, past: [], future: [],

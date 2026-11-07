@@ -80,6 +80,10 @@ links to it so far. Before every commit:
     Covers, Set color, and a clickable **Hierarchy** tree (`setTree`). Delete on a set dissolves
     it (`dissolveSet`) and never deletes wires. A wire's chips link to its sets. The Parts tab
     lists the wire sets as trees, and its Ends list is gone.
+  - **Before merging:** the branch stores harnesses under `loom.sets.` / `loom.sets-demo.` (`NS` in
+    `app.js`) so its schema-2 data can't reach main's Loom on the same origin. Put the namespace
+    back to `loom.v1.` / `loom.demo.` in the merge. A `.loom.json` saved from the branch won't open
+    correctly in main's Loom.
 - **Diagram look (2026-11-06, Chris; the bundle, table and Wire bundle notes predate wire sets):**
   - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
     the view the drawing prints; the front when it prints both).
