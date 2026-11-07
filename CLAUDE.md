@@ -72,9 +72,16 @@ links to it so far. Before every commit:
     first wire and below its last. Each set draws its parts outermost first: lacing for a bundle
     (`lacing`), the sheath for a cable, and a crosshatch braid for a shield (`holders`; the braid
     goes over the sheath). The pattern ids are `lm-braid-canvas` and `lm-braid-sheet`. A twisted
-    set's wires twist inside its stretch. The box's label table is gone. Only the outermost set
-    gets a round badge under its wires (`badge`, `data-set`), and clicking the badge selects that
-    set.
+    set's wires twist inside its stretch. The box's label table is gone. A cable reaches `CABLE_R`
+    (18) above and below its wires, so its sheath clears the first row's text.
+  - **Badges** (`badgeRow`, `badges`, `badgeLeaders`; Chris). Every set in a box gets a badge, in a
+    row under the box from the left, outermost first and then down the tree. A leader runs from
+    each badge up to the bottom edge of its set, ending in a dot; leaders are drawn under the
+    wires. On the canvas a badge is a lit pill like the cards, with a dot in its set's color (the
+    Properties chip colors: cable blue, bundle gray, twist amber, shield violet). The sheet prints
+    plain pills. Clicking a badge selects its set; the selected one and its leader glow.
+  - **Twist leaders** (`.cv-lead`) are drawn in the main ink at 1.4 with a dot where the twist
+    starts (Chris: more prominent).
   - **Set areas** (`setAreas`, canvas only). Each set's bounds are a hit area over the wires,
     outermost first, so the innermost set under the pointer wins. Hovering an area tints it and
     titles it, a click selects that set, and shift-click adds its wires to the selection (or takes

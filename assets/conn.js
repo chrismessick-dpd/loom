@@ -19,7 +19,13 @@
   // Sets nest inside a box: each level in is inset by NEST at both ends, and a set with lacing, a
   // sheath or a braid keeps END at its ends for them. BADGE is the room under the wires for the
   // outermost set's badge.
-  const NEST = 24, END = 24, BADGE = 26;
+  const NEST = 24, END = 24, BADGE = 30;
+  // A cable reaches CABLE_R above its first wire and below its last, so its sheath clears the
+  // first row's text (Chris).
+  const CABLE_R = 18;
+  // The badges: one per set, in a row under the box, left-aligned (Chris).
+  const BADGE_H = 22, BADGE_GAP = 8;
+  const badgeW = label => Math.max(34, tw(label, 11) + 30);
   const hasEnds = s => !!(s.cable || s.shield || s.bundle);
   // Extra room left of a box's row text when some of its wires twist inside a set that is inset or
   // has ends, for the leader lines from the text to where each wire's twist starts.
@@ -150,7 +156,8 @@
       const all = setsUnder(h, b.set);
       const D = Math.max(0, ...all.map(x => x.depth));
       lead = all.some(x => x.s.twist && (x.depth > 0 || hasEnds(x.s))) ? LEAD : 0;
-      w = Math.max(rowW + lead + 2 * (END + D * NEST), 120);
+      const badges = all.reduce((t, x) => t + badgeW(x.s.label) + BADGE_GAP, -BADGE_GAP);
+      w = Math.max(rowW + lead + 2 * (END + D * NEST), badges, 120);
     }
     const sz = { w, text, lead, cols };
     arrange(h, b, sz, w2 => w2.no);
@@ -179,7 +186,8 @@
       let parts = st.twist && ws.length ? [{ kind: 'block', ws, key: mean(ws.map(x => x.key)), no: ws[0].no }] : ws;
       const kids = st.sets.map(id => M.set(h, id)).filter(Boolean).map(c => unit(c, depth + 1)).filter(u => u.rows.length);
       parts = parts.concat(kids).sort(byKey);
-      const height = kids.length ? 1 + Math.max(...kids.map(u => u.height)) : 0, R = 8 + 3 * height;
+      const height = kids.length ? 1 + Math.max(...kids.map(u => u.height)) : 0;
+      const R = Math.max(st.cable ? CABLE_R : 8, ...kids.map(u => u.R + 3));
       const rows = [], spans = [];
       let prev = null;
       parts.forEach(pt => {
@@ -197,9 +205,11 @@
     const u = unit(b.set, 0), root = u.spans[0];
     // The outermost set has the box to itself: a cable's sheath leaves as much room under its last
     // wire as over its first.
-    root.R = b.set.cable ? Math.max(15, root.R) : Math.max(12, root.R);
+    root.R = b.set.cable ? Math.max(CABLE_R + 1, root.R) : Math.max(12, root.R);
     sz.rows = u.rows; sz.spans = u.spans; sz.R0 = root.R;
-    sz.port0 = Math.max(6 + G.BROW - 3, root.R + 8);
+    // The first wire stays 23 below the box's top (where dragged positions expect it) unless the
+    // outermost set reaches higher than that.
+    sz.port0 = Math.max(6 + G.BROW - 3, root.R + 4);
     sz.h = sz.port0 + (sz.rows.length - 1) * PITCH + root.R + 6 + BADGE;
   }
 
@@ -626,7 +636,7 @@
   // Under the wires: the box's paper, the far side of each lacing tie and each cable's cut end (a
   // full, lighter ellipse the wires come out of).
   function boxBack(it, opts) {
-    let o = `<rect class="cv-box${boxSel(it, opts) && it.b.kind !== 'set' ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>`;
+    let o = `<rect class="cv-box${boxSel(it, opts) && it.b.kind !== 'set' ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>` + badgeLeaders(it, opts);
     it.sz.spans.forEach(sp => {
       const cls = spanCls(it, sp, opts), g = spanGeom(it, sp);
       if (sp.s.bundle) o += lacing(g, cls, 'back');
@@ -674,20 +684,44 @@
       return `<rect class="cv-setarea${on ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(g.x)}" y="${f(g.top)}" width="${f(g.w)}" height="${f(g.bot - g.top)}" rx="${f(g.rx)}" data-set="${esc(sp.s.id)}"><title>${esc(name)}</title></rect>`;
     }).join('');
   }
-  // The outermost set's badge under its wires: its label in a circle (a pill for a long label).
-  // Clicking it selects that set.
-  function badge(it, opts) {
-    const b = it.b;
-    if (b.kind !== 'set') return '';
-    const cy = wireYAt(it, it.sz.rows.length - 1) + it.sz.R0 + 6 + 12, cx = it.x + it.w / 2;
-    const bw = Math.max(24, tw(b.label, 11.5) + 14);
-    return `<g class="cv-badge${boxSel(it, opts) ? ' sel' : ''}${dimIf(boxDim(it, opts))}" data-set="${esc(b.set.id)}">` +
-      `<rect x="${f(cx - bw / 2)}" y="${f(cy - 12)}" width="${f(bw)}" height="24" rx="12"/>` +
-      `<text x="${f(cx)}" y="${f(cy + 4.2)}" text-anchor="middle">${esc(b.label)}</text></g>`;
+  // The badges: one per set in the box, in a row under it from the left, outermost first and then
+  // down the tree (Chris). Each is a pill with a dot in its set's color (the Properties chip colors)
+  // and its label, and a leader runs from it up to the bottom edge of its set, ending in a dot.
+  // Clicking a badge selects its set. Leaders are drawn under the wires (badgeLeaders), badges over.
+  const setKind = st => (st.cable ? 'cable' : st.bundle ? 'bundle' : st.twist ? 'twist' : 'shield');
+  function badgeRow(it) {
+    const y = wireYAt(it, it.sz.rows.length - 1) + it.sz.R0 + 8;
+    let x = it.x;
+    return it.sz.spans.map(sp => {
+      const w = badgeW(sp.s.label), g = spanGeom(it, sp), cx = x + w / 2;
+      // The leader meets its set's bottom edge straight above the badge, or as near as it can.
+      const ax = Math.min(Math.max(cx, g.x + g.rx + 4), g.x + g.w - g.rx - 4);
+      const out = { sp, x, y, w, cx, ax, ay: g.bot };
+      x += w + BADGE_GAP;
+      return out;
+    });
+  }
+  const badgeOn = (it, sp, opts) => spanSel(sp, opts) || (!sp.depth && boxSel(it, opts));
+  function badgeLeaders(it, opts) {
+    if (it.b.kind !== 'set') return '';
+    return badgeRow(it).map(bd => `<g class="cv-leader${badgeOn(it, bd.sp, opts) ? ' sel' : ''}${dimIf(boxDim(it, opts))}">` +
+      `<path d="M${f(bd.cx)} ${f(bd.y)}L${f(bd.cx)} ${f(Math.max(bd.ay, bd.y - 6))}L${f(bd.ax)} ${f(bd.ay)}"/>` +
+      `<circle cx="${f(bd.ax)}" cy="${f(bd.ay)}" r="2.2"/></g>`).join('');
+  }
+  function badges(it, opts) {
+    if (it.b.kind !== 'set') return '';
+    return badgeRow(it).map(bd => {
+      const st = bd.sp.s, ty = bd.y + BADGE_H / 2;
+      return `<g class="cv-badge k-${setKind(st)}${badgeOn(it, bd.sp, opts) ? ' sel' : ''}${dimIf(boxDim(it, opts))}" data-set="${esc(st.id)}">` +
+        `<title>${esc(M.setWord(st) + ' ' + st.label + (M.setTraits(st) ? ', ' + M.setTraits(st) : ''))}</title>` +
+        `<rect x="${f(bd.x)}" y="${f(bd.y)}" width="${f(bd.w)}" height="${BADGE_H}" rx="${BADGE_H / 2}"/>` +
+        `<circle class="cv-badge-dot" cx="${f(bd.x + 12)}" cy="${f(ty)}" r="3.5"/>` +
+        `<text x="${f(bd.x + 21)}" y="${f(ty + 3.9)}">${esc(st.label)}</text></g>`;
+    }).join('');
   }
   function boxFront(it, opts, Lo, hatch) {
     const sz = it.sz, x = it.x, w = it.w, F = opts.focus;
-    let o = it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) + badge(it, opts) : '';
+    let o = it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) + badges(it, opts) : '';
     const c = sz.cols, inner = c.from + c.c + c.to + 40;
     const x0 = x + (w - inner + sz.lead) / 2;
     sz.rows.forEach((r, i) => {
@@ -699,7 +733,7 @@
       // under the other rows' text.
       const wy = wireYAt(it, i), top = wy - G.BROW + 3, ty = wy - 5;
       const ts = Lo && Lo.twistStart(r.w);
-      const lead = ts && x0 - 4 > ts.x + 4 ? `<path class="cv-lead" d="M${f(x0 - 4)} ${f(ty - 4)}L${f(ts.x)} ${f(ts.y - 2.6)}"/>` : '';
+      const lead = ts && x0 - 4 > ts.x + 4 ? `<g class="cv-lead"><path d="M${f(x0 - 4)} ${f(ty - 4)}L${f(ts.x)} ${f(ts.y - 2.6)}"/><circle cx="${f(ts.x)}" cy="${f(ts.y - 2.6)}" r="2"/></g>` : '';
       if (it.b.kind !== 'set' && !opts.sheet) o += `<rect class="cv-grab" x="${f(x0 - 6)}" y="${f(top)}" width="${f(inner + 12)}" height="${G.BROW}"/>`;
       o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}">` + lead +
         `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
