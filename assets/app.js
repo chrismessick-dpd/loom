@@ -258,7 +258,7 @@
       const snap = v => (free ? Math.round(v) : Math.round(v / gs) * gs);
       // Snap the first port, not the top edge, so the part's ports land on grid lines.
       h.place = h.place || {};
-      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k + g.port0) - g.port0 };
+      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k + g.port0) - g.port0, v: 2 };
       renderCanvas();
       return;
     }
@@ -606,7 +606,10 @@
       </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${M.wireName(w)}</button></div></div>`;
   }
   function railWires(h, A, ws) {
-    return railHead('Wires', `${ws.length} wires selected`, `<div class="chips">${ws.map(w => `<span class="chip">${M.wireName(w)}</span>`).join('')}</div>`) +
+    // Exactly one bundle's wires (a click on its label) reads as that bundle.
+    const ids = new Set(ws.map(w => w.id));
+    const bx = C.boxesOf(h, A).find(b => b.kind === 'bundle' && b.wires.length === ids.size && b.wires.every(w => ids.has(w.id)));
+    return railHead(bx ? 'Wire bundle' : 'Wires', bx ? `<span class="mono-ref">${esc(bx.label)}</span> ${ws.length} wires` : `${ws.length} wires selected`, `<div class="chips">${ws.map(w => `<span class="chip">${M.wireName(w)}</span>`).join('')}</div>`) +
       `<div class="rail-list"><div class="rail-sec">
       <div class="group-btns">
         <button class="btn" data-act="group" data-kind="twist"><span class="g-chip g-twist">TP</span>Twist</button>

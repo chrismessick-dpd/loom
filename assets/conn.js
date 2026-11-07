@@ -16,6 +16,13 @@
   const G = { PITCH, ROW: PITCH, HEAD: 24, INFO: 22, BROW: PITCH, GAP_X: 110, GAP_Y: 30, FS: 12 };
   // Room at each end of a box's wire rows for the cable sheath's rounded end or a bundle's band.
   const BOX_END = { cable: 16, bundle: 24 };
+  // Extra room left of a box's row text when some of its wires twist, for the leader lines from the
+  // text to where each wire's twist starts. A bundle that is one twisted set has room already.
+  const LEAD = 22;
+  // A bundle's label table sits under its wires (Chris). Positions dragged before that kept the
+  // table on top; their first port was BUNDLE_SHIFT lower, so they move down by it (h.place
+  // entries saved since carry v: 2).
+  const BUNDLE_SHIFT = 40;
   const f = v => Math.round(v * 10) / 10;
   const tw = (s, size) => U.textW(s, size || G.FS);
 
@@ -135,9 +142,16 @@
     const colC = Math.max(...rows.map(r => tw(r.color))), colT = Math.max(0, ...rows.map(r => (r.tags ? tw(r.tags, 10.5) : 0)));
     const rowW = colFrom + colC + colTo + 64 + (colT ? colT + 18 : 0);
     const infoW = info.reduce((t, s) => t + tw(s) + 20, 0);
-    const w = Math.max(rowW + 2 * BOX_END[b.kind], infoW, note ? tw(note, 11) + 20 : 0, 180);
-    const h0 = G.HEAD + G.INFO + (note ? 18 : 0);
-    return { w, h: h0 + rows.length * G.BROW + 6, h0, port0: h0 + G.BROW - 3, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
+    const tg = h.groups.filter(g => g.kind === 'twist' && b.wires.some(w => g.wires.includes(w.id)));
+    const oneSet = b.kind === 'bundle' && tg.length === 1 && b.wires.every(w => tg[0].wires.includes(w.id));
+    const lead = tg.length && !oneSet ? LEAD : 0;
+    const w = Math.max(rowW + lead + 2 * BOX_END[b.kind], infoW, note ? tw(note, 11) + 20 : 0, 180);
+    // A cable: label table, note, then the wire rows. A bundle: the wire rows, then the table.
+    const table = G.HEAD + G.INFO;
+    const h0 = b.kind === 'bundle' ? 6 : table + (note ? 18 : 0);
+    const rowsBot = h0 + rows.length * G.BROW + 6;
+    const headY = b.kind === 'bundle' ? rowsBot : 0;
+    return { w, h: rowsBot + (b.kind === 'bundle' ? table : 0), h0, rowsBot, headY, lead, port0: h0 + G.BROW - 3, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
   }
 
   function layout(h, A) {
@@ -218,7 +232,9 @@
     items.forEach(i => {
       i.key = i.kind === 'box' ? 'b:' + i.b.key : 'n:' + i.n.id;
       const p = place[i.key];
-      if (p && isFinite(p.x) && isFinite(p.y)) { i.x = p.x; i.y = p.y; i.placed = true; }
+      if (p && isFinite(p.x) && isFinite(p.y)) {
+        i.x = p.x; i.y = p.y + (i.kind === 'box' && i.b.kind === 'bundle' && p.v !== 2 ? BUNDLE_SHIFT : 0); i.placed = true;
+      }
     });
     if (items.some(i => i.placed)) boxes.forEach(b => {
       const it = b.item, cx = it.x + it.w / 2;
@@ -253,18 +269,25 @@
       const right = towardX > it.x + it.w / 2;
       return { x: right ? it.x + it.w : it.x, y: endY(e) };
     }
-    function wirePath(w) {
+    // Where a wire meets its box: its box, its ends and the points it enters and leaves by, each on
+    // the side facing that end.
+    function entry(w) {
       const b = boxes.find(bx => bx.wires.includes(w));
-      if (!b) return '';
+      if (!b) return null;
       const it = b.item, y = boxRowY.get(w.id);
       const [l, r] = leftFirst(w);
-      const segs = [];
-      const curve = (p, q) => { const dx = Math.max(30, Math.abs(q.x - p.x) * 0.5); const s = q.x > p.x ? 1 : -1; return `C${f(p.x + s * dx)} ${f(p.y)} ${f(q.x - s * dx)} ${f(q.y)} ${f(q.x)} ${f(q.y)}`; };
       const lit = itemOf.get(l.node), rit = itemOf.get(r.node);
-      const L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
-      // Enter on the side facing each end.
       const lIn = { x: lit.x + lit.w / 2 < it.x ? it.x : it.x + it.w, y };
       const rIn = { x: rit.x + rit.w / 2 > it.x + it.w ? it.x + it.w : it.x, y };
+      return { b, it, l, r, lIn, rIn };
+    }
+    function wirePath(w) {
+      const e = entry(w);
+      if (!e) return '';
+      const { b, it, l, r, lIn, rIn } = e;
+      const segs = [];
+      const curve = (p, q) => { const dx = Math.max(30, Math.abs(q.x - p.x) * 0.5); const s = q.x > p.x ? 1 : -1; return `C${f(p.x + s * dx)} ${f(p.y)} ${f(q.x - s * dx)} ${f(q.y)} ${f(q.x)} ${f(q.y)}`; };
+      const L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
       segs.push(`M${f(L0.x)} ${f(L0.y)}`, curve(L0, lIn));
       const tw = twist(w, b, lIn, rIn);
       segs.push(tw ? tw.d : `L${f(rIn.x)} ${f(rIn.y)}`, curve(rIn, R0));
@@ -277,13 +300,24 @@
     // holds the stretches on the near side of the helix, drawn on top of the others, so the wires
     // alternate over and under where they cross.
     const TURN = 40;
-    function twist(w, b, lIn, rIn) {
+    // The stretch a twisted wire twists along, or null when it runs straight.
+    function twistSpan(w, b, lIn, rIn) {
       const t = twistOf.get(w.id);
       if (!t || Math.abs(rIn.x - lIn.x) < 1) return null;
       const dir = rIn.x > lIn.x ? 1 : -1, pad = b.twistOnly ? 8 : BOX_END[b.kind] + 6;
       const xa = lIn.x + dir * pad, xb = rIn.x - dir * pad, run = Math.abs(xb - xa), n = t.ws.length;
+      return run < TURN * n * 0.6 ? null : { t, dir, xa, xb, run, n };
+    }
+    // Where a twisted wire's twist starts on the left, for the leader line from its row's text.
+    function twistStart(w) {
+      const e = entry(w), s = e && twistSpan(w, e.b, e.lIn, e.rIn);
+      return s ? { x: Math.min(s.xa, s.xb), y: e.lIn.y } : null;
+    }
+    function twist(w, b, lIn, rIn) {
+      const s = twistSpan(w, b, lIn, rIn);
+      if (!s) return null;
+      const { t, dir, xa, xb, run, n } = s;
       const turns = Math.max(1, Math.round(run / (TURN * n)));
-      if (run < TURN * n * 0.6) return null;
       const ys = t.ws.map(x => boxRowY.get(x.id)), lo = Math.min(...ys), hi = Math.max(...ys);
       // The ease (smoothstep, level at both ends) takes about half a turn, so the wire leaves the
       // straight part and joins the helix without a kink.
@@ -309,7 +343,7 @@
     }
     const box = { x0: Math.min(0, ...items.map(i => i.x)), y0: Math.min(0, ...items.map(i => i.y)),
       x1: Math.max(200, ...items.map(i => i.x + i.w)), y1: Math.max(120, ...items.map(i => i.y + i.h)) };
-    return { items, itemOf, boxes, wirePath, anchor, endY, box };
+    return { items, itemOf, boxes, wirePath, twistStart, anchor, endY, box };
   }
 
   // ── SVG ───────────────────────────────────────────────────────────────────
@@ -403,7 +437,7 @@
   // Over the wires, the rows get a picture of what holds them: a cable's sheath, dark and see-through
   // with rounded ends where the wires come out, or a bundle's shrink-tube bands at each end.
   function holder(it, opts) {
-    const b = it.b, x = it.x, w = it.w, top = it.y + it.sz.h0, bot = it.y + it.h;
+    const b = it.b, x = it.x, w = it.w, top = it.y + it.sz.h0, bot = it.y + it.sz.rowsBot;
     const cls = (boxSel(it, opts) ? ' sel' : '') + dimIf(boxDim(it, opts));
     if (b.kind === 'cable') {
       const hh = bot - top - 4;
@@ -416,21 +450,26 @@
       `<line x1="${f(bx + 3.5)}" x2="${f(bx + 3.5)}" y1="${f(top + 7)}" y2="${f(top + hh - 3)}"/></g>`).join('');
   }
   const boxSel = (it, opts) => { const b = it.b, sel = opts.sel; return !!sel && ((sel.kind === 'group' && b.group && sel.ids.has(b.group.id)) || (sel.kind === 'wire' && b.wires.every(w => sel.ids.has(w.id)))); };
-  function boxFront(it, opts) {
+  function boxFront(it, opts, Lo) {
     const b = it.b, sz = it.sz, x = it.x, y = it.y, w = it.w, F = opts.focus, bd = dimIf(boxDim(it, opts));
+    const ty0 = y + sz.headY;
     let o = holder(it, opts);
-    o += `<g class="cv-boxg${bd}" data-box="${esc(b.key)}"><rect class="cv-bg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/>` +
-      `<rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${G.HEAD}"/>` +
-      `<text class="cv-ref" x="${f(x + w / 2)}" y="${f(y + 16)}" text-anchor="middle">${esc(b.label)}</text>`;
-    o += cellRow(x, y + G.HEAD, w, G.INFO, sz.info, 'cv-t');
-    o += `<rect class="cv-frame${boxSel(it, opts) ? ' sel' : ''}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/></g>`;
+    o += `<g class="cv-boxg${bd}" data-box="${esc(b.key)}"><rect class="cv-bg" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/>` +
+      `<rect class="cv-cell cv-headbg" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD}"/>` +
+      `<text class="cv-ref" x="${f(x + w / 2)}" y="${f(ty0 + 16)}" text-anchor="middle">${esc(b.label)}</text>`;
+    o += cellRow(x, ty0 + G.HEAD, w, G.INFO, sz.info, 'cv-t');
+    o += `<rect class="cv-frame${boxSel(it, opts) ? ' sel' : ''}" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/></g>`;
     if (sz.note) o += `<text class="cv-name cv-halo${bd}" x="${f(x + w / 2)}" y="${f(y + G.HEAD + G.INFO + 13)}" text-anchor="middle">${esc(U.clip(sz.note, 11, w - 16))}</text>`;
     const c = sz.cols, inner = c.from + c.c + c.to + 40 + (c.t ? c.t + 18 : 0);
-    const x0 = x + (w - inner) / 2;
+    const x0 = x + (w - inner + sz.lead) / 2;
     sz.rows.forEach((r, i) => {
-      // The text sits above the wire, which runs near the bottom of its row (sz.port0).
+      // The text sits above the wire, which runs near the bottom of its row (sz.port0). A twisted
+      // wire gets a leader from the text's left to where its twist starts, since the twist runs
+      // under the other rows' text.
       const top = y + sz.h0 + i * G.BROW, ty = top + 12;
-      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(x)}" y="${f(top)}" width="${f(w)}" height="${G.BROW}"/>` +
+      const ts = Lo && Lo.twistStart(r.w);
+      const lead = ts && x0 - 4 > ts.x + 4 ? `<path class="cv-lead" d="M${f(x0 - 4)} ${f(ty - 4)}L${f(ts.x)} ${f(ts.y - 2.6)}"/>` : '';
+      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(x)}" y="${f(top)}" width="${f(w)}" height="${G.BROW}"/>` + lead +
         `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + 20 + c.c / 2)}" y="${f(ty)}" text-anchor="middle">${esc(r.color)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text>` +
@@ -446,7 +485,7 @@
     opts = Object.assign({}, opts, { focus: focusOf(h, opts.sel, opts.pending) });
     let backs = '', wires = '', overs = '', fronts = '', ends = '';
     Lo.items.forEach(it => {
-      if (it.kind === 'box') { backs += boxBack(it, opts); fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts)}</g>`; }
+      if (it.kind === 'box') { backs += boxBack(it, opts); fronts += `<g data-item="${esc(it.key)}">${boxFront(it, opts, Lo)}</g>`; }
       else if (it.kind === 'conn') ends += connSvg(h, it, opts, Lo);
       else ends += spliceSvg(it, opts);
     });

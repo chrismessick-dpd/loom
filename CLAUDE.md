@@ -63,6 +63,13 @@ links to it so far. Before every commit:
     they alternate over and under. A group wire on a row apart from the rest stays straight.
     A bundle that is nothing but one twisted set (`b.twistOnly`) gets no bands, and its twist
     runs nearly the box's width; a cable keeps its sheath.
+  - A bundle's label table (B1, count, gauge, length) sits under its wires; a cable's stays on top
+    (`sz.headY`, `sz.rowsBot`). Bundle positions dragged before that change move down by
+    `BUNDLE_SHIFT` so their wires stay put; entries saved since carry `v: 2`.
+  - A twisted wire's row gets a thin leader (`.cv-lead`) from the left of its text to where its
+    twist starts (`twistStart`). Boxes with twisted wires, other than a bundle that is one twisted
+    set, get `LEAD` more room left of the text for it.
+  - Selecting exactly one bundle's wires (a click on its label) titles Properties **Wire bundle**.
 - **From a board (2026-11-06):** Add › From a board lists Signoff EE boards and reads one's stored fab
   package (`assets/boards.js`).
   - **Which package:** the latest tagged revision's package (picked as EE's `latestRevision`
