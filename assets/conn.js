@@ -505,10 +505,39 @@
           sz.ext.set(st.id, { x0: e0, x1: e1 });
         });
       });
+      // Heights dragged in this view (Chris: x comes from lengths, but connectors, splices and sets
+      // move up and down). They're kept in h.propY by item key (n:<node id>, b:<box key>), apart
+      // from the arranged view's h.place. A box nobody moved whose end was moved centers its rows
+      // on its ends' heights, on the pitch.
+      const py = h.propY || {};
+      items.forEach(it => { const y = py[it.key]; if (y != null && isFinite(+y)) { it.y = +y; it.pinned = true; } });
+      if (parts.some(i => i.pinned)) boxes.forEach(b => {
+        const it = b.item, es = b.wires.flatMap(w => [w.from, w.to]);
+        if (it.pinned) return;
+        if (!es.some(e => { const o = itemOf.get(e.node); return o && o.pinned; })) return;
+        const ys = es.map(endY).filter(y => y != null);
+        if (ys.length) it.y = Math.round(((Math.min(...ys) + Math.max(...ys)) / 2 - PITCH * (it.sz.rows.length - 1) / 2) / PITCH) * PITCH - it.sz.port0;
+      });
       // Boxes now span their real runs, so they can reach into another column's parts: from the
-      // top down, anything that would overlap what's already placed moves down below it.
+      // top down, anything that would overlap what's already placed moves down below it. Once
+      // something was dragged, what it's dragged against goes first and stays put, and anything
+      // else that overlaps takes the nearest free height above or below, on the pitch, so a box
+      // doesn't drop below everything (Chris).
       const done = [], down = it => Math.ceil((it.y + it.sz.port0) / PITCH) * PITCH - it.sz.port0;
-      items.slice().sort((a, b) => a.y - b.y || a.x - b.x).forEach(it => {
+      const hits = (it, y) => done.some(o => it.x < o.x + o.w - 1 && o.x < it.x + it.w - 1 && y < o.y + o.h + 12 && o.y < y + it.h + 12);
+      const anyPinned = items.some(i => i.pinned);
+      items.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || a.y - b.y || a.x - b.x).forEach(it => {
+        if (anyPinned) {
+          if (!it.pinned && hits(it, it.y)) {
+            const y0 = it.y;
+            for (let k = 1; k < 400; k++) {
+              if (!hits(it, y0 + k * PITCH)) { it.y = y0 + k * PITCH; break; }
+              if (!hits(it, y0 - k * PITCH)) { it.y = y0 - k * PITCH; break; }
+            }
+          }
+          done.push(it);
+          return;
+        }
         for (let again = true; again;) {
           again = false;
           for (const o of done) {
@@ -532,7 +561,7 @@
       const rest = S[k].slice(S.fixed[k]).sort((a, b) => yOfWire(a, id) - yOfWire(b, id) || a.no - b.no);
       S[k] = S[k].slice(0, S.fixed[k]).concat(rest);
     }));
-    if (items.some(i => i.placed) || sides.size) boxes.forEach(b => {
+    if (items.some(i => i.placed || i.pinned) || sides.size) boxes.forEach(b => {
       const it = b.item, cx = it.x + it.w / 2;
       const yOf = w => { const e = [w.from, w.to].map(x => ({ e: x, it: itemOf.get(x.node) })).filter(o => o.it).sort((a, c) => Math.abs(a.it.x - cx) - Math.abs(c.it.x - cx))[0]; return e ? endY(e.e) : 0; };
       arrange(h, b, it.sz, yOf);

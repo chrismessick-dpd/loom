@@ -327,7 +327,8 @@
   }
   function renderHud() {
     // Slid labels count as dragged positions: Auto layout puts them back too.
-    const h = H(), gs = gridOf(h), placed = h && ((h.place && Object.keys(h.place).length) || h.wires.some(w => w.labelAt != null));
+    // In Real proportions it's the heights dragged there (h.propY) that Auto layout forgets.
+    const h = H(), gs = gridOf(h), placed = h && (fold.prop ? h.propY && Object.keys(h.propY).length : (h.place && Object.keys(h.place).length) || h.wires.some(w => w.labelAt != null));
     // Glass capsules, one per kind of control (docs/look-2026-11.md): the panel, the view, the grid.
     $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
     $('#hud').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel" aria-label="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
@@ -452,17 +453,24 @@
       return;
     }
     if (!g.moved && g.item) {
-      const it = !fold.prop && lastLayout && lastLayout.items.find(i => i.key === g.item);
-      // In the real-proportions view positions come from lengths, so parts don't drag.
+      // In Real proportions x comes from lengths, so parts and sets drag only up and down there
+      // (h.propY; Chris). A box nobody moved follows its ends.
+      const it = lastLayout && lastLayout.items.find(i => i.key === g.item && (!fold.prop || i.kind !== 'loose'));
       if (!it) g.item = null;
       // A box's stored x is its outermost set's left end (conn.js), past any set running out on the left.
-      else { snapshot(); g.start = { x: it.x + (it.kind === 'box' ? it.sz.lx || 0 : 0), y: it.y }; g.port0 = it.sz.port0 || 0; S.lift = g.item; svgEl().classList.add('dragging'); }
+      else { snapshot(); g.prop = !!fold.prop; g.start = { x: it.x + (it.kind === 'box' ? it.sz.lx || 0 : 0), y: it.y }; g.port0 = it.sz.port0 || 0; S.lift = g.item; svgEl().classList.add('dragging'); }
     }
     g.moved = true;
     if (g.item) {
       const h = H(), gs = gridOf(h), free = e.ctrlKey || e.metaKey || !gs;
       const snap = v => (free ? Math.round(v) : Math.round(v / gs) * gs);
       // Snap the first port, not the top edge, so the part's ports land on grid lines.
+      if (g.prop) {
+        h.propY = h.propY || {};
+        h.propY[g.item] = snap(g.start.y + dy / S.cam.k + g.port0) - g.port0;
+        renderCanvas();
+        return;
+      }
       h.place = h.place || {};
       h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k + g.port0) - g.port0, v: 3 };
       renderCanvas();
@@ -1226,7 +1234,7 @@
       case 'nav': toggleSidebar(); break;
       case 'fold-parts': toggleFold('parts'); break;
       case 'pane-tab': S.paneTab = el.dataset.tab; renderParts(); break;
-      case 'auto-layout': change(x => { x.place = {}; x.wires.forEach(w => { delete w.labelAt; }); }); S.cam = null; renderCanvas(); break;
+      case 'auto-layout': change(x => { if (fold.prop) delete x.propY; else { x.place = {}; x.wires.forEach(w => { delete w.labelAt; }); } }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
       case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;

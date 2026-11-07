@@ -203,8 +203,14 @@ links to it so far. Before every commit:
       of it (`sz.textC`). A run with no length is `NOMINAL` long.
     - Boxes can then reach into another column's parts, so anything that would overlap what's
       already placed moves down below it, top down.
-    - In this view parts don't drag; set ends do, to the box's true scale (`g.prop` in
-      `dragSetEnd`), between the set's other end and the wire ends.
+    - In this view connectors, splices, sets and stacks drag only up and down (2026-11-07, Chris),
+      snapped like the arranged view (first port on the grid). The heights are kept in `h.propY`
+      by item key (`n:<node id>`, `b:<box key>`), apart from `h.place`, and Auto layout here
+      forgets only them. A box nobody moved whose end was moved centers its rows on its ends.
+      Once anything was moved, what was moved goes first and stays put, and anything else that
+      overlaps takes the nearest free height above or below (with nothing moved, the old top-down
+      push stands). Set ends drag too, to the box's true scale (`g.prop` in `dragSetEnd`),
+      between the set's other end and the wire ends.
   - **Notes** (`h.callouts`; Chris). Add › Note, then a click on a connector or splice, a wire's
     line or a set pins a note there (`placeNote` in `app.js`, preferring them in that order). A
     note stores where it's pinned relative to that part (`at`: a node's or set's spot as
