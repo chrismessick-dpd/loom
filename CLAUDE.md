@@ -153,7 +153,9 @@ links to it so far. Before every commit:
     (`lacing`), the sheath for a cable, and a crosshatch braid for a shield (`holders`; the braid
     goes over the sheath). The pattern ids are `lm-braid-canvas` and `lm-braid-sheet`. A twisted
     set's wires twist inside its stretch. The box's label table is gone. A shield's braid and a
-    cable's sheath reach `SET_R` (6) past their outer wires, and a bundle `BUNDLE_R` (12).
+    cable's sheath reaches `SET_R` (6) past its outer wires, a shield's braid `SHIELD_R` (11), and a
+    bundle `BUNDLE_R` (12). On the canvas a shield is outlined in the selection blue (1.2) over a soft
+    blue tint and a 7.5-unit crosshatch; selected, it shows the plain ink outline (Chris, 2026-11-07).
   - **Cables, shields and bundles pack their wires** (2026-11-07, Chris: look more like a cable;
     shields and bundles from branch `curves`). Each wire eases into every packing set that holds
     it (its chain, `chainOf`, `packAt`), so a shielded pair running past its bundle stays packed.
@@ -181,28 +183,32 @@ links to it so far. Before every commit:
     Properties chip colors: cable blue, bundle gray, twist amber, shield violet). The sheet prints
     plain pills. Clicking a badge selects its set; the selected one and its leader glow. Hovering
     a badge lights its set's area as hovering the set does (`lightBadgeSet` in `app.js`).
+    - **Dragging badges** (2026-11-07, Chris). A badge drags anywhere, kept as `s.badgeOff` from its
+      leader's dot, with a straight leader back to it; its dot (`.cv-bdot-hit`) slides along the
+      set's lower edge, kept as `s.badgeAt` (0 to 1 along its stretch), and the badge comes along
+      (`dragBadge` in `app.js`, `conn.badgeOf`). Either drag first freezes the other half; a click
+      still selects the set. Unmoved, a badge keeps its place in the row with its elbow leader. Auto
+      layout forgets both.
   - **Wire labels** (2026-11-07, Chris: they size nothing and slide anywhere along their wires).
     Each boxed wire's label (from, color and to, in its box's shared columns, `sz.cols`,
     `sz.inner`) is drawn in its own layer over the parts, outside every `data-item`
     (`labelSvg`). Boxes no longer size to their text: a box gives its rows a nominal run,
     `ROW_W` (140).
-    - **Where it sits.** Each label rides its wire's lane (`lane`): the wire's path from pin to
-      pin, but across its box on its row without a twist's swing, so a label over a twist stays
-      level with its row. Until slid, it sits where row text sat (`labelX0`: centered on the
-      frame, right of a break in Real proportions, and where rows twist just past where the first
-      twist starts, `LEAD` further right). Slid, it keeps `w.labelAt`, 0 to 1 along the lane
-      (`labelAt`), so when parts move it stays on its wire at the same fraction. That holds in
-      both views.
-    - **Sliding.** Drag a label by its clear rect (`.cv-lgrab`, lit on hover; `slideLabel` in
-      `app.js`). The pointer, less where it was grabbed, is projected onto the lane from the
-      drag's start (`conn.project`), and one undo puts it back. A click without movement goes to
-      whatever is under the label (Chris took out picking a wire by its text), so a click on a
-      label inside a set selects the set. Auto layout puts slid labels back, and a slid label
-      shows its button.
-    - **Twist leaders** (`.cv-lead`, the main ink at 1.4, Chris: more prominent). Over its
-      twist, a label has a leader from its left end: to where the twist starts while that's
-      within `3 × LEAD` (the default spot), else to where its wire is drawn under that end
-      (`wireAt`, from the same `helix` the twist is drawn with).
+    - **A dot and a leader** (2026-11-07, Chris). Each label hangs from a small white dot on its
+      wire (`.cv-ldot`), with a thin line from the dot to the label's left side (`.cv-ldot-lead`),
+      on the canvas and the sheet. The dot sits `w.labelAt` along the wire's lane (`lane`: its path
+      from pin to pin, packed, without a twist's swing; on the helix where it's over a twist in the
+      box, `wireAt`), 0 to 1. The label's left side sits `w.labelOff` (`{ dx, dy }`, to its
+      baseline) from the dot, anywhere. Unset, the label is where it always defaulted (`labelX0`;
+      split clear of a packed set that fills its box, `offLane`) and its dot just left of it, on the
+      wire; with only `labelAt` set, the label sits just right of its dot (`DOT_GAP`). The old
+      twist leaders are gone; the dot does their job.
+    - **Dragging** (`app.js`). The dot slides along its wire (`slideDot`: the pointer, less where
+      it was grabbed, projected onto the lane), and its label comes along at the same offset. The
+      label moves anywhere (`moveLabel`, by its clear rect `.cv-lgrab`), and its dot stays put.
+      Either drag first freezes the other half (`labelStart`), and one undo puts it back. A click on
+      the label without moving goes to whatever is under it. Auto layout forgets `labelAt` and
+      `labelOff`.
   - **Set areas** (`setAreas`, canvas only). Each set's bounds are a hit area over the wires,
     outermost first, so the innermost set under the pointer wins. Hovering an area tints it and
     titles it, a click selects that set, and shift-click adds its wires to the selection (or takes
@@ -284,7 +290,9 @@ links to it so far. Before every commit:
     straight runs. The near-side stretches (`over`, `.w-over`) are drawn over the other wires, so
     they alternate over and under. A group wire on a row apart from the rest stays straight.
     A bundle of more than two wires (not one twisted set) is laced instead of banded (`lacing`):
-    at each end a tie loops round the wires, with more ties between about every `LACE_GAP` (75; Chris), a lens knotted at the top with two short tails, its
+    at each end a tie loops round the wires, with more ties between about every `LACE_GAP` (75; Chris): a thin ellipse slanted like a
+    wrapped cord, round at the bottom (`tieHalf`), tied off at the top in a knot of two crossed lobes,
+    a wrap and two tails (`laceKnot`), its
     far side drawn under the wires (in `boxBack`) and its near side, knot and tails over them.
     A bundle that is nothing but one twisted set (`b.twistOnly`) gets no bands, and its twist
     runs nearly the box's width; a cable keeps its sheath.

@@ -328,7 +328,7 @@
   function renderHud() {
     // Slid labels count as dragged positions: Auto layout puts them back too.
     // In Real proportions it's the heights dragged there (h.propY) that Auto layout forgets.
-    const h = H(), gs = gridOf(h), placed = h && (fold.prop ? h.propY && Object.keys(h.propY).length : (h.place && Object.keys(h.place).length) || h.wires.some(w => w.labelAt != null));
+    const h = H(), gs = gridOf(h), placed = h && (fold.prop ? h.propY && Object.keys(h.propY).length : (h.place && Object.keys(h.place).length) || h.wires.some(w => w.labelAt != null || w.labelOff != null) || h.sets.some(st => st.badgeAt != null || st.badgeOff != null));
     // Glass capsules, one per kind of control (docs/look-2026-11.md): the panel, the view, the grid.
     $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
     $('#hud').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel" aria-label="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
@@ -376,12 +376,17 @@
     // A note's bubble drags the bubble.
     const noteEl = e.button === 0 && !S.pending && !S.placing && e.target.closest('[data-notebox]');
     // A wire's label slides along its wire; a click on one is a click on what's under it.
+    // Its dot slides along the wire (data-ldot, inside the label's group).
     const labelEl = e.button === 0 && !S.pending && !S.placing && !endEl && !setEndEl && e.target.closest('[data-label]');
-    const itemEl = e.button === 0 && !endEl && !setEndEl && e.target.closest('[data-item]');
+    const ldot = !!(labelEl && e.target.closest('[data-ldot]'));
+    // A set's badge drags anywhere, and its leader's dot along its set (a click still selects it).
+    const badgeEl = e.button === 0 && !S.pending && !S.placing && !endEl && !setEndEl && e.target.closest('.cv-badge, [data-bdot]');
+    const badge = badgeEl ? { id: badgeEl.dataset.set, dot: !!badgeEl.dataset.bdot } : null;
+    const itemEl = e.button === 0 && !endEl && !setEndEl && !badgeEl && e.target.closest('[data-item]');
     const end = endEl ? { wire: endEl.dataset.end.split('|')[0], which: endEl.dataset.end.split('|')[1] } : null;
     const setEnd = !setEndEl ? null : setEndEl.dataset.anchor ? { wire: setEndEl.dataset.anchor.split('|')[0], side: setEndEl.dataset.anchor.split('|')[1] }
       : { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] };
-    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null, label: labelEl ? labelEl.dataset.label : null };
+    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null, label: labelEl ? labelEl.dataset.label : null, ldot, badge };
     svgEl().setPointerCapture(e.pointerId);
   }
   // Where a dragged wire end would land: a splice (the side and port slot under the pointer), a
@@ -444,7 +449,8 @@
       return;
     }
     if (g.setEnd) { dragSetEnd(g, e); return; }
-    if (g.label) { slideLabel(g, e); return; }
+    if (g.label) { (g.ldot ? slideDot : moveLabel)(g, e); return; }
+    if (g.badge) { dragBadge(g, e); return; }
     if (g.note) {
       const c = M.note(H(), g.note);
       if (!c) { gesture = null; return; }
@@ -562,23 +568,66 @@
     if (!touches.size) pinch = null;
     return true;
   }
-  // Slide a wire's label along its wire (Chris: labels size nothing and go anywhere on their wires,
-  // in either view): the pointer, less where the label was grabbed, projected onto the wire's lane
-  // from the drag's start gives w.labelAt, 0 to 1 along it. When the drawing moves the label keeps
-  // that fraction, so it stays on its wire. One snapshot, so one undo puts it back.
-  function slideLabel(g, e) {
-    const w = M.wire(H(), g.label);
+  // A wire's label hangs from a dot on its wire (conn.js labelAt; Chris). Dragging the dot slides it
+  // along the wire's lane: the pointer, less where the dot was grabbed, projected onto the lane from
+  // the drag's start gives w.labelAt, 0 to 1 along it, and the label comes along at the same offset.
+  // Dragging the label moves it anywhere, kept as w.labelOff from its dot; its dot stays put. When
+  // the drawing moves, both keep their places on the wire. One snapshot each, so one undo puts it back.
+  function labelStart(g) {
+    const w = M.wire(H(), g.label), L = w && lastLayout && lastLayout.labelAt(w), ln = L && lastLayout.lane(w);
+    if (!ln) { gesture = null; return null; }
+    snapshot();
+    // Freeze what the other half of the drag keeps: the dot's place, and the label's offset from it.
+    if (w.labelAt == null) w.labelAt = Math.round(L.t * 1000) / 1000;
+    if (w.labelOff == null) w.labelOff = { dx: Math.round(L.x0 - L.dot.x), dy: Math.round(L.ty - L.dot.y) };
+    S.slide = w.id;
+    svgEl().classList.add('dragging');
+    return { w, L, ln, p: toWorld({ clientX: g.x, clientY: g.y }) };
+  }
+  function slideDot(g, e) {
     if (!g.moved) {
-      const L = w && lastLayout && lastLayout.labelAt(w), ln = L && lastLayout.lane(w);
-      if (!ln) { gesture = null; return; }
-      const p = toWorld({ clientX: g.x, clientY: g.y });
+      const o = labelStart(g);
+      if (!o) return;
+      Object.assign(g, { moved: true, ln: o.ln, off: { x: o.p.x - o.L.dot.x, y: o.p.y - o.L.dot.y } });
+    }
+    const w = M.wire(H(), g.label), p = toWorld(e);
+    w.labelAt = Math.round(C.project(g.ln, { x: p.x - g.off.x, y: p.y - g.off.y }) / (g.ln.S || 1) * 1000) / 1000;
+    renderCanvas();
+  }
+  function moveLabel(g, e) {
+    if (!g.moved) {
+      const o = labelStart(g);
+      if (!o) return;
+      Object.assign(g, { moved: true, d0: { x: o.L.dot.x, y: o.L.dot.y }, o0: Object.assign({}, o.w.labelOff) });
+    }
+    const w = M.wire(H(), g.label), dx = (e.clientX - g.x) / S.cam.k, dy = (e.clientY - g.y) / S.cam.k;
+    w.labelOff = { dx: Math.round(g.o0.dx + dx), dy: Math.round(g.o0.dy + dy) };
+    renderCanvas();
+  }
+  // A set's badge (Chris: draggable like the wire labels). Dragging the badge moves it anywhere, kept
+  // as s.badgeOff from its leader's dot; dragging the dot slides it along the set's lower edge, kept
+  // as s.badgeAt (0 to 1 along its stretch), and the badge comes along. Either drag first freezes the
+  // other half, and one undo puts it back.
+  function dragBadge(g, e) {
+    const h = H(), st = M.set(h, g.badge.id);
+    if (!g.moved) {
+      const it = st && lastLayout && lastLayout.items.find(i => i.kind === 'box' && i.band && i.sz.spans.some(sp => sp.s.id === st.id));
+      const bd = it && C.badgeOf(it, st.id);
+      if (!bd) { gesture = null; return; }
+      const band = it.band(it.sz.spans.find(sp => sp.s.id === st.id)), p0 = toWorld({ clientX: g.x, clientY: g.y });
       snapshot();
-      Object.assign(g, { moved: true, ln, off: { x: p.x - L.x, y: p.y - L.y } });
-      S.slide = w.id;
+      if (st.badgeAt == null) st.badgeAt = Math.round(bd.t * 1000) / 1000;
+      if (st.badgeOff == null) st.badgeOff = { dx: Math.round(bd.x - bd.ax), dy: Math.round(bd.y - bd.ay) };
+      // The set's lower edge, with how far along the set each point is, to project the dot onto.
+      const edge = { pts: band.pts.map(p => ({ x: p.x + p.nx * p.bot, y: p.y + p.ny * p.bot, s: p.u })) };
+      Object.assign(g, { moved: true, band, edge, o0: Object.assign({}, st.badgeOff), off: { x: p0.x - bd.ax, y: p0.y - bd.ay } });
+      S.sel = { kind: 'set', ids: new Set([st.id]) };
       svgEl().classList.add('dragging');
     }
-    const p = toWorld(e);
-    w.labelAt = Math.round(C.project(g.ln, { x: p.x - g.off.x, y: p.y - g.off.y }) / (g.ln.S || 1) * 1000) / 1000;
+    if (g.badge.dot) {
+      const p = toWorld(e), u = C.project(g.edge, { x: p.x - g.off.x, y: p.y - g.off.y });
+      st.badgeAt = Math.round((u - g.band.u0) / Math.max(1e-6, g.band.u1 - g.band.u0) * 1000) / 1000;
+    } else st.badgeOff = { dx: Math.round(g.o0.dx + (e.clientX - g.x) / S.cam.k), dy: Math.round(g.o0.dy + (e.clientY - g.y) / S.cam.k) };
     renderCanvas();
   }
   function onUp(e) {
@@ -597,7 +646,7 @@
       }
       return;
     }
-    if (g && (g.setEnd || g.note) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
+    if (g && (g.setEnd || g.note || g.badge) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
       renderAll();
@@ -1260,7 +1309,7 @@
       case 'fold-parts': toggleFold('parts'); break;
       case 'pane-tab': S.paneTab = el.dataset.tab; renderParts(); break;
       case 'edit-set': S.paneTab = 'props'; renderParts(); break;
-      case 'auto-layout': change(x => { if (fold.prop) delete x.propY; else { x.place = {}; x.wires.forEach(w => { delete w.labelAt; }); } }); S.cam = null; renderCanvas(); break;
+      case 'auto-layout': change(x => { if (fold.prop) delete x.propY; else { x.place = {}; x.wires.forEach(w => { delete w.labelAt; delete w.labelOff; }); x.sets.forEach(st => { delete st.badgeAt; delete st.badgeOff; }); } }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
       case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;

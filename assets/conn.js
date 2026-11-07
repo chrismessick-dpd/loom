@@ -30,7 +30,8 @@
   // A shield's braid and a cable's sheath reach SET_R above their first wire and below their last,
   // snug round the wires; a cable is as thick as a shield (Chris, 2026-11-07). A set holding sets
   // reaches 3 past them, and a bundle keeps room for its lacing knots (BUNDLE_R).
-  const SET_R = 6, BUNDLE_R = 12;
+  // A shield's braid reaches SHIELD_R, 5 more than a cable's sheath (Chris).
+  const SET_R = 6, BUNDLE_R = 12, SHIELD_R = 11;
   // A cable packs its wires PACK apart, edges touching (Chris, 2026-11-07), so its sheath is as thick
   // as its conductors need: SET_R past its outer wires. They fan in to it from grid spacing and back
   // out over fanLen, and its box keeps LABEL_PAD either side of its wires' labels after the fan-out.
@@ -255,7 +256,7 @@
       const kids = st.sets.map(id => M.set(h, id)).filter(Boolean).map(c => unit(c, depth + 1)).filter(u => u.rows.length);
       parts = parts.concat(kids).sort(byKey);
       const height = kids.length ? 1 + Math.max(...kids.map(u => u.height)) : 0;
-      const R = Math.max(st.bundle ? BUNDLE_R : SET_R, ...kids.map(u => u.R + 3));
+      const R = Math.max(st.bundle ? BUNDLE_R : st.shield ? SHIELD_R : SET_R, ...kids.map(u => u.R + 3));
       const rows = [], spans = [];
       let prev = null;
       parts.forEach(pt => {
@@ -999,16 +1000,25 @@
       labelX.set(it, x0);
       return x0;
     }
-    // A label's middle: w.labelAt along its lane (0 to 1, set by sliding it, in either view), else
-    // its box's spot projected onto the lane. null for a wire in no box (one with a loose end).
+    // A label hangs from a dot on its wire (Chris): the dot sits w.labelAt along the lane (0 to 1;
+    // unset, just left of the label's default spot), on the helix where the wire twists in its box,
+    // and the label's left side sits w.labelOff ({ dx, dy }, baseline) from the dot, anywhere. Unset,
+    // the label is where it always defaulted (lifted clear of a packed set that fills its box), or,
+    // once its dot was slid, just right of the dot. null for a wire in no box (one with a loose end).
+    const DOT_GAP = 8;
     function labelAt(w) {
       const ln = lane(w);
       if (!ln) return null;
+      const it = ln.it, x0d = labelX0(it), ry = boxRowY.get(w.id), lift = offLane.has(it) ? offLane.get(it).get(w.id) || 0 : 0;
       const t = w.labelAt == null ? null : Math.min(1, Math.max(0, +w.labelAt));
-      const q = { x: labelX0(ln.it) + ln.it.sz.inner / 2, y: boxRowY.get(w.id) }, s = t != null ? t * ln.S : project(ln, q);
-      if (t == null && offLane.has(ln.it)) return { x: q.x, y: q.y + (offLane.get(ln.it).get(w.id) || 0), t: ln.S ? s / ln.S : 0.5, it: ln.it };
-      const p = laneAt(ln, s);
-      return { x: p.x, y: p.y, t: ln.S ? s / ln.S : 0.5, it: ln.it };
+      const s = t != null ? t * ln.S : project(ln, { x: x0d - DOT_GAP, y: ry });
+      let dot = laneAt(ln, s);
+      const ts = twistStart(w), te = ts && twistEnd(w);
+      if (ts && dot.x >= it.x && dot.x <= it.x + it.w && dot.x >= Math.min(ts.x, te.x) && dot.x <= Math.max(ts.x, te.x)) dot = wireAt(w, dot) || dot;
+      const o = w.labelOff, set = o && isFinite(+o.dx) && isFinite(+o.dy);
+      const x0 = set ? dot.x + +o.dx : t == null ? x0d : dot.x + DOT_GAP;
+      const ty = set ? dot.y + +o.dy : t == null ? ry + lift - 5 : dot.y - 5;
+      return { dot, x0, ty, t: ln.S ? s / ln.S : 0.5, it };
     }
     boxes.forEach(b => labelX0(b.item));
     // Notes: where a note is pinned, and the reverse for pinning one (app.js). A wire's t runs along
@@ -1257,19 +1267,34 @@
     });
     return o;
   }
-  // A bundle is laced: near each end of its band a tie loops around its wires, square to the path,
-  // a little lens tied off in a knot at the top with two short tails, and more ties between them
-  // about every LACE_GAP as the bundle gets longer (Chris). Its far side runs behind the wires (part
-  // 'back') and its near side, knot and tails in front, so it reads as wrapped round them.
-  const LACE_GAP = 75;
+  // A bundle is laced: near each end of its band, and about every LACE_GAP between as the bundle
+  // gets longer (Chris), a tie loops round its wires, square to the path. A tie is a thin ellipse,
+  // slanted a little as a wrapped cord sits, so it's round at the bottom (Chris: not pointy); its
+  // far half runs behind the wires (part 'back') and its near half in front, so it reads as wrapped
+  // round them. At the top it's tied off in a knot: two lobes crossed like a square knot, a wrap
+  // across their middle, and two short tails.
+  const LACE_GAP = 75, LACE_SLANT = 0.22;
+  function tieHalf(top, bot, side) {
+    const m = (top + bot) / 2, ry = (bot - top) / 2, rx = Math.min(5, 1.5 + ry * 0.25), N = 14;
+    let d = '';
+    for (let i = 0; i <= N; i++) {
+      const t = -Math.PI / 2 + Math.PI * i / N, y = ry * Math.sin(t), x = side * rx * Math.cos(t) + LACE_SLANT * y;
+      d += `${i ? 'L' : 'M'}${f(x)} ${f(m + y)}`;
+    }
+    return d;
+  }
+  function laceKnot(top, bot) {
+    const x = -LACE_SLANT * (bot - top) / 2, y = top;
+    const lobe = (dx, a) => `<ellipse class="cv-lace-knot" cx="${f(x + dx)}" cy="${f(y - 0.8)}" rx="2.7" ry="1.6" transform="rotate(${a} ${f(x + dx)} ${f(y - 0.8)})"/>`;
+    return `<path d="M${f(x - 2.6)} ${f(y - 1.6)}C${f(x - 5)} ${f(y - 4.5)} ${f(x - 6.5)} ${f(y - 5)} ${f(x - 8)} ${f(y - 8)}M${f(x + 2.6)} ${f(y - 1.4)}C${f(x + 5)} ${f(y - 3.5)} ${f(x + 7)} ${f(y - 3.8)} ${f(x + 9)} ${f(y - 6)}"/>` +
+      lobe(-1.7, -35) + lobe(1.7, 35) + `<path class="cv-lace-wrap" d="M${f(x - 0.7)} ${f(y - 2.6)}L${f(x + 0.7)} ${f(y + 1)}"/>`;
+  }
   function lacing(g, cls, part) {
     const c = Math.min(END / 2, (g.u1 - g.u0) / 2), a = g.u0 + c, b = g.u1 - c, n = Math.max(1, Math.round((b - a) / LACE_GAP));
     return [...Array(n + 1)].map((_, i) => a + (b - a) * i / n).map(u => {
-      const p = g.at(u), top = p.top + 3, bot = p.bot - 3, H = bot - top, bx = -2;
-      if (part === 'back') return `<path class="cv-lace${cls}" transform="${local(p)}" d="M0 ${f(top)}C9 ${f(top + H * 0.25)} ${f(bx + 8)} ${f(bot - H * 0.3)} ${f(bx)} ${f(bot)}"/>`;
-      return `<g class="cv-lace${cls}" transform="${local(p)}"><path d="M0 ${f(top)}C-10 ${f(top + H * 0.3)} ${f(bx - 9)} ${f(bot - H * 0.25)} ${f(bx)} ${f(bot)}"/>` +
-        `<path d="M-1 ${f(top - 1)}Q-4 ${f(top - 6)} -7 ${f(top - 8)}M1.5 ${f(top - 1.5)}Q5 ${f(top - 5)} 9 ${f(top - 5.5)}"/>` +
-        `<circle class="cv-lace-knot" cx="0" cy="${f(top)}" r="2.4"/></g>`;
+      const p = g.at(u), top = p.top + 3, bot = p.bot - 3;
+      if (part === 'back') return `<path class="cv-lace${cls}" transform="${local(p)}" d="${tieHalf(top, bot, 1)}"/>`;
+      return `<g class="cv-lace${cls}" transform="${local(p)}"><path d="${tieHalf(top, bot, -1)}"/>${laceKnot(top, bot)}</g>`;
     }).join('');
   }
   // Over the wires, outermost set first: a bundle's lacing, a cable's dark sheath, and a shield's
@@ -1281,7 +1306,7 @@
       const cls = spanCls(it, sp, opts), g = it.band(sp);
       if (sp.s.bundle) o += lacing(g, cls, 'front');
       if (sp.s.cable) o += `<path class="cv-sheath${cls}" d="${jacket(g)}"/>`;
-      if (sp.s.shield) o += `<g class="cv-braid${cls}"><path fill="url(#${hatch})" d="${jacket(g)}"/>` +
+      if (sp.s.shield) o += `<g class="cv-braid${cls}">${opts.sheet ? '' : `<path class="cv-braid-tint" d="${jacket(g)}"/>`}<path fill="url(#${hatch})" d="${jacket(g)}"/>` +
         `<ellipse fill="url(#${hatch})" ${capOf(g)}/></g>`;
     });
     return o;
@@ -1369,7 +1394,13 @@
       const mid = g.pts.filter(p => p.u >= g.u0 + g.rx + 4 && p.u <= g.u1 - g.rx - 4);
       const pool = (mid.length ? mid : g.pts).map(ptB), inBox = pool.filter(q => q.x >= it.x && q.x <= it.x + it.w);
       const a = (inBox.length ? inBox : pool).reduce((m, q) => (Math.abs(q.x - cx) < Math.abs(m.x - cx) ? q : m));
-      const out = { sp, x, y, w, cx, ax: a.x, ay: a.y };
+      const pts = mid.length ? mid : g.pts, au = pts[pool.indexOf(a)].u, span = Math.max(1e-6, g.u1 - g.u0);
+      // Dragged (Chris): the dot slides along the set's lower edge (s.badgeAt, 0 to 1 along its
+      // stretch), and the badge goes anywhere, s.badgeOff from its dot, with a straight leader.
+      const st = sp.s, t = st.badgeAt == null ? (au - g.u0) / span : Math.min(1, Math.max(0, +st.badgeAt));
+      const d = st.badgeAt == null ? a : ptB(g.at(g.u0 + t * span)), o = st.badgeOff, moved = !!o && isFinite(+o.dx) && isFinite(+o.dy);
+      const bx = moved ? d.x + +o.dx : x, by = moved ? d.y + +o.dy : y;
+      const out = { sp, x: bx, y: by, w, cx: bx + w / 2, ax: d.x, ay: d.y, t, moved };
       x += w + BADGE_GAP;
       return out;
     });
@@ -1378,7 +1409,8 @@
   function badgeLeaders(it, opts) {
     if (it.b.kind !== 'set') return '';
     return badgeRow(it).map(bd => `<g class="cv-leader${badgeOn(it, bd.sp, opts) ? ' sel' : ''}${dimIf(boxDim(it, opts))}">` +
-      `<path d="M${f(bd.cx)} ${f(bd.y)}L${f(bd.cx)} ${f(Math.max(bd.ay, bd.y - 6))}L${f(bd.ax)} ${f(bd.ay)}"/>` +
+      (bd.moved ? `<path d="M${f(Math.min(bd.x + bd.w - BADGE_H / 2, Math.max(bd.x + BADGE_H / 2, bd.ax)))} ${f(bd.ay < bd.y ? bd.y : bd.ay > bd.y + BADGE_H ? bd.y + BADGE_H : bd.y + BADGE_H / 2)}L${f(bd.ax)} ${f(bd.ay)}"/>`
+        : `<path d="M${f(bd.cx)} ${f(bd.y)}L${f(bd.cx)} ${f(Math.max(bd.ay, bd.y - 6))}L${f(bd.ax)} ${f(bd.ay)}"/>`) +
       `<circle cx="${f(bd.ax)}" cy="${f(bd.ay)}" r="2.2"/></g>`).join('');
   }
   function badges(it, opts) {
@@ -1389,7 +1421,9 @@
         `<title>${esc(M.setWord(st) + ' ' + st.label + (M.setTraits(st) ? ', ' + M.setTraits(st) : ''))}</title>` +
         `<rect x="${f(bd.x)}" y="${f(bd.y)}" width="${f(bd.w)}" height="${BADGE_H}" rx="${BADGE_H / 2}"/>` +
         `<circle class="cv-badge-dot" cx="${f(bd.x + 12)}" cy="${f(ty)}" r="3.5"/>` +
-        `<text x="${f(bd.x + 21)}" y="${f(ty + 3.9)}">${esc(st.label)}</text></g>`;
+        `<text x="${f(bd.x + 21)}" y="${f(ty + 3.9)}">${esc(st.label)}</text></g>` +
+        // The leader's dot drags along its set (canvas only).
+        (opts.sheet ? '' : `<circle class="cv-bdot-hit" cx="${f(bd.ax)}" cy="${f(bd.ay)}" r="7" data-bdot="${esc(st.id)}" data-set="${esc(st.id)}"/>`);
     }).join('');
   }
   function boxFront(it, opts, Lo, hatch) {
@@ -1401,24 +1435,25 @@
     });
     return o;
   }
-  // A wire's label: from, color and to over the wire, its middle at its spot on its lane, in its
-  // box's columns. It sizes nothing. Over its twist, which runs under it, a leader runs from its
-  // left to where the twist starts while that's near (the default spot), else to where the wire is
-  // under its left end. Labels are drawn over everything but the end dots and notes; on the canvas
-  // a clear rect grabs one to slide it (app.js), and a click passes through.
+  // A wire's label: from, color and to, in its box's columns, its left side at its spot (labelAt),
+  // and a small white dot on the wire it hangs from, with a line from the dot to the label's left
+  // side (Chris). It sizes nothing. Labels are drawn over everything but the end dots and notes. On
+  // the canvas the dot drags along its wire and the label drags anywhere (app.js); a click on the
+  // label passes through to what's under it.
   function labelSvg(w, Lo, opts) {
     const L = Lo.labelAt(w);
     if (!L) return '';
-    const sz = L.it.sz, c = sz.cols, r = sz.text.get(w.id), x0 = L.x - sz.inner / 2, ty = L.y - 5;
-    const ts = Lo.twistStart(w), te = ts && Lo.twistEnd(w);
-    const to = ts && x0 - 4 > ts.x + 4 && L.x < te.x && (Math.hypot(x0 - ts.x, ty - ts.y) < 3 * LEAD ? { x: ts.x, y: ts.y - 2.6 } : Lo.wireAt(w, { x: x0, y: L.y }));
-    const lead = to ? `<g class="cv-lead"><path d="M${f(x0 - 4)} ${f(ty - 4)}L${f(to.x)} ${f(to.y)}"/><circle cx="${f(to.x)}" cy="${f(to.y)}" r="2"/></g>` : '';
+    const sz = L.it.sz, c = sz.cols, r = sz.text.get(w.id), x0 = L.x0, ty = L.ty, d = L.dot;
+    const ax = x0 - 4, ay = ty - 4, far = Math.hypot(ax - d.x, ay - d.y) > 3.5;
+    const lead = far ? `<path class="cv-ldot-lead" d="M${f(d.x)} ${f(d.y)}L${f(ax)} ${f(ay)}"/>` : '';
     const grab = opts.sheet ? '' : `<rect class="cv-lgrab" x="${f(x0 - 5)}" y="${f(ty - 12)}" width="${f(sz.inner + 10)}" height="15" rx="5"/>`;
+    const dot = (opts.sheet ? '' : `<circle class="cv-ldot-hit" cx="${f(d.x)}" cy="${f(d.y)}" r="7" data-ldot="${w.id}"/>`) +
+      `<circle class="cv-ldot" cx="${f(d.x)}" cy="${f(d.y)}" r="2.6"${opts.sheet ? '' : ` data-ldot="${w.id}"`}/>`;
     const fx = opts.fx ? ' cv-item' : '';
     return `<g class="cv-wrow${fx}${dimIf(opts.focus && !opts.focus.wires.has(w.id))}${opts.slide === w.id ? ' slide' : ''}" data-label="${w.id}"${fxStyle(L.it, opts)}>` + grab + lead +
       `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
       `<text class="cv-t" x="${f(x0 + c.from + 20 + c.c / 2)}" y="${f(ty)}" text-anchor="middle">${esc(r.color)}</text>` +
-      `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text></g>`;
+      `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text>` + dot + '</g>';
   }
 
   function render(h, A, opts) {
@@ -1432,8 +1467,8 @@
     // A shield's braid fills with a crosshatch pattern; the canvas and the sheet each get their own
     // id, since both can be in the page at once.
     const hatch = opts.sheet ? 'lm-braid-sheet' : 'lm-braid-canvas';
-    let backs = h.sets.some(st => st.shield) ? `<defs><pattern id="${hatch}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
-      `<path class="cv-braid-line" d="M2.5 0V5M0 2.5H5"/></pattern></defs>` : '';
+    let backs = h.sets.some(st => st.shield) ? `<defs><pattern id="${hatch}" width="7.5" height="7.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
+      `<path class="cv-braid-line" d="M3.75 0V7.5M0 3.75H7.5"/></pattern></defs>` : '';
     let wires = '', overs = '', fronts = '', ends = '', labels = '';
     Lo.items.forEach(it => {
       if (it.kind === 'box') {
@@ -1478,5 +1513,7 @@
     return { svg: backs + wires + overs + fronts + ends + labels + dots + notes, box: Lo.box, layout: Lo };
   }
 
-  LM.conn = { G, layout, render, boxesOf, pinLabel, project, pathAt };
+  // A set's badge as drawn (its spot, its dot and where along the set that is), for dragging it.
+  const badgeOf = (it, id) => badgeRow(it).find(b => b.sp.s.id === id) || null;
+  LM.conn = { G, layout, render, boxesOf, pinLabel, project, pathAt, badgeOf };
 })(window.LM = window.LM || {});

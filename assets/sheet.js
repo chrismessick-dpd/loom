@@ -16,7 +16,7 @@
 .lm-sheet .cv-frame{fill:none;stroke:#1d1d1f;stroke-width:1.2}
 .lm-sheet .cv-sheath{fill:rgba(29,29,31,.38);stroke:rgba(29,29,31,.85);stroke-width:1.4}.lm-sheet .cv-sheath-face{fill:rgba(29,29,31,.17);stroke:rgba(29,29,31,.85);stroke-width:1.4}.lm-sheet .cv-band rect{fill:#2c2c2e;stroke:rgba(29,29,31,.85)}
 .lm-sheet .cv-band line{stroke:rgba(255,255,255,.3);stroke-width:2;stroke-linecap:round}
-.lm-sheet .cv-lace,.lm-sheet .cv-lace path{fill:none;stroke:#1d1d1f;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.lm-sheet .cv-lace .cv-lace-knot{fill:#fff;stroke:#1d1d1f;stroke-width:1.6}
+.lm-sheet .cv-lace,.lm-sheet .cv-lace path{fill:none;stroke:#1d1d1f;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.lm-sheet .cv-ldot{fill:#fff;stroke:#1d1d1f;stroke-width:1}.lm-sheet .cv-ldot-lead{fill:none;stroke:#1d1d1f;stroke-opacity:.6;stroke-width:1}.lm-sheet .cv-lace .cv-lace-knot{fill:#fff;stroke:#1d1d1f;stroke-width:1.1}.lm-sheet .cv-lace .cv-lace-wrap{stroke-width:1.1}
 .lm-sheet .cv-lead path{fill:none;stroke:#1d1d1f;stroke-opacity:.75;stroke-width:1.4;stroke-linecap:round}.lm-sheet .cv-lead circle{fill:#1d1d1f}
 .lm-sheet .cv-badge rect{fill:#fff;stroke:#1d1d1f;stroke-width:1.1}.lm-sheet .cv-badge text{font:600 11px ${MONO}}.lm-sheet .cv-badge-dot{fill:#1d1d1f}.lm-sheet .cv-badge title{display:none}
 .lm-sheet .cv-leader path{fill:none;stroke:#1d1d1f;stroke-width:.8}.lm-sheet .cv-leader circle{fill:#1d1d1f}
