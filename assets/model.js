@@ -268,6 +268,17 @@
     if (m.parent && m.parent.twist) return `These wires are part of the twisted set ${m.parent.label}, which can't hold a set inside it.`;
     return '';
   }
+  // A cable never holds a cable, at any depth (Chris, 2026-11-07: a bundle may hold one, but a
+  // cable in a cable makes no sense). For a set st, or for wires that would become one (st null,
+  // m from membersFor): why it can't be a cable ("Can't be a cable: " + this), naming the cable
+  // inside it or around it, or ''.
+  function noCable(h, st, m) {
+    const inside = id => { const s = set(h, id); return !s ? null : s.cable ? s : s.sets.reduce((r, c) => r || inside(c), null); };
+    const c = (st ? st.sets : m.sets).reduce((r, id) => r || inside(id), null);
+    if (c) return `${c.label} inside it is already a cable.`;
+    for (let p = st ? parentOf(h, st.id) : m.parent; p; p = parentOf(h, p.id)) if (p.cable) return `it's inside the cable ${p.label}.`;
+    return '';
+  }
   // Make a set over these wires with the given properties, or add the properties to the set that
   // already holds exactly them. Returns the set, or null when it can't be made (whyNot says why).
   function makeSet(h, ids, props) {
@@ -275,6 +286,7 @@
     if (!ids.length || whyNot(h, ids)) return null;
     props = props || {};
     let s = matchSet(h, ids);
+    if (props.cable && noCable(h, s, s ? null : membersFor(h, ids))) return null;
     if (!s) {
       const m = membersFor(h, ids);
       s = { id: props.id || U.uid('g'), label: '', wires: m.wires, sets: m.sets, twist: false, shield: false, cable: false, bundle: false, length: null, over: { l: 0, r: 0 }, note: '', pn: '' };
@@ -306,6 +318,7 @@
   function setFlag(h, id, key, on) {
     const s = set(h, id);
     if (!s || !FLAGS.includes(key)) return null;
+    if (on && key === 'cable' && noCable(h, s)) return s;
     const before = setPrefix(s);
     s[key] = !!on;
     if (on && key === 'cable') s.bundle = false;
@@ -646,7 +659,7 @@
     SCHEMA, COLORS, AWG, GAUGES, COVERS, FLAGS, DEFAULT_NOTES, colorInfo, gaugeText,
     isConn, isLoose, node, seg, wire, set, other, nextRef, blank, addConnector, addNode, connect, splitSegment, removeNode, removeSegment, moveEnd,
     addWire, removeWires, wireStraight,
-    holderOf, setWord, setPrefix, setTraits, parentOf, setOfWire, roots, wiresIn, chainOf, setChain, matchSet, crossing, membersFor, whyNot,
+    holderOf, setWord, setPrefix, setTraits, parentOf, setOfWire, roots, wiresIn, chainOf, setChain, matchSet, crossing, membersFor, whyNot, noCable,
     makeSet, setFlag, dissolveSet, tidySets, setLength, setRun, ov, reach, setEnd,
     addNote, note, tidyNotes, setRun, ov, pinList, label, wireName, endText, parseEnd,
     analyze, spanLength, checks, fromTo, bom, qtyText, normalize,

@@ -75,7 +75,8 @@ links to it so far. Before every commit:
   sets (schema 2; `normalize` converts old groups, `fromGroups`).
   - **Model.** A set is `{ id, label, wires, sets, twist, shield, cable, bundle, length, note, pn }`.
     Its members are wires and child sets; a wire is in one set directly, and a set in one parent.
-    Cable and bundle exclude each other. A twist needs two or more wires of its own and no sets
+    Cable and bundle exclude each other, and a cable never holds a cable at any depth, though a bundle
+    may (`noCable`: the Cable choice is disabled with the reason; 2026-11-07, Chris). A twist needs two or more wires of its own and no sets
     inside. A bundle needs two members. A set with no property dissolves (its members move up),
     and a set whose only member is a set merges into it (`tidySets`).
   - **Making sets** (`makeSet`). Ticking a property on selected wires makes a set. Each wire is
@@ -132,7 +133,7 @@ links to it so far. Before every commit:
     stretch its wires run `PACK` (5) apart, edges touching, round its middle, so the sheath is as
     thick as its conductors need (`SET_R` past the outer ones, more when it holds sets). Before it
     they fan in from grid spacing and after it back out, each over `fanLen` (24 to 90, longer for
-    more wires; a smoothstep, `packY`). A cable inside another packs with it (`packSpans`).
+    more wires; a smoothstep, `packY`). A cable inside another packs with it (`packSpans`; nested cables can't be made any more).
     - The box makes room (`sizeBox`): the fan-in before the cable (in `lx`, so the frame and a
       placed box's wires stay put), and after it the fan-out plus a straight run at grid spacing
       for the labels (`LABEL_PAD` either side). The labels default there (`labelX0`). In Real

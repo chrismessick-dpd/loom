@@ -1028,7 +1028,8 @@
     const ids = ws.map(w => w.id);
     const why = st ? '' : M.whyNot(h, ids), m = st ? null : M.membersFor(h, ids);
     const nW = st ? st.wires.length : m.wires.length, nS = st ? st.sets.length : m.sets.length;
-    const can = { twist: nW >= 2 && !nS, shield: true, cable: true, bundle: nW + nS >= 2 };
+    const noCable = why ? '' : M.noCable(h, st, m);
+    const can = { twist: nW >= 2 && !nS, shield: true, cable: !noCable, bundle: nW + nS >= 2 };
     // Twist and Shield are tick boxes; Cable and Bundle are one choice, either or neither (Chris:
     // make the mutual exclusion plain), drawn as radio buttons: None, Cable, Bundle.
     const ticks = ['twist', 'shield'].map(k => {
@@ -1037,7 +1038,7 @@
       return `<button class="tick${on ? ' on' : ''}" data-act="set-flag" data-flag="${k}" aria-pressed="${on}" title="${esc(tip)}"${off ? ' disabled' : ''}><span class="tick-box"></span>${FLAG_TEXT[k][0]}</button>`;
     }).join('');
     const held = st ? M.holderOf(st) || 'none' : 'none';
-    const holders = [['none', 'None', 'Neither a cable nor a bundle'], ['cable', 'Cable', FLAG_TEXT.cable[1]], ['bundle', 'Bundle', FLAG_TEXT.bundle[1]]].map(([k, t, tip]) => {
+    const holders = [['none', 'None', 'Neither a cable nor a bundle'], ['cable', 'Cable', noCable ? "Can't be a cable: " + noCable : FLAG_TEXT.cable[1]], ['bundle', 'Bundle', FLAG_TEXT.bundle[1]]].map(([k, t, tip]) => {
       const on = held === k, off = !!why || (!on && k !== 'none' && !can[k]) || (!st && k === 'none');
       return `<button class="hold${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="set-holder" data-holder="${k}" title="${esc(tip)}"${off ? ' disabled' : ''}><span class="hold-dot"></span>${t}</button>`;
     }).join('');
@@ -1051,7 +1052,7 @@
       `<div class="rail-list"><div class="rail-sec">
       <div class="tick-row">${ticks}</div>
       <div class="hold-row"><span class="hold-label">Held as</span><div class="hold-seg" role="radiogroup" aria-label="Held as">${holders}</div></div>
-      <p class="f-hint">${why ? esc(why) : st ? esc(M.setWord(st)) + (M.setTraits(st) ? ', ' + esc(M.setTraits(st)) : '') + '.' : 'Tick one to make these wires a set.'}</p>
+      <p class="f-hint">${why ? esc(why) : st ? esc(M.setWord(st)) + (M.setTraits(st) ? ', ' + esc(M.setTraits(st)) : '') + '.' : 'Tick one to make these wires a set.'}${noCable && held !== 'cable' ? " Can't be a cable: " + esc(noCable) : ''}</p>
       ${st && (st.cable || st.shield) ? fld('Description', inp('set.note', st.note, ` placeholder="${st.cable ? '2 x 26 AWG, PVC jacket' : 'Tinned copper braid'}"`)) + fld('Part number', inp('set.pn', st.pn)) : ''}
       ${lenField(h, A, ws, 'Wire length (mm)')}
       ${st ? coversField(h, A, st, run) : ''}
@@ -1293,7 +1294,7 @@
       } else if (on) {
         const st = M.makeSet(h, ids, { [flag]: true });
         if (st) S.sel = { kind: 'set', ids: new Set([st.id]) };
-        else toast(M.whyNot(h, ids) || "Couldn't make a set of these wires.", 'error');
+        else toast(M.whyNot(h, ids) || (flag === 'cable' && M.noCable(h, null, M.membersFor(h, ids)) && "Can't be a cable: " + M.noCable(h, null, M.membersFor(h, ids))) || "Couldn't make a set of these wires.", 'error');
       }
     });
   }
