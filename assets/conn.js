@@ -30,8 +30,8 @@
   // A shield's braid and a cable's sheath reach SET_R above their first wire and below their last,
   // snug round the wires; a cable is as thick as a shield (Chris, 2026-11-07). A set holding sets
   // reaches 3 past them, and a bundle keeps room for its lacing knots (BUNDLE_R).
-  // A shield's braid reaches SHIELD_R, 5 more than a cable's sheath (Chris).
-  const SET_R = 6, BUNDLE_R = 12, SHIELD_R = 11;
+  // A shield's braid reaches SHIELD_R, 2.5 more than a cable's sheath (Chris).
+  const SET_R = 6, BUNDLE_R = 12, SHIELD_R = 8.5;
   // A cable packs its wires PACK apart, edges touching (Chris, 2026-11-07), so its sheath is as thick
   // as its conductors need: SET_R past its outer wires. They fan in to it from grid spacing and back
   // out over fanLen, and its box keeps LABEL_PAD either side of its wires' labels after the fan-out.
@@ -1306,7 +1306,7 @@
       const cls = spanCls(it, sp, opts), g = it.band(sp);
       if (sp.s.bundle) o += lacing(g, cls, 'front');
       if (sp.s.cable) o += `<path class="cv-sheath${cls}" d="${jacket(g)}"/>`;
-      if (sp.s.shield) o += `<g class="cv-braid${cls}">${opts.sheet ? '' : `<path class="cv-braid-tint" d="${jacket(g)}"/>`}<path fill="url(#${hatch})" d="${jacket(g)}"/>` +
+      if (sp.s.shield) o += `<g class="cv-braid${cls}"><path fill="url(#${hatch})" d="${jacket(g)}"/>` +
         `<ellipse fill="url(#${hatch})" ${capOf(g)}/></g>`;
     });
     return o;

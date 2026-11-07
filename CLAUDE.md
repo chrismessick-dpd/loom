@@ -153,9 +153,10 @@ links to it so far. Before every commit:
     (`lacing`), the sheath for a cable, and a crosshatch braid for a shield (`holders`; the braid
     goes over the sheath). The pattern ids are `lm-braid-canvas` and `lm-braid-sheet`. A twisted
     set's wires twist inside its stretch. The box's label table is gone. A shield's braid and a
-    cable's sheath reaches `SET_R` (6) past its outer wires, a shield's braid `SHIELD_R` (11), and a
-    bundle `BUNDLE_R` (12). On the canvas a shield is outlined in the selection blue (1.2) over a soft
-    blue tint and a 7.5-unit crosshatch; selected, it shows the plain ink outline (Chris, 2026-11-07).
+    cable's sheath reaches `SET_R` (6) past its outer wires, a shield's braid `SHIELD_R` (8.5), and a
+    bundle `BUNDLE_R` (12). On the canvas a shield is metallic (Chris, 2026-11-07): its outline (1.2)
+    and its 7.5-unit crosshatch in one steel gray, `#b4b9bf`, with nothing under them; selected, its
+    outline goes to the selection blue.
   - **Cables, shields and bundles pack their wires** (2026-11-07, Chris: look more like a cable;
     shields and bundles from branch `curves`). Each wire eases into every packing set that holds
     it (its chain, `chainOf`, `packAt`), so a shielded pair running past its bundle stays packed.
