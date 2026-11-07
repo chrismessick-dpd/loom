@@ -51,7 +51,7 @@ links to it so far. Before every commit:
     and the newer side wins (`adoptFromPl` here before each push; `pl.js adoptHarnesses` after PL reads
     designs). Rev stays Loom's.
   - **Deep link:** `?project=<harness id>` (what PL's Open in Loom uses) or `?harness=`.
-  - **Tests:** `tests/test.html` (15, title PASS/FAIL): the envelope, summary, merge, `adoptFromPl`,
+  - **Tests:** `tests/test.html` (16, title PASS/FAIL): the envelope, summary, merge (and `forget` for an edit made while a sync brought another change), `adoptFromPl`,
     `slimPl`, and sync against `tests/fake-hub.js` (copied from PL), in storage `loom.test.*`
     (`LM.store.setNamespace`).
   - **Not done:** the live sync with a real token; PL's demo has no harness Part yet (its snapshot

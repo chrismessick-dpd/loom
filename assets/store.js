@@ -213,9 +213,17 @@
     return Object.keys(store).filter(id => !store[id].demoVersion && (!synced[id] || synced[id] !== hash(store[id])));
   }
   const wasSynced = id => !!read('synced', {})[id];
+  // Forget what the last sync knew about these harnesses, so the next one fetches them again and merges
+  // them as edited here. For a harness edited while a sync brought in someone else's change: without
+  // this, the next sync would see an unchanged file and push the local edit over that change.
+  function forget(ids) {
+    const c = read('cache', {}), s = read('synced', {});
+    ids.forEach(id => { delete c['projects/' + id + '.json']; delete s[id]; });
+    write('cache', c); write('synced', s);
+  }
 
   LM.store = {
     DEMO, setNamespace: ns => { NS = ns; }, config, token, signedIn: () => !!token(), envelope, unwrap, summarize, makeMerge, slimPl, adoptFromPl, hash,
-    sync, unsynced, wasSynced, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
+    sync, unsynced, wasSynced, forget, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
   };
 })(window.LM = window.LM || {});

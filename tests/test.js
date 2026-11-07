@@ -151,6 +151,24 @@
     eq(file(hub, copy.id).meta.name, 'Mine (conflict copy)');
   });
 
+  test('sync: forget() makes an edit made during a sync merge with the change that sync brought', async () => {
+    const hub = setup();
+    const h = harness('Racing');
+    let res = await R.sync({ [h.id]: h }, opts(hub));
+    // Bob changes it; this browser's sync brings his change while the harness is being edited here.
+    const f = file(hub, h.id);
+    f.harness.title = 'Bob'; f.harness.updated = Date.now() - 60000;
+    hub.push(OWNER + '/loom_data', Object.assign(hub.files(OWNER + '/loom_data'), { ['projects/' + h.id + '.json']: stable(f) }));
+    const mine = JSON.parse(JSON.stringify(res.store[h.id]));
+    res = await R.sync(res.store, opts(hub));
+    eq(res.store[h.id].title, 'Bob');
+    mine.title = 'Mine, edited during that sync'; mine.updated = Date.now();
+    R.forget([h.id]);   // what the app does when it keeps such an edit
+    res = await R.sync(Object.assign({}, res.store, { [h.id]: mine }), opts(hub));
+    eq(res.store[h.id].title, 'Mine, edited during that sync');
+    eq(res.conflicts.map(c => c.title), ['Bob (conflict copy)'], 'Bob’s change is kept, not pushed over');
+  });
+
   test('sync: a deleted harness goes up as a tombstone', async () => {
     const hub = setup();
     const h = harness('Doomed');

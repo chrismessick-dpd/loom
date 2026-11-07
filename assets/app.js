@@ -14,6 +14,7 @@
     wiresOpen: (() => { try { return localStorage.getItem(NS + 'wiresOpen') === '1'; } catch (e) { return false; } })(),
   };
   const H = () => S.store[S.cur] || null;
+  let linked = '';   // a harness ?project= asked for that this browser doesn't have yet
 
   // ── Theme: shared with the rest of Signoff (same key) ──
   const SETTINGS_KEY = (DEMO ? 'signoff.demo.' : 'signoff.v1.') + 'settings';
@@ -60,6 +61,7 @@
     // A link from Signoff PL (?project=<harness id>, as for EE and ME) opens that harness.
     const want = new URLSearchParams(location.search).get('project') || new URLSearchParams(location.search).get('harness');
     if (want && S.store[want] && !S.store[want].deleted) c = want;
+    else if (want) linked = want;   // not here yet: the first sync may bring it (syncNow)
     S.cur = S.store[c] && !S.store[c].deleted ? c : DEMO ? 'hdemo1' : null;
   }
   // Harnesses shown: a harness deleted after it was synced stays as a tombstone (h.deleted) until the
@@ -76,17 +78,28 @@
     renderSidebar();
     clearTimeout(saveTimer);
     try {
+      const curWas = S.cur && S.store[S.cur] ? R.hash(S.store[S.cur]) : '';
       const res = await R.sync(S.store);
-      // Take what the repo has, except a harness edited while the sync ran: it stays, unsynced.
+      // Take what the repo has, except a harness edited while the sync ran: it stays, unsynced. If the
+      // sync also brought someone else's change to it, the next sync must merge the two, not push over.
+      const forget = [];
       Object.keys(res.store).forEach(id => {
         const mine = S.store[id];
-        if (mine && res.before[id] && R.hash(mine) !== res.before[id]) return;
+        if (mine && res.before[id] && R.hash(mine) !== res.before[id]) {
+          if (R.hash(res.store[id]) !== res.before[id]) forget.push(id);
+          return;
+        }
         S.store[id] = res.store[id];
       });
+      if (forget.length) R.forget(forget);
       res.gone.forEach(id => { if (S.store[id] && R.hash(S.store[id]) === res.before[id]) delete S.store[id]; });
       res.conflicts.forEach(h => { S.store[h.id] = h; });
       if (S.cur && (!S.store[S.cur] || S.store[S.cur].deleted)) S.cur = null;
-      S.past = []; S.future = [];
+      // A link from Signoff PL to a harness this browser didn't have yet opens once the sync brings it.
+      if (!S.cur && linked && S.store[linked] && !S.store[linked].deleted) { S.cur = linked; S.view = 'build'; }
+      linked = '';
+      // Undo survives a sync that didn't change the open harness (Ctrl+S syncs).
+      if (!S.cur || !S.store[S.cur] || R.hash(S.store[S.cur]) !== curWas) { S.past = []; S.future = []; S.sel = null; S.pending = null; }
       persist();
       renderAll();
       if (res.conflicts.length) toast(`${res.conflicts.length} harness${res.conflicts.length > 1 ? 'es were' : ' was'} changed here and elsewhere. The newer one won; the other is kept as a "(conflict copy)".`, 'error');
