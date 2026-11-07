@@ -672,7 +672,7 @@ button.chip.g-chip { cursor: pointer; }
 /* A loose wire's anchors: small dots ringed in its color that slide along its curve. */
 .lm-canvas .cv-anchor { cursor: grab; }
 .lm-canvas .cv-anchor-hit { fill: transparent; }
-.lm-canvas .cv-anchor-dot { fill: var(--cv-paper); stroke-width: 1.6; transition: r 0.15s; }
+.lm-canvas .cv-anchor-dot { stroke-width: 1.2; transition: r 0.15s; }
 .lm-canvas .cv-anchor:hover .cv-anchor-dot, .lm-canvas.dragging .cv-anchor-dot { r: 4; }
 .lm-canvas .cv-anchor.dim { opacity: 0.6; }
 .lm-canvas .cv-setend-hit { fill: transparent; }

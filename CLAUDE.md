@@ -115,8 +115,9 @@ links to it so far. Before every commit:
       its helix runs by distance along the path (`twistSpan`: `ua`, `ub`), so it follows the curves.
     - **Anchors on loose wires** (Chris: drag individual wires like cables). A stack (wires in no
       set) gets a path and leads too, and each of its wires a left and a right anchor
-      (`w.anchors`: mm in from that side's wire end; `sz.warc`), a small dot ringed in its color
-      (`.cv-anchor`, canvas only). The wire rides the path between its anchors and fans to its pins
+      (`w.anchors`: mm in from that side's wire end; `sz.warc`), a small dot in its wire's color
+      (`.cv-anchor`, canvas only; Chris): a darker shade with a darker ring on a light wire, its own
+      color with a light ring on a dark one (`dotFill`, `dotRing`). The wire rides the path between its anchors and fans to its pins
       from them. Unset, an anchor sits at the box's edge, so a wire curves to its pin as before
       until its anchor is dragged out along the curve (`dragAnchor` in `app.js`, as a set's end,
       snapped to 5 mm). A drawing handle, not a length. Later: a length between a cable's end and

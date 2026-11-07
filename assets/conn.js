@@ -1547,12 +1547,15 @@
         else if (it.kind === 'conn' && !opts.sheet) dots += `<circle class="cv-end${dim}${rg.cls}" cx="${f(en.at.x)}" cy="${f(en.at.y)}" r="3.4" data-end="${w.id}|${en.which}" data-wire="${w.id}"${rg.style}/>` + hitEnd(en.at.x, en.at.y, w.id, en.which, opts);
       });
     });
-    // A loose wire's anchors (canvas only): a small dot at each, which slides along the curve.
+    // A loose wire's anchors (canvas only): a small dot at each in its wire's color (Chris), a darker
+    // shade with a darker ring on a light wire, and its own color with a light ring on a dark one, so
+    // it shows on the wire and on the canvas. It slides along the curve.
+    const dotFill = c => (isLight(c) ? `color-mix(in srgb, ${c} 62%, #000)` : c), dotRing = c => (isLight(c) ? `color-mix(in srgb, ${c} 35%, #000)` : '#e6e8ec');
     if (!opts.sheet) h.wires.forEach(w => {
       const an = Lo.anchorsOf(w);
       if (!an) return;
       const dim = dimIf(opts.focus && !opts.focus.wires.has(w.id)), c = M.colorInfo(w.color).base || '#9a9aa0';
-      an.forEach(p => { dots += `<g class="cv-anchor${dim}" data-anchor="${w.id}|${p.side}" data-wire="${w.id}"><circle class="cv-anchor-hit" cx="${f(p.x)}" cy="${f(p.y)}" r="8"/><circle class="cv-anchor-dot" cx="${f(p.x)}" cy="${f(p.y)}" r="2.8" style="stroke:${c}"/></g>`; });
+      an.forEach(p => { dots += `<g class="cv-anchor${dim}" data-anchor="${w.id}|${p.side}" data-wire="${w.id}"><circle class="cv-anchor-hit" cx="${f(p.x)}" cy="${f(p.y)}" r="8"/><circle class="cv-anchor-dot" cx="${f(p.x)}" cy="${f(p.y)}" r="2.8" style="fill:${dotFill(c)};stroke:${dotRing(c)}"/></g>`; });
     });
     const notes = (h.callouts || []).map(c => noteSvg(c, Lo, opts)).join('');
     return { svg: backs + wires + overs + fronts + ends + labels + dots + notes, box: Lo.box, layout: Lo };
