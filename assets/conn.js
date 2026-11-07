@@ -30,8 +30,9 @@
   // A shield's braid and a cable's sheath reach SET_R above their first wire and below their last,
   // snug round the wires; a cable is as thick as a shield (Chris, 2026-11-07). A set holding sets
   // reaches 3 past them, and a bundle keeps room for its lacing knots (BUNDLE_R).
-  // A shield's braid reaches SHIELD_R, 2.5 more than a cable's sheath (Chris).
-  const SET_R = 6, BUNDLE_R = 12, SHIELD_R = 8.5;
+  // A shield's braid is snug on its wires (Chris): their centers reach the twist's outer rows, and a
+  // wire is drawn about 5 wide on the canvas, so 2.5 + 1.5 past their centers.
+  const SET_R = 6, BUNDLE_R = 12, SHIELD_R = 4;
   // A cable packs its wires PACK apart, edges touching (Chris, 2026-11-07), so its sheath is as thick
   // as its conductors need: SET_R past its outer wires. They fan in to it from grid spacing and back
   // out over fanLen, and its box keeps LABEL_PAD either side of its wires' labels after the fan-out.
@@ -727,6 +728,50 @@
     // boxed wire's chain is the sets that pack it, innermost first, each with where it reaches, the
     // middle of its rows (c) and its fan length; the wire eases from its row into each over F before
     // the set's end. packAt gives its height at u for a base height (its row, or the helix).
+    // How a packing set packs its rows (Chris: snug): its wires PACK apart, edges touching, and a
+    // packing set inside it as wide as its own band (its packed wires plus its R each side), touching
+    // its neighbors, all centered on the set. packOff gives each wire's offset from the set's middle;
+    // packFn maps a height in row space to its packed offset, piecewise between the wire rows, so a
+    // helix swinging between a twist's rows maps too.
+    const packOff = new Map();
+    function packLayout(it, sp) {
+      if (packOff.has(sp)) return packOff.get(sp);
+      const kids = it.sz.spans.filter(o => o.depth === sp.depth + 1 && rides(o.s) && o.i0 >= sp.i0 && o.i1 <= sp.i1);
+      const items = [];
+      for (let i = sp.i0; i <= sp.i1; i++) {
+        const k = kids.find(o => o.i0 <= i && o.i1 >= i);
+        if (k) {
+          if (k.i0 === i) { const L = packLayout(it, k), offs = [...L.values()]; items.push({ L, half: (offs.length ? Math.max(...offs.map(Math.abs)) : 0) + k.R }); }
+          continue;
+        }
+        const r = it.sz.rows[i];
+        if (r && r.w) items.push({ w: r.w, half: PACK / 2 });
+      }
+      const pos = [];
+      items.forEach((m, j) => pos.push(j ? pos[j - 1] + items[j - 1].half + m.half : 0));
+      const mid = items.length ? (pos[0] - items[0].half + pos[pos.length - 1] + items[items.length - 1].half) / 2 : 0;
+      const out = new Map();
+      items.forEach((m, j) => { const c = pos[j] - mid; if (m.w) out.set(m.w.id, c); else m.L.forEach((v, id) => out.set(id, c + v)); });
+      packOff.set(sp, out);
+      return out;
+    }
+    function packFn(it, sp) {
+      const L = packLayout(it, sp), c = (rowY(it, sp.i0) + rowY(it, sp.i1)) / 2;
+      const P = [];
+      for (let i = sp.i0; i <= sp.i1; i++) { const r = it.sz.rows[i]; if (r && r.w && L.has(r.w.id)) P.push({ y: rowY(it, i) - c, o: L.get(r.w.id) }); }
+      const k = PACK / PITCH;
+      return y => {
+        y -= c;
+        if (!P.length) return y * k;
+        if (y <= P[0].y) return P[0].o + (y - P[0].y) * k;
+        const z = P[P.length - 1];
+        if (y >= z.y) return z.o + (y - z.y) * k;
+        let i = 1;
+        while (P[i].y < y) i++;
+        const a = P[i - 1], b = P[i], t = (y - a.y) / (b.y - a.y || 1);
+        return a.o + (b.o - a.o) * t;
+      };
+    }
     const chainOf = new Map();
     boxes.forEach(b => {
       const it = b.item;
@@ -735,14 +780,14 @@
       it.sz.spans.slice().sort((x, y) => y.depth - x.depth).forEach(sp => {
         const a = it.sz.arc.get(sp.s.id);
         if (!rides(sp.s) || !a) return;
-        const k = { sp, a, c: (rowY(it, sp.i0) + rowY(it, sp.i1)) / 2, F: fanLen(sp) };
+        const k = { sp, a, c: (rowY(it, sp.i0) + rowY(it, sp.i1)) / 2, F: fanLen(sp), f: packFn(it, sp) };
         it.sz.rows.slice(sp.i0, sp.i1 + 1).forEach(r => { if (r.w) { if (!chainOf.has(r.w.id)) chainOf.set(r.w.id, []); chainOf.get(r.w.id).push(k); } });
       });
     });
     const cover = (k, u) => (u < k.a.u0 ? smooth((u - k.a.u0 + k.F) / k.F) : u > k.a.u1 ? smooth((k.a.u1 + k.F - u) / k.F) : 1);
     function packAt(w, u, base) {
       let y = base;
-      (chainOf.get(w.id) || []).forEach(k => { const m = k.own ? 0 : cover(k, u); if (m > 0) y += (k.c + (base - k.c) * PACK / PITCH - y) * m; });
+      (chainOf.get(w.id) || []).forEach(k => { const m = k.own ? 0 : cover(k, u); if (m > 0) y += (k.c + k.f(base) - y) * m; });
       return y;
     }
     // A boxed wire's point at u along its box's path: its packed height, as an offset across it.
