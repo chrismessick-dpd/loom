@@ -405,9 +405,12 @@
   // the end of what holds it: the parent's end, or the wire ends for an outermost set), so the value
   // follows the pointer even as the box grows. Past that end by OUT, the overhang is the distance
   // times the scale; within NEST of it (0 for an outermost set), 0; further in, negative. Snapped to
-  // 5 mm, kept at 10 mm of set or more, and never past the wire ends. The sets inside it stay put
-  // (M.setEnd). One snapshot, so one undo puts it back. The tip reads the overhang and the total.
-  const OUT = 6, NEST = 24;
+  // 5 mm. The drag isn't limited by lengths (Chris; Checks says when a set runs past its wires'
+  // ends), only where the drawing would distort: an end stays MIN_W from the set's other end, and
+  // CLEAR from the parts its box's wires run to on that side, so the wires keep room to curve in.
+  // The sets inside it stay put (M.setEnd). One snapshot, so one undo puts it back. The tip reads
+  // the overhang and the total.
+  const OUT = 6, NEST = 24, MIN_W = 60, CLEAR = 60;
   function dragSetEnd(g, dx) {
     const h = H(), d = g.setEnd;
     if (!g.moved) {
@@ -418,22 +421,27 @@
       const pe = p ? it.sz.ext.get(p.id) : { x0: it.sz.lx, x1: it.sz.lx + it.sz.rootW };
       snapshot();
       g.moved = true;
+      // The parts the box's wires run to on the dragged side: the nearest one's edge is the limit.
+      const cx = it.x + it.w / 2, ends = it.b.wires.flatMap(w => [w.from, w.to]).map(e => lastLayout.itemOf.get(e.node)).filter(Boolean);
+      const lim = d.side === 'r' ? Math.min(Infinity, ...ends.filter(e => e.x + e.w / 2 > cx).map(e => e.x)) - CLEAR
+        : Math.max(-Infinity, ...ends.filter(e => e.x + e.w / 2 < cx).map(e => e.x + e.w)) + CLEAR;
+      const otherX = it.x + (d.side === 'r' ? ce.x0 : ce.x1);
       Object.assign(g, { k: it.sz.k, nest: p ? NEST : 0, parentX: it.x + (d.side === 'r' ? pe.x1 : pe.x0), endX: it.x + (d.side === 'r' ? ce.x1 : ce.x0),
-        PL: p ? M.setLength(h, A, p) : M.setRun(A, st), most: p ? M.reach(h, p)[d.side] : 0, other: M.ov(st)[d.side === 'r' ? 'l' : 'r'], parent: p ? p.label : null });
+        lo: d.side === 'r' ? otherX + MIN_W : lim, hi: d.side === 'r' ? lim : otherX - MIN_W,
+        PL: p ? M.setLength(h, A, p) : M.setRun(A, st), other: M.ov(st)[d.side === 'r' ? 'l' : 'r'], parent: p ? p.label : null });
       S.sel = { kind: 'set', ids: new Set([d.id]) };
       svgEl().classList.add('dragging');
     }
-    const at = g.endX + dx / S.cam.k, rel = d.side === 'r' ? at - g.parentX : g.parentX - at;
+    const at = Math.min(g.hi, Math.max(g.lo, g.endX + dx / S.cam.k)), rel = d.side === 'r' ? at - g.parentX : g.parentX - at;
     let v = rel > OUT ? (rel - OUT) * g.k : rel >= -g.nest ? 0 : (rel + g.nest) * g.k;
-    v = Math.min(Math.round(v / 5) * 5, g.most);
-    if (g.PL != null) v = Math.max(v, 10 - g.PL - g.other);
+    v = Math.round(v / 5) * 5;
     const st = M.set(h, d.id);
     M.setEnd(h, d.id, d.side, v);
     renderCanvas();
     const tip = $('#tip'), total = g.PL == null ? null : g.PL + g.other + v;
     tip.style.display = 'block';
     const what = g.parent ? (v > 0 ? `runs ${v} mm past ${esc(g.parent)}` : v < 0 ? `stops ${-v} mm inside ${esc(g.parent)}` : `ends with ${esc(g.parent)}`)
-      : (v < 0 ? `stops ${-v} mm short of the wire ends` : 'reaches the wire ends');
+      : (v < 0 ? `stops ${-v} mm short of the wire ends` : v > 0 ? `runs ${v} mm past the wire ends` : 'reaches the wire ends');
     tip.innerHTML = `<b>${esc(st.label)}</b> ${what} on the ${d.side === 'r' ? 'right' : 'left'}` + (total != null ? ` · ${U.fmtLen(total)} in all` : '');
   }
   function onUp() {

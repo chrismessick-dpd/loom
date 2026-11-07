@@ -69,7 +69,7 @@ links to it so far. Before every commit:
     An outermost set is measured from its wires' ends (the run they share, `A.spans`), so a
     cable stripped back 20 mm at the left has `over.l` −20; a nested set from its parent's ends.
     A set covers what holds it plus both overhangs, and no end may run past the wire ends
-    (`reach`; Checks warns, dragging stops there). Moving a set's end (`M.setEnd`) leaves the sets
+    (`reach`; Checks warns). Moving a set's end (`M.setEnd`) leaves the sets
     inside it where they are. Tree edits keep sets in place: `dissolveSet` adds a parent's
     overhangs to its children's, and wrapping keeps them (the new set spans what held them). An
     old Covers value (`s.length`) converts in `normalize` to an overhang on the right, or stays
@@ -83,8 +83,10 @@ links to it so far. Before every commit:
     `data-setend`; it shows on hover and while selected), outermost sets included (cables,
     twisted pairs, bundles). Dragging it sets that overhang (`dragSetEnd` in `app.js`): measured
     from the drag's start, to the box's scale (`sz.k`, mm per unit: the wires' run over the
-    frame's width `rootW`, or 2 when unknown), snapped to 5 mm, at least 10 mm of set, never past
-    the wire ends; `#tip` reads the overhang and the total, and one undo reverts it. For a nested
+    frame's width `rootW`, or 2 when unknown), snapped to 5 mm. It isn't limited by lengths (Chris;
+    Checks warns past the wire ends), only where the drawing would distort: an end stays `MIN_W`
+    from the set's other end and `CLEAR` from the parts the box's wires run to on that side. `#tip`
+    reads the overhang and the total, and one undo reverts it. For a nested
     set, within `NEST` of the parent's end is 0 and past it by `OUT` is positive. In the box
     (`sz.ext`), the frame (`lx` to `lx + rootW`) is the wires' run: an outermost set at 0 spans
     it and moves in by its overhang; a nested set at 0 sits `NEST` inside its parent, one running
