@@ -223,7 +223,8 @@ links to it so far. Before every commit:
   - **How it works** (Chris): a ? button in the right pane's bottom-right corner pops a card up over
     the bottom of the pane, in either tab (`renderParts`, `.pane-help`); open until closed, kept in
     this browser (`fold.help`).
-  - **Properties.** Several wires or a set show the **Wire set** panel. It has Twist and Shield tick
+  - **Properties.** Several wires or a set show the **Wire set** panel. Its header's label edits in place (`.title-edit`), with a pencil that always shows on an
+    accent chip at the end of the row (`.title-pen`; Chris: more prominent). It has Twist and Shield tick
     boxes, a **Held as** radio choice of None, Cable or Bundle (Chris: show the mutual exclusion), Label, Description and Part number (cable or shield), the wire length,
     each end's overhang with the total (`coversField`), Set color, and a clickable **Hierarchy**
     tree (`setTree`). Delete on a set dissolves
