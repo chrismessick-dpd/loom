@@ -305,7 +305,7 @@
       const snap = v => (free ? Math.round(v) : Math.round(v / gs) * gs);
       // Snap the first port, not the top edge, so the part's ports land on grid lines.
       h.place = h.place || {};
-      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k + g.port0) - g.port0, v: 2 };
+      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k + g.port0) - g.port0, v: 3 };
       renderCanvas();
       return;
     }

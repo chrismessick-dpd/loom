@@ -19,10 +19,12 @@
   // Extra room left of a box's row text when some of its wires twist, for the leader lines from the
   // text to where each wire's twist starts. A bundle that is one twisted set has room already.
   const LEAD = 22;
-  // A bundle's label table sits under its wires (Chris). Positions dragged before that kept the
-  // table on top; their first port was BUNDLE_SHIFT lower, so they move down by it (h.place
-  // entries saved since carry v: 2).
-  const BUNDLE_SHIFT = 40;
+  // A box's label table sits under its wires (Chris): a bundle's since h.place entries carry v: 2,
+  // a cable's (with its note under the table) since v: 3. A position dragged before that kept the
+  // table on top, with the first port lower by TABLE_SHIFT (and a cable's by NOTE_H more for its
+  // note), so it moves down by that and its wires stay put.
+  const TABLE_SHIFT = 40, NOTE_H = 18;
+  const tableShift = (b, sz, p) => (b.kind === 'bundle' ? (p.v >= 2 ? 0 : TABLE_SHIFT) : (p.v >= 3 ? 0 : TABLE_SHIFT + (sz.note ? NOTE_H : 0)));
   const f = v => Math.round(v * 10) / 10;
   const tw = (s, size) => U.textW(s, size || G.FS);
 
@@ -150,10 +152,10 @@
     const w = Math.max(rowW + lead + 2 * BOX_END[b.kind], infoW, note ? tw(note, 11) + 20 : 0, 180);
     // A cable: label table, note, then the wire rows. A bundle: the wire rows, then the table.
     const table = G.HEAD + G.INFO;
-    const h0 = b.kind === 'bundle' ? 6 : table + (note ? 18 : 0);
+    const h0 = 6;
     const rowsBot = h0 + rows.length * G.BROW + 6;
-    const headY = b.kind === 'bundle' ? rowsBot : 0;
-    return { w, h: rowsBot + (b.kind === 'bundle' ? table : 0), h0, rowsBot, headY, lead, port0: h0 + G.BROW - 3, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
+    const headY = rowsBot;
+    return { w, h: rowsBot + table + (note ? NOTE_H : 0), h0, rowsBot, headY, lead, port0: h0 + G.BROW - 3, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
   }
 
   function layout(h, A) {
@@ -272,7 +274,7 @@
       i.key = i.kind === 'box' ? 'b:' + i.b.key : 'n:' + i.n.id;
       const p = place[i.key];
       if (p && isFinite(p.x) && isFinite(p.y)) {
-        i.x = p.x; i.y = p.y + (i.kind === 'box' && i.b.kind === 'bundle' && p.v !== 2 ? BUNDLE_SHIFT : 0); i.placed = true;
+        i.x = p.x; i.y = p.y + (i.kind === 'box' ? tableShift(i.b, i.sz, p) : 0); i.placed = true;
       }
     });
     // Splice ports nobody arranged follow the wires they lead to, so the wires don't cross.
@@ -557,7 +559,7 @@
       `<text class="cv-ref" x="${f(x + w / 2)}" y="${f(ty0 + 16)}" text-anchor="middle">${esc(b.label)}</text>`;
     o += cellRow(x, ty0 + G.HEAD, w, G.INFO, sz.info, 'cv-t');
     o += `<rect class="cv-frame${boxSel(it, opts) ? ' sel' : ''}" x="${f(x)}" y="${f(ty0)}" width="${f(w)}" height="${G.HEAD + G.INFO}"/></g>`;
-    if (sz.note) o += `<text class="cv-name cv-halo${bd}" x="${f(x + w / 2)}" y="${f(y + G.HEAD + G.INFO + 13)}" text-anchor="middle">${esc(U.clip(sz.note, 11, w - 16))}</text>`;
+    if (sz.note) o += `<text class="cv-name cv-halo${bd}" x="${f(x + w / 2)}" y="${f(ty0 + G.HEAD + G.INFO + 13)}" text-anchor="middle">${esc(U.clip(sz.note, 11, w - 16))}</text>`;
     const c = sz.cols, inner = c.from + c.c + c.to + 40 + (c.t ? c.t + 18 : 0);
     const x0 = x + (w - inner + sz.lead) / 2;
     sz.rows.forEach((r, i) => {

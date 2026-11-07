@@ -125,7 +125,7 @@
     h.segments = h.segments.filter(s => !gone.has(s.a) && !gone.has(s.b));
     if (h.place) gone.forEach(id => delete h.place['n:' + id]);
   }
-  const setPlace = (h, id, p) => { h.place = h.place || {}; h.place['n:' + id] = { x: Math.round(p.x), y: Math.round(p.y), v: 2 }; };
+  const setPlace = (h, id, p) => { h.place = h.place || {}; h.place['n:' + id] = { x: Math.round(p.x), y: Math.round(p.y), v: 3 }; };
   // Move one end ('from' or 'to') of a wire: to a pin ({ node, pin }), to a splice ({ node, order:
   // { l: [wire ids], r: [...] } with this wire in place, as the drop saw the ports; or without an
   // order to let the diagram pick a side), or off to a loose end

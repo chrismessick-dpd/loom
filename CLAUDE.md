@@ -66,9 +66,10 @@ links to it so far. Before every commit:
     far side drawn under the wires (in `boxBack`) and its near side, knot and tails over them.
     A bundle that is nothing but one twisted set (`b.twistOnly`) gets no bands, and its twist
     runs nearly the box's width; a cable keeps its sheath.
-  - A bundle's label table (B1, count, gauge, length) sits under its wires; a cable's stays on top
-    (`sz.headY`, `sz.rowsBot`). Bundle positions dragged before that change move down by
-    `BUNDLE_SHIFT` so their wires stay put; entries saved since carry `v: 2`.
+  - A box's label table (B1 or C1, count, gauge, length) sits under its wires, and a cable's note
+    under its table (`sz.headY`, `sz.rowsBot`). Positions dragged before that move down so their
+    wires stay put (`tableShift`): a bundle's unless its `h.place` entry has `v` ≥ 2, a cable's
+    unless `v` ≥ 3. Entries saved now carry `v: 3`.
   - A twisted wire's row gets a thin leader (`.cv-lead`) from the left of its text to where its
     twist starts (`twistStart`). Boxes with twisted wires, other than a bundle that is one twisted
     set, get `LEAD` more room left of the text for it.
