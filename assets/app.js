@@ -202,6 +202,9 @@
       `</pattern></defs>` : '';
     svg.classList.toggle('intro', intro);
     svg.classList.toggle('wiring', !!S.pending);
+    // Wire labels (the checkbox by the zoom control): canvas only; the sheet always prints them.
+    svg.classList.toggle('no-wtext', !!fold.noWireText);
+    if ($('#wtext')) $('#wtext').checked = !fold.noWireText;
     svg.style.setProperty('--phase', -(performance.now() % 1800).toFixed(0) + 'ms');
     svg.innerHTML = FX_DEFS + grid + `<rect class="bg" data-bg="1" x="-20000" y="-20000" width="40000" height="40000" fill="${gs ? 'url(#cv-grid)' : 'transparent'}"/>` +
       `<g id="world">${r.svg}</g><g id="ghost"></g>`;
@@ -316,7 +319,10 @@
         // The ports as they stand, without this wire, and it slotted in where the pointer is.
         const side = p.x < it.x + it.w / 2 ? 'l' : 'r', P = lo.portsOf(it.n.id);
         const order = { l: P.l.filter(x => x.id !== w.id).map(x => x.id), r: P.r.filter(x => x.id !== w.id).map(x => x.id) };
-        const idx = Math.max(0, Math.min(order[side].length, Math.round((p.y - it.y - it.sz.port0) / C.G.PITCH)));
+        // Its slot: after every port on that side that sits above the pointer (ports can be one or
+        // two pitches apart, conn.js spliceSize).
+        const portY = x => lo.endY(x.from.node === it.n.id ? x.from : x.to);
+        const idx = P[side].filter(x => x.id !== w.id && portY(x) < p.y).length;
         order[side].splice(idx, 0, w.id);
         return { node: it.n.id, side, order };
       }
@@ -1015,6 +1021,13 @@
     const el = e.target;
     if (el.id === 'file-input') { if (el.files[0]) openFile(el.files[0]); el.value = ''; return; }
     if (el.dataset && el.dataset.hud === 'grid') { change(h => { h.grid = +el.value; }); return; }
+    // Kept with the panel folds: a view setting for this browser, not part of the harness.
+    if (el.dataset && el.dataset.hud === 'wtext') {
+      fold.noWireText = !el.checked;
+      try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ }
+      svgEl().classList.toggle('no-wtext', !el.checked);
+      return;
+    }
     if (el.dataset && el.dataset.f) setField(el.dataset.f, el.value, el);
   });
   document.addEventListener('keydown', e => {

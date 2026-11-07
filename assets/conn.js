@@ -195,10 +195,20 @@
       });
       sides.set(n.id, S);
     });
+    // A splice's ports (Chris): every port is one pitch from the next, so wires leave parallel into
+    // the next block, and both sides are centered on the junction line, where the ref sits and the
+    // inside lines meet. A lone wire runs straight in; a side with an even count can't straddle a
+    // pitch line, so its port just above the middle sits on the junction (two outputs: the top one
+    // runs straight through, the other branches a pitch down). The box is centered on the junction,
+    // so it may have a spare pitch above. port0 is the junction's offset from the top, on the pitch;
+    // `dy(side, i)` is a port's offset from it.
     const SP_W = 64;
     const spliceSize = n => {
-      const S = sides.get(n.id), k = Math.max(1, S.l.length, S.r.length);
-      return { w: SP_W, h: 10 + k * PITCH, h0: 0, port0: 15, k };
+      const S = sides.get(n.id), cnt = { l: S.l.length, r: S.r.length };
+      const above = k => Math.floor(Math.max(0, cnt[k] - 1) / 2);
+      const ext = Math.max(...['l', 'r'].map(k => Math.max(0, cnt[k] - 1) - above(k))) * PITCH;
+      const dy = (k, i) => (i - above(k)) * PITCH;
+      return { w: SP_W, h: 2 * ext + 30, h0: 0, port0: ext + 15, dy };
     };
     h.nodes.filter(n => M.isConn(n) || n.kind === 'splice' || M.isLoose(n)).forEach(n => {
       const kind = M.isConn(n) ? 'conn' : n.kind === 'splice' ? 'splice' : 'loose';
@@ -214,7 +224,7 @@
       if (!S || !o) return null;
       for (const k of ['l', 'r']) {
         const i = S[k].indexOf(o.w);
-        if (i >= 0) return { side: k, i, off: Math.floor((Math.max(1, S.l.length, S.r.length) - S[k].length) / 2) };
+        if (i >= 0) return { side: k, i };
       }
       return null;
     }
@@ -242,7 +252,7 @@
       const it = itemOf.get(e.node);
       if (!it || it.y == null) return null;
       if (it.kind === 'loose') return it.y;
-      if (it.kind === 'splice') { const pt = portOf(e); return it.y + it.sz.port0 + PITCH * (pt ? pt.off + pt.i : 0); }
+      if (it.kind === 'splice') { const pt = portOf(e); return it.y + it.sz.port0 + (pt ? it.sz.dy(pt.side, pt.i) : 0); }
       return it.y + it.sz.h0 + G.ROW * (pinIdx(it.n, e.pin) + 0.5);
     };
     const rowY = (it, i) => it.y + it.sz.port0 + G.BROW * i;
@@ -273,7 +283,10 @@
       else list.sort((a, b) => (a.bary == null) - (b.bary == null) || (a.bary || 0) - (b.bary || 0));
       let bottom = -Infinity;
       list.forEach(it => {
-        const want = it.bary == null ? bottom + G.GAP_Y : it.bary - it.h / 2;
+        // A box centers its wire rows (not its whole height, table and all) on the wires feeding
+        // it, so wires that leave parallel, a splice's outputs say, run straight into its rows.
+        const mid = it.kind === 'box' ? it.sz.port0 + G.BROW * (it.sz.rows.length - 1) / 2 : it.h / 2;
+        const want = it.bary == null ? bottom + G.GAP_Y : it.bary - mid;
         it.y = isFinite(bottom) ? Math.max(bottom + G.GAP_Y, want) : (it.bary == null ? 0 : want);
         it.y = onPitch(it);
         bottom = it.y + it.h;

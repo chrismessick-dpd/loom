@@ -105,8 +105,13 @@ links to it so far. Before every commit:
       honored.
 - **Splice ports and wire-end drags (2026-11-06, Chris):**
   - A splice is a box with a port (a circle on its edge) per wire, on the side the wire comes in,
-    and lines inside from each side's ports to the ref, where they join (`spliceSvg`). Ports sit on
-    the pitch from 15 down; the box grows with the busier side. `n.ports` (`{ l, r }`, wire ids)
+    and lines inside from each side's ports to the ref, where they join (`spliceSvg`). Ports are one pitch
+    apart, so wires leave parallel into the next block, and both sides are centered on the junction
+    line, where the ref sits (Chris). A lone wire runs straight in. With an even count, the port
+    just above the middle sits on the junction (two outputs: the top runs straight through). The box
+    is centered on the junction, so it may have a spare pitch above (`spliceSize`: `port0` is the
+    junction, `dy` a port's offset from it). Drops slot in by the ports above the pointer.
+    `n.ports` (`{ l, r }`, wire ids)
     holds the order a drag left; wires not listed go on the side facing their other end, sorted
     by where their wires go (`sides` in `layout`).
   - Every wire end has a dot to drag it by: a splice's ports, loose ends, and a small dot where a

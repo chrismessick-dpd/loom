@@ -382,7 +382,20 @@ button.chip.g-chip { cursor: pointer; }
 .canvas-wrap .hud-grid select { border: none; background: transparent; color: var(--text); border-radius: 980px; padding: 6px 8px 6px 7px; font: 500 12.5px var(--sans); cursor: pointer; outline: none; }
 .canvas-wrap .hud-grid select:hover, .canvas-wrap .hud-grid select:focus-visible { background: var(--glass-on); }
 .canvas-wrap .hud-grid select option { background: var(--bg-elev); color: var(--text); }
-.canvas-wrap .zoom-pill { position: absolute; right: 12px; bottom: 12px; display: inline-flex; align-items: center; color: var(--text-2); font: 500 12px var(--sans); }
+.canvas-wrap .hud-br { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 8px; align-items: center; }
+.canvas-wrap .zoom-pill { display: inline-flex; align-items: center; color: var(--text-2); font: 500 12px var(--sans); }
+/* Wire labels: a small glass checkbox beside the zoom control. */
+.canvas-wrap .hud-check { display: inline-flex; align-items: center; gap: 7px; height: 36px; box-sizing: border-box; padding: 0 12px 0 10px; color: var(--text-2); font: 500 12px var(--sans); cursor: pointer; user-select: none; transition: color 0.2s; }
+.canvas-wrap .hud-check:hover { color: var(--text); }
+.canvas-wrap .hud-check input { appearance: none; -webkit-appearance: none; width: 15px; height: 15px; margin: 0; border-radius: 5px; border: 1.5px solid var(--text-3); background: transparent; display: grid; place-items: center; cursor: pointer; transition: background 0.2s var(--ease), border-color 0.2s, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.canvas-wrap .hud-check input::after { content: ''; width: 4px; height: 7px; border: solid #fff; border-width: 0 1.8px 1.8px 0; transform: translateY(-1px) rotate(45deg) scale(0); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.canvas-wrap .hud-check input:checked { background: var(--accent); border-color: var(--accent); }
+.canvas-wrap .hud-check input:checked::after { transform: translateY(-1px) rotate(45deg) scale(1); }
+.canvas-wrap .hud-check input:active { transform: scale(0.88); }
+.canvas-wrap .hud-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@container cv (max-width: 560px) { .canvas-wrap .hud-check span { display: none; } .canvas-wrap .hud-check { padding: 0 10px; } }
+/* With wire labels off, each wire's row text and leader line go; a row can still be clicked. */
+.lm-canvas.no-wtext .cv-wrow text, .lm-canvas.no-wtext .cv-wrow .cv-lead { display: none; }
 .canvas-wrap .zoom-pill button { width: 30px; height: 30px; padding: 0; justify-content: center; }
 .canvas-wrap .zoom-pill button svg { width: 14px; height: 14px; }
 .canvas-wrap .zoom-pill .zoom-val { width: auto; min-width: 54px; padding: 0 8px; font: 600 12px var(--sans); font-variant-numeric: tabular-nums; color: var(--text); }
