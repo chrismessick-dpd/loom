@@ -7,7 +7,9 @@ pin to run wires, and group wires into cables. Loom then draws the sheet a tech 
 - the wire list and the BOM;
 - notes and a title block.
 
-Read `../CLAUDE.md` first for the suite's hard rules. The name is final (Chris, 2026-11-06, after
+Read `../CLAUDE.md` first for the suite's hard rules. Loom is in development (Chris, 2026-11-07): nothing
+needs to fit existing structures or keep old saved harnesses working, so redesign cleanly as needed,
+without compatibility shims or migrations. The name is final (Chris, 2026-11-06, after
 briefly trying "Lacing"). Repo: `chrismessick-dpd/loom` (public, Pages from `main`); only the hub
 links to it so far. Before every commit:
 1. Run `python tools/stamp_version.py` (`--check` verifies). It puts `?v=<hash>` on the asset URLs
@@ -87,7 +89,11 @@ links to it so far. Before every commit:
     frame's width `rootW`, or 2 when unknown), snapped to 5 mm. It isn't limited by lengths (Chris;
     Checks warns past the wire ends), only where the drawing would distort: an end stays `MIN_W`
     from the set's other end and `CLEAR` from the parts the box's wires run to on that side. `#tip`
-    reads the overhang and the total, and one undo reverts it. For a nested
+    reads the overhang and the total, and one undo reverts it. Nothing drags or is drawn past the
+    wire ends (the box's frame); a value stored past them stops there and Checks warns.
+  - **A set's box follows its parts** when they're moved so it no longer sits between them: it
+    re-centers between them horizontally, even if it was dragged (Chris: P4 dragged past TP2's box
+    made its wires loop back). Between them, it stays where it was put. For a nested
     set, within `NEST` of the parent's end is 0 and past it by `OUT` is positive. In the box
     (`sz.ext`), the frame (`lx` to `lx + rootW`) is the wires' run: an outermost set at 0 spans
     it and moves in by its overhang; a nested set at 0 sits `NEST` inside its parent, one running
@@ -104,7 +110,8 @@ links to it so far. Before every commit:
     set's wires twist inside its stretch. The box's label table is gone. A cable reaches `CABLE_R`
     (18) above and below its wires, so its sheath clears the first row's text.
   - **Badges** (`badgeRow`, `badges`, `badgeLeaders`; Chris). Every set in a box gets a badge, in a
-    row under the box from the left, outermost first and then down the tree. A leader runs from
+    row under the box from the outermost set's left end (so it follows that end when it's
+    dragged), outermost first and then down the tree. A leader runs from
     each badge up to the bottom edge of its set, ending in a dot; leaders are drawn under the
     wires. On the canvas a badge is a lit pill like the cards, with a dot in its set's color (the
     Properties chip colors: cable blue, bundle gray, twist amber, shield violet). The sheet prints
@@ -162,7 +169,8 @@ links to it so far. Before every commit:
     lists the wire sets as trees, and its Ends list is gone.
 - **Diagram look (2026-11-06, Chris; the bundle, table and Wire bundle notes predate wire sets):**
   - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
-    the view the drawing prints; the front when it prints both). Under it, the info row has the
+    the view the drawing prints; the front when it prints both). Chris tried the header as a band
+    down the card's side (2026-11-07) and kept it on top. Under it, the info row has the
     same two columns as the pin rows (Chris): family and gender ("JST GH receptacle") over the
     labels, and the count ("8-pins", "2-leads") over the pin numbers (`connInfo`).
   - A cable's wire rows sit under a dark, see-through sheath drawn as a cylinder: its right end is

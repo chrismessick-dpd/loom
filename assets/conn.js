@@ -181,8 +181,10 @@
       const ext = (st, p) => {
         const o = M.ov(st), pe = p || { x0: 0, x1: w }, nest = p ? NEST : 0;
         const side = (end, v, dir) => (v > 0 ? end + dir * (OUT + Math.min(v / sz.k, OVER_MAX)) : end - dir * nest + dir * Math.max(v / sz.k, -OVER_MAX));
-        let x0 = side(pe.x0, o.l, -1), x1 = side(pe.x1, o.r, 1);
-        if (x1 - x0 < MIN_SET_W) { const c = (x0 + x1) / 2; x0 = c - MIN_SET_W / 2; x1 = c + MIN_SET_W / 2; }
+        // Nothing is drawn past the wire ends (the frame, 0 to w): a set stored as running past them
+        // (Checks warns) stops there.
+        let x0 = Math.max(0, side(pe.x0, o.l, -1)), x1 = Math.min(w, side(pe.x1, o.r, 1));
+        if (x1 - x0 < MIN_SET_W) { const c = Math.min(w - MIN_SET_W / 2, Math.max(MIN_SET_W / 2, (x0 + x1) / 2)); x0 = c - MIN_SET_W / 2; x1 = c + MIN_SET_W / 2; }
         return { x0, x1 };
       };
       const walk = (st, p) => { const e = ext(st, p); sz.ext.set(st.id, e); st.sets.forEach(id => { const c = M.set(h, id); if (c) walk(c, e); }); };
@@ -397,6 +399,17 @@
     // the wires). It centers between the parts on its left and right, with its rows centered on
     // their wires and on the pitch. A set's box stays where the layout or a drag put it, so it
     // doesn't slide onto other parts.
+    // A set's box stays where it was put while it sits between the parts at its ends; once they're
+    // moved so it doesn't (Chris: P4 dragged past TP2's box made its wires loop back), it
+    // re-centers between them, keeping its height.
+    boxes.forEach(b => {
+      const it = b.item;
+      if (b.kind !== 'set') return;
+      const ends = b.wires.map(w => leftFirst(w).map(e => itemOf.get(e.node)));
+      if (ends.some(e => !e[0] || !e[1])) return;
+      const lx = Math.max(...ends.map(e => e[0].x + e[0].w)), rx = Math.min(...ends.map(e => e[1].x));
+      if (it.x < lx - 1 || it.x + it.w > rx + 1) it.x = Math.round((lx + rx) / 2 - it.w / 2);
+    });
     boxes.forEach(b => {
       const it = b.item;
       if (it.placed || b.kind !== 'stack') return;
@@ -902,7 +915,9 @@
   const setKind = st => (st.cable ? 'cable' : st.bundle ? 'bundle' : st.twist ? 'twist' : 'shield');
   function badgeRow(it) {
     const y = wireYAt(it, it.sz.rows.length - 1) + it.sz.R0 + 8;
-    let x = it.x + (it.sz.lx || 0);
+    // The row starts at the outermost set's own left end, so it follows the set when its ends are
+    // dragged (Chris: the badges stayed put).
+    let x = it.sz.spans[0] ? spanX(it, it.sz.spans[0]).x0 : it.x + (it.sz.lx || 0);
     return it.sz.spans.map(sp => {
       const w = badgeW(sp.s.label), g = spanGeom(it, sp), cx = x + w / 2;
       // The leader meets its set's bottom edge straight above the badge, or as near as it can.

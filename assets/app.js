@@ -456,7 +456,8 @@
       if (it.sz.prop) Object.assign(g, { prop: it.sz.prop, boxX: it.x, pr: p ? M.reach(h, p) : { l: 0, r: 0 },
         plo: d.side === 'r' ? otherX + 12 : it.x, phi: d.side === 'r' ? it.x + it.w : otherX - 12 });
       Object.assign(g, { k: it.sz.k, nest: p ? NEST : 0, parentX: it.x + (d.side === 'r' ? pe.x1 : pe.x0), endX: it.x + (d.side === 'r' ? ce.x1 : ce.x0),
-        lo: d.side === 'r' ? otherX + MIN_W : lim, hi: d.side === 'r' ? lim : otherX - MIN_W,
+        // ...and no further than the wire ends, the box's frame.
+        lo: d.side === 'r' ? otherX + MIN_W : Math.max(lim, it.x + it.sz.lx), hi: d.side === 'r' ? Math.min(lim, it.x + it.sz.lx + it.sz.rootW) : otherX - MIN_W,
         PL: p ? M.setLength(h, A, p) : M.setRun(A, st), other: M.ov(st)[d.side === 'r' ? 'l' : 'r'], parent: p ? p.label : null });
       S.sel = { kind: 'set', ids: new Set([d.id]) };
       svgEl().classList.add('dragging');
