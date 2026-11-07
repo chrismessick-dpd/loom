@@ -610,13 +610,12 @@
   };
   const spanSel = (sp, opts) => !!opts.sel && opts.sel.kind === 'set' && opts.sel.ids.has(sp.s.id);
   const spanCls = (it, sp, opts) => (spanSel(sp, opts) || (!sp.depth && boxSel(it, opts)) ? ' sel' : '') + dimIf(boxDim(it, opts));
-  // Under the wires: the box's paper, a selected inner set's tint, the far side of each lacing tie
-  // and each cable's cut end (a full, lighter ellipse the wires come out of).
+  // Under the wires: the box's paper, the far side of each lacing tie and each cable's cut end (a
+  // full, lighter ellipse the wires come out of).
   function boxBack(it, opts) {
-    let o = `<rect class="cv-box${boxSel(it, opts) ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>`;
+    let o = `<rect class="cv-box${boxSel(it, opts) && it.b.kind !== 'set' ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>`;
     it.sz.spans.forEach(sp => {
       const cls = spanCls(it, sp, opts), g = spanGeom(it, sp);
-      if (sp.depth && spanSel(sp, opts)) o += `<rect class="cv-box sel" x="${f(g.x)}" y="${f(g.top)}" width="${f(g.w)}" height="${f(g.bot - g.top)}" rx="${f(g.rx)}"/>`;
       if (sp.s.bundle) o += lacing(g, cls, 'back');
       if (sp.s.cable) o += `<ellipse class="cv-sheath-face${cls}" cx="${f(g.x + g.w - g.rx)}" cy="${f(g.top + g.ry)}" rx="${f(g.rx)}" ry="${f(g.ry)}"/>`;
     });
@@ -649,6 +648,19 @@
     });
     return o;
   }
+  // Each set's area on the canvas, over the wires and outermost first, so an inner set's is on
+  // top: it tints on hover, a click in it selects that set (the innermost one under the pointer),
+  // and it drags the box (it's inside the box's data-item). Inside a box a wire is picked by its
+  // row's text, which lies over the areas; outside boxes, by its line. A selected set's area stays
+  // tinted. The sheet has none.
+  function setAreas(it, opts) {
+    if (opts.sheet) return '';
+    return it.sz.spans.map(sp => {
+      const g = spanGeom(it, sp), on = spanSel(sp, opts) || (!sp.depth && boxSel(it, opts));
+      const name = M.setWord(sp.s) + ' ' + sp.s.label + (M.setTraits(sp.s) ? ', ' + M.setTraits(sp.s) : '');
+      return `<rect class="cv-setarea${on ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(g.x)}" y="${f(g.top)}" width="${f(g.w)}" height="${f(g.bot - g.top)}" rx="${f(g.rx)}" data-set="${esc(sp.s.id)}"><title>${esc(name)}</title></rect>`;
+    }).join('');
+  }
   // The outermost set's badge under its wires: its label in a circle (a pill for a long label).
   // Clicking it selects that set.
   function badge(it, opts) {
@@ -662,7 +674,7 @@
   }
   function boxFront(it, opts, Lo, hatch) {
     const sz = it.sz, x = it.x, w = it.w, F = opts.focus;
-    let o = it.b.kind === 'set' ? holders(it, opts, hatch) + badge(it, opts) : '';
+    let o = it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) + badge(it, opts) : '';
     const c = sz.cols, inner = c.from + c.c + c.to + 40;
     const x0 = x + (w - inner + sz.lead) / 2;
     sz.rows.forEach((r, i) => {
@@ -672,7 +684,7 @@
       const wy = wireYAt(it, i), top = wy - G.BROW + 3, ty = wy - 5;
       const ts = Lo && Lo.twistStart(r.w);
       const lead = ts && x0 - 4 > ts.x + 4 ? `<path class="cv-lead" d="M${f(x0 - 4)} ${f(ty - 4)}L${f(ts.x)} ${f(ts.y - 2.6)}"/>` : '';
-      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(x)}" y="${f(top)}" width="${f(w)}" height="${G.BROW}"/>` + lead +
+      o += `<g class="cv-wrow${dimIf(F && !F.wires.has(r.w.id))}" data-wire="${r.w.id}"><rect class="cv-hit" x="${f(it.b.kind === 'set' ? x0 - 6 : x)}" y="${f(top)}" width="${f(it.b.kind === 'set' ? inner + 12 : w)}" height="${G.BROW}"/>` + lead +
         `<text class="cv-t" x="${f(x0)}" y="${f(ty)}">${esc(r.from)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + 20 + c.c / 2)}" y="${f(ty)}" text-anchor="middle">${esc(r.color)}</text>` +
         `<text class="cv-t" x="${f(x0 + c.from + c.c + 40)}" y="${f(ty)}">${esc(r.to)}</text></g>`;

@@ -545,5 +545,10 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-badge:hover rect { fill: var(--cv-sel-soft); }
 .lm-canvas .cv-badge.sel rect { stroke: var(--cv-sel); stroke-width: 2.2; fill: var(--cv-sel-soft); }
 .lm-canvas .cv-braid path, .lm-canvas .cv-braid ellipse { stroke: var(--cv-ink); stroke-width: 0.8; stroke-opacity: 0.75; pointer-events: none; }
+/* A set's area: tinted on hover and when selected; a click selects the innermost set there. */
+.lm-canvas .cv-setarea { fill: transparent; stroke: none; cursor: pointer; }
+.lm-canvas .cv-setarea:hover { fill: var(--cv-sel-soft); stroke: var(--cv-sel); stroke-width: 1; stroke-dasharray: 4 3; stroke-opacity: 0.7; }
+.lm-canvas .cv-setarea.sel { fill: var(--cv-sel-soft); stroke: var(--cv-sel); stroke-width: 1.4; stroke-dasharray: none; stroke-opacity: 1; }
+.lm-canvas.dragging .cv-setarea:hover:not(.sel) { fill: transparent; stroke: none; }
 .lm-canvas .cv-braid-line { fill: none; stroke: var(--cv-ink); stroke-width: 0.7; stroke-opacity: 0.6; }
 .lm-canvas .cv-braid.sel path, .lm-canvas .cv-braid.sel ellipse { stroke: var(--cv-sel); stroke-width: 1.8; stroke-opacity: 1; }

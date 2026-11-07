@@ -413,10 +413,19 @@
       if (n && n.kind === 'splice') { finishWire({ node: n.id, pin: null }); return; }
     }
     if (S.pending) { S.pending = null; renderAll(); return; }
-    // A set's badge selects the set. Shift-click adds a wire to the selection or takes it out.
+    // A set's badge or area selects the set; shift-click adds its wires to the selection (or takes
+    // them out), so a set and more wires can be bundled. Shift-click on a wire does the same for it.
     const badgeEl = t.closest('[data-set]'), wire = t.closest('[data-wire]');
-    if (badgeEl) select('set', badgeEl.dataset.set);
-    else if (wire) {
+    if (badgeEl) {
+      const st = M.set(h, badgeEl.dataset.set);
+      if (shift && st && S.sel && (S.sel.kind === 'wire' || S.sel.kind === 'set')) {
+        const ids = new Set(selWireIds(h, S.sel)), its = M.wiresIn(h, st);
+        const all = its.every(id => ids.has(id));
+        its.forEach(id => (all ? ids.delete(id) : ids.add(id)));
+        S.sel = wiresSel(h, [...ids]);
+        renderAll();
+      } else select('set', badgeEl.dataset.set);
+    } else if (wire) {
       const id = wire.dataset.wire;
       if (shift && S.sel && (S.sel.kind === 'wire' || S.sel.kind === 'set')) {
         const ids = new Set(selWireIds(h, S.sel));
