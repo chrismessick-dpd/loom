@@ -4,12 +4,12 @@
 (function (LM) {
   'use strict';
   const M = LM.model;
-  const VERSION = 14; // bump when the demo changes, so stored copies rebuild
+  const VERSION = 15; // bump when the demo changes, so stored copies rebuild
 
   function harness() {
     const h = M.blank('Display & Sensor Harness');
     h.nodes = []; h.segments = []; h.wires = []; h.sets = [];
-    Object.assign(h, { id: 'hdemo1', demoVersion: VERSION, pn: '2100430-001', rev: 'A', drawnBy: 'Dovetail', date: '2026-11-06' });
+    Object.assign(h, { id: 'hdemo1', demoVersion: VERSION, pn: '2100430-001', rev: 'A', project: 'Smart Thermostat', drawnBy: 'Dovetail', date: '2026-11-06' });
     const c = (ref, p, labels) => { const n = M.addConnector(h, 0, 0, p); n.ref = ref; labels.forEach((l, i) => { if (l) n.pinLabels[String(i + 1)] = l; }); return n; };
     const p1 = c('P1', { name: 'Main PCBA J6', family: 'jst-gh', pins: 8, mate: 'SM08B-GHS-TB' }, ['3V3', 'GND', 'I2C_SDA', 'I2C_SCL', 'TOUCH_INT', '', 'NTC', 'NTC_RTN']);
     const p4 = c('P4', { name: 'Main PCBA J2, 24 VAC in', family: 'molex-microfit', pins: 2, rows: 1 }, ['24VAC_R', '24VAC_C']);

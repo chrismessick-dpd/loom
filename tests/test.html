@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Loom tests</title>
+<style>
+  body { font: 13px/1.45 system-ui, sans-serif; margin: 24px; }
+  .pass { color: #248a3d; } .fail { color: #d70015; white-space: pre-wrap; }
+  h1 { font-size: 18px; }
+</style>
+</head>
+<body>
+<h1>Loom tests</h1>
+<p>Open over http (serve the tools folder). The page title becomes PASS, FAIL or ERROR. Storage is
+<code>loom.test.*</code>, so a real browser's harnesses and sync state aren't touched.</p>
+<div id="out"></div>
+<script src="../assets/util.js"></script>
+<script src="../assets/library.js"></script>
+<script src="../assets/model.js"></script>
+<script src="../assets/conn.js"></script>
+<script src="../assets/shapes.js"></script>
+<script src="../assets/vendor/model.js"></script>
+<script src="../assets/vendor/github.js"></script>
+<script src="../assets/store.js"></script>
+<script src="../assets/demo.js"></script>
+<script src="fake-hub.js"></script>
+<script src="test.js"></script>
+</body>
+</html>

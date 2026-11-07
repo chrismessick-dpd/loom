@@ -58,9 +58,15 @@ coverings. Lengths include an allowance (5% by default). CSV export.
 - unused pins and loose ends.
 
 **Everything else**
-- **Storage:** harnesses stay in this browser until you save a `.loom.json` file. Open one, or drop
-  it on the page.
-- **Shortcuts:** undo and redo (Ctrl+Z, Ctrl+Shift+Z), Save (Ctrl+S), add a connector (C), fit the
+- **Storage:** signed in to Signoff EE in this browser, harnesses sync with Loom's private repo
+  (`loom_data`, one file per harness, `projects/<id>.json`): on opening, with the Sync button, or with
+  Ctrl+S. A harness changed both here and elsewhere since the last sync keeps the newer version and
+  saves the other as a "(conflict copy)". Signed out, they stay in this browser. Either way you can
+  save a `.loom.json` file, and open one or drop it on the page.
+- **Signoff PL:** give a harness its client project (Project, in the harness panel) and it waits in
+  that Signoff PL project's tray, to be placed in the product like a board. Its name and part number
+  can then be edited in either tool; the latest edit wins.
+- **Shortcuts:** undo and redo (Ctrl+Z, Ctrl+Shift+Z), Sync (Ctrl+S; Save file when signed out), add a connector (C), fit the
   diagram (F), cancel (Esc) and Delete.
 - **Look:** light and dark themes, shared with the rest of Signoff. Lengths are stored in mm and
   shown in mm and in.

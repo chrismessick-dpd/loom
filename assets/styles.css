@@ -23,6 +23,19 @@
 .pkg-icon svg { width: 16px; height: 16px; }
 .privacy { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 7px 8px; font-size: 12px; color: var(--text-3); line-height: 1.25; }
 .privacy svg { width: 15px; height: 15px; flex: none; color: var(--pass); }
+/* The footer's sync state and button (assets/store.js), and the client-project groups above it. */
+#store-state { justify-content: space-between; padding: 4px 4px 4px 8px; }
+#store-state .store-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#store-state .store-text.warn { color: var(--warn); }
+#store-state .store-text.err { color: var(--issue); }
+.lm-sync { padding: 4px 10px; font-size: 12px; min-height: 0; }
+.lm-group-head { cursor: default; }
+.lm-group-head:hover { color: var(--text-3); }
+/* Where Signoff PL has placed this harness (the harness rail, under Project). */
+.pl-links { display: grid; gap: 6px; margin: -4px 0 12px; }
+.pl-link { display: flex; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); }
+.pl-link .lay-ico { color: var(--accent); }
+.pl-link b { font-size: 13px; }
 .side-link svg { width: 18px; height: 18px; }
 
 /* Start page (Fabcheck's drop card) */

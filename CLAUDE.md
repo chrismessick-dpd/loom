@@ -20,6 +20,44 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Storage and Signoff PL (2026-11-07, Chris; branch `store`, with `signoff_pl` branch `loom`):** harnesses
+  sync with one private repo for all of them, `loom_data` (`assets/store.js`, `LM.store`), through the
+  Signoff engine's `GitHubStore`, vendored from EE into `assets/vendor/model.js` and `github.js`
+  (`tools/sync_vendor.py`). The repo doesn't exist yet: Chris creates it (or OKs creating it).
+  - **The file** is `projects/<harness id>.json`, an envelope shaped like a Signoff review so PL's reader
+    reads it like any design: `{ schema, id, meta: { name, number, revision, project, deleted, updatedAt,
+    updatedBy }, summary, harness }`. `harness` is the truth; `meta` and `summary` (`summarize`: `tool:
+    'loom'`, `identAt`, `harness: { ends, splices, wires, cables, sets, wireMm, errors, warnings, boards }`,
+    no checks) are rebuilt from it at every write, including when a merge picks the stored copy.
+  - **Merging** is whole-harness: a harness is a graph, so record-by-record merging could break it. A copy
+    with no edits since this browser's last sync (`loom.v1.synced`, a hash per harness) takes the stored
+    one; when both changed, the newer `updated` wins and the other is kept as a new harness, "(conflict
+    copy)". A harness edited while a sync runs keeps the edit (`before` hashes). Deleting a synced harness
+    leaves a tombstone (`h.deleted`, `meta.deleted`; PL reads it as archived); a file deleted on GitHub
+    drops an untouched local copy (`dropGone`).
+  - **Sync** runs on opening, from the footer's Sync button and on Ctrl+S (Save file is the toolbar
+    button; Ctrl+S saves a file only with no sign-in or in the demo). It uses the token Signoff EE keeps
+    (`signoff.token`) and the owner in `signoff.v1.settings`; repos can be changed under
+    `loom.v1.repos`. A 404 says to ask for access or create the repo. The footer says where harnesses
+    are (`#store-state`), and the sidebar groups them by client project and dots unsynced ones.
+  - **Signoff PL.** A harness has a client project (`h.project`, the Project field in the harness rail,
+    suggested from PL's projects and the boards' clients; From a board fills it when empty). PL offers it
+    in that PL project's tray like an EE board, and the PL Part made from it (`source: 'loom'`) is the
+    link of record and its place in the tree; Loom never writes PL's repo. Each sync reads PL's data repo
+    (read only, cached by blob sha, `loom.v1.pl`) for the project list and the Parts linking each
+    harness, shown under Project ("In Signoff PL as a Part of"). A token that can't read PL skips it.
+  - **Name and part number both ways**, with no tool writing the other's repo: Loom stamps `h.identAt`
+    when Title or Part number change, PL stamps the node's `identAt` when its Part sheet changes them,
+    and the newer side wins (`adoptFromPl` here before each push; `pl.js adoptHarnesses` after PL reads
+    designs). Rev stays Loom's.
+  - **Deep link:** `?project=<harness id>` (what PL's Open in Loom uses) or `?harness=`.
+  - **Tests:** `tests/test.html` (15, title PASS/FAIL): the envelope, summary, merge, `adoptFromPl`,
+    `slimPl`, and sync against `tests/fake-hub.js` (copied from PL), in storage `loom.test.*`
+    (`LM.store.setNamespace`).
+  - **Not done:** the live sync with a real token; PL's demo has no harness Part yet (its snapshot
+    generator would need Loom's demo summary, and `../loom` on `main` has no `store.js` until this merges).
+    Demo `VERSION` 15 (the demo harness's client project).
+
 - **The guide (2026-11-07, Chris: an interactive getting started for new users):** `assets/guide.js`,
   `window.LoomGuide` (also `LM.guide`). 25 steps in seven chapters (Welcome, The canvas, Ends and wires,
   Wire sets, Views and notes, The drawing, Done), each a title, what the feature is, a *Try it*
@@ -394,7 +432,6 @@ links to it so far. Before every commit:
     see the direction doc);
   - a revision table on the sheet;
   - connector sketches from STEP (paused; `step.js` and `occt-worker.js` are unused);
-  - storing harnesses in a private repo;
   - WireViz import and export;
   - tests.
 - A client's in-house harness tool inspired the twist, shield and merged-leg ideas. Don't name it
@@ -419,7 +456,7 @@ links to it so far. Before every commit:
 ## Layout
 
 All files are classic scripts sharing `window.LM`, with no build step. JSZip and SheetJS load from
-CDNs with the same pinned integrity hashes as Fabcheck. GitHub (read only) is the only other network
+CDNs with the same pinned integrity hashes as Fabcheck. GitHub (`loom_data` read and write; Signoff EE's and PL's repos read only) is the only other network
 use, and the CSP in `index.html` allows just those.
 
 | File | What |
@@ -427,7 +464,9 @@ use, and the CSP in `index.html` allows just those.
 | `assets/model.js` | The graph: nodes (connector, splice, breakout), segments (length, covering), wires (pin to pin, routed through segments) and nested wire sets (twist, shield, cable or bundle). Also `analyze`, `checks`, `fromTo` and `bom`. |
 | `assets/conn.js` | The connection diagram: boxes, column layout and SVG, for the canvas and the sheet. |
 | `assets/boards.js` | Board connectors from Signoff EE's stored fab packages (GitHub, read only) or the demo packages. |
-| `assets/vendor/` | Fabcheck's `ipc356.js` and `assembly.js`. Don't edit; run `tools/sync_vendor.py`. |
+| `assets/store.js` | Sync with `loom_data` and the read of Signoff PL (see *Storage and Signoff PL* above). |
+| `assets/vendor/` | Fabcheck's `ipc356.js` and `assembly.js`, and the Signoff engine's `model.js` and `github.js` (from EE). Don't edit; run `tools/sync_vendor.py`. |
+| `tests/` | `test.html` (open over http) and `fake-hub.js`. |
 | `assets/library.js` | Parametric connector families. Housing part numbers are suggested only where the series names them by pin count. |
 | `assets/shapes.js` | Face views, labeled with the side shown, with a pin-1 mark. |
 | `assets/sheet.js` | The paper sheet, a self-contained SVG with its own `.lm-sheet` styles. |
@@ -435,7 +474,8 @@ use, and the CSP in `index.html` allows just those.
 | `assets/demo.js` | The Smart Thermostat demo harness. |
 | `assets/suite.css` | EE's `styles.css`, copied by `python tools/sync_suite_css.py`. Don't edit it here. |
 
-- **Storage.** localStorage `loom.v1.*` (`loom.demo.*` in demo mode), plus `.loom.json` files.
+- **Storage.** localStorage `loom.v1.*` (`loom.demo.*` in demo mode; the demo never syncs), the
+  private repo `loom_data` when signed in, plus `.loom.json` files.
   Lengths are stored in mm.
 - **Encoding.** Edit files with Python or the editor, not PowerShell `Set-Content`. That adds a BOM,
   and reading with `Get-Content` mangles UTF-8.

@@ -52,7 +52,7 @@
   }
   function blank(title) {
     const h = {
-      schema: SCHEMA, id: U.uid('h'), title: title || 'New harness', pn: '', rev: 'A', drawnBy: '', date: U.today(),
+      schema: SCHEMA, id: U.uid('h'), title: title || 'New harness', pn: '', rev: 'A', project: '', drawnBy: '', date: U.today(),
       allowancePct: 5, notes: DEFAULT_NOTES.slice(), defaults: { gauge: '24', color: 'BK' },
       nodes: [], segments: [], wires: [], sets: [], callouts: [], updated: Date.now(),
     };
@@ -614,6 +614,7 @@
     if (!Array.isArray(h.notes)) h.notes = DEFAULT_NOTES.slice();
     h.defaults = Object.assign({ gauge: '24', color: 'BK' }, h.defaults || {});
     if (h.allowancePct == null) h.allowancePct = 5;
+    h.project = typeof h.project === 'string' ? h.project : '';   // the client project (Signoff PL)
     h.wires.forEach((w, i) => { if (!w.no) w.no = i + 1; });
     h.nodes.forEach(n => { if (isConn(n) && (!n.pinLabels || typeof n.pinLabels !== 'object')) n.pinLabels = {}; });
     if (Array.isArray(h.groups)) fromGroups(h);

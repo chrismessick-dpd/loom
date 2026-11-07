@@ -1,6 +1,7 @@
 // Loom UI: harnesses in the sidebar; Build (the connection diagram, its parts pane and the rail),
-// Drawing (with the editable wire list folded under the sheet), BOM and Checks tabs. Harnesses live in this browser (localStorage) until saved as a
-// .loom.json file.
+// Drawing (with the editable wire list folded under the sheet), BOM and Checks tabs. Harnesses live in
+// this browser (localStorage) and sync with Loom's private data repo (assets/store.js) when signed in;
+// a harness can also be saved as a .loom.json file.
 (function (LM) {
   'use strict';
   const M = LM.model, U = LM.util, L = LM.library, C = LM.conn, esc = U.esc;
@@ -56,7 +57,50 @@
     if (DEMO && (!S.store.hdemo1 || S.store.hdemo1.demoVersion !== LM.demo.VERSION)) S.store.hdemo1 = LM.demo.harness();
     let c = null;
     try { c = localStorage.getItem(NS + 'current'); } catch (e) { /* storage blocked */ }
-    S.cur = S.store[c] ? c : DEMO ? 'hdemo1' : null;
+    // A link from Signoff PL (?project=<harness id>, as for EE and ME) opens that harness.
+    const want = new URLSearchParams(location.search).get('project') || new URLSearchParams(location.search).get('harness');
+    if (want && S.store[want] && !S.store[want].deleted) c = want;
+    S.cur = S.store[c] && !S.store[c].deleted ? c : DEMO ? 'hdemo1' : null;
+  }
+  // Harnesses shown: a harness deleted after it was synced stays as a tombstone (h.deleted) until the
+  // data repo has it, so another browser's copy can't bring it back.
+  const live = () => Object.values(S.store).filter(h => !h.deleted);
+
+  // ── Sync (assets/store.js): Loom's private data repo, and Signoff PL read only ──
+  const R = LM.store;
+  const remote = { busy: false, error: '', unsynced: 0 };
+  const canSync = () => !DEMO && R && R.signedIn();
+  async function syncNow(quiet) {
+    if (!canSync() || remote.busy) { if (!quiet && !DEMO && !R.signedIn()) toast('Sign in to Signoff EE in this browser to sync harnesses.', 'error'); return; }
+    remote.busy = true; remote.error = '';
+    renderSidebar();
+    clearTimeout(saveTimer);
+    try {
+      const res = await R.sync(S.store);
+      // Take what the repo has, except a harness edited while the sync ran: it stays, unsynced.
+      Object.keys(res.store).forEach(id => {
+        const mine = S.store[id];
+        if (mine && res.before[id] && R.hash(mine) !== res.before[id]) return;
+        S.store[id] = res.store[id];
+      });
+      res.gone.forEach(id => { if (S.store[id] && R.hash(S.store[id]) === res.before[id]) delete S.store[id]; });
+      res.conflicts.forEach(h => { S.store[h.id] = h; });
+      if (S.cur && (!S.store[S.cur] || S.store[S.cur].deleted)) S.cur = null;
+      S.past = []; S.future = [];
+      persist();
+      renderAll();
+      if (res.conflicts.length) toast(`${res.conflicts.length} harness${res.conflicts.length > 1 ? 'es were' : ' was'} changed here and elsewhere. The newer one won; the other is kept as a "(conflict copy)".`, 'error');
+      else if (res.adopted.length) toast(`Name or part number taken from Signoff PL for ${res.adopted.length} harness${res.adopted.length > 1 ? 'es' : ''}.`);
+      else if (!quiet) toast(res.pushed ? 'Synced.' : 'Up to date.');
+    } catch (e) {
+      remote.error = e.status === 404 ? `Can't reach ${R.config().owner}/${R.config().dataRepo}. Ask for access, or create the repo.`
+        : e.status === 401 ? 'GitHub refused the token. Sign in to Signoff EE again.' : (e.message || String(e));
+      if (!quiet || e.status !== 404) toast("Couldn't sync: " + remote.error, 'error');
+    } finally {
+      remote.busy = false;
+      renderSidebar();
+      if (H() && S.view === 'build') renderRail();
+    }
   }
   let saveTimer = null;
   function persist() {
@@ -77,6 +121,7 @@
     snapshot();
     const r = fn(h);
     h.updated = Date.now();
+    if (R && R.login()) h.updatedBy = R.login();
     tidySel();
     persist();
     renderAll();
@@ -138,16 +183,40 @@
   }
 
   function renderSidebar() {
-    const list = Object.values(S.store).sort((a, b) => (b.updated || 0) - (a.updated || 0));
-    $('#harness-list').innerHTML = list.length ? list.map(h => {
+    const list = live().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    const dirty = new Set(canSync() ? R.unsynced(S.store) : []);
+    // Grouped by client project, as Signoff EE groups boards (none: "No project", last).
+    const groups = new Map();
+    list.forEach(h => { const k = String(h.project || '').trim(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); });
+    const keys = [...groups.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+    const row = h => {
       const c = M.checks(h);
       const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
       const ends = h.nodes.filter(M.isConn).length;
       return `<button class="proj${h.id === S.cur ? ' active' : ''}" data-open="${h.id}">
         <span class="pkg-icon">${ICON.harness}</span>
         <span class="proj-body"><span class="proj-name">${esc(h.title)}</span><span class="proj-sub">${esc(h.pn ? h.pn + ' · ' : '')}${ends} ends · ${h.wires.length} wires</span></span>
-        <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span></button>`;
-    }).join('') : '<div class="side-empty">No harnesses yet.</div>';
+        <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(h.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
+    };
+    $('#harness-list').innerHTML = list.length ? keys.map(k => `<div class="side-group">` + (keys.length > 1 || k ? `<div class="side-group-head lm-group-head" title="Client project"><span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></div>` : '') + groups.get(k).map(row).join('') + `</div>`).join('')
+      : '<div class="side-empty">No harnesses yet.</div>';
+    // The footer: where harnesses are kept, and the sync button.
+    const foot = $('#store-state');
+    if (!foot) return;
+    const last = R && R.lastSync();
+    let text, tip;
+    if (DEMO) { text = 'Demo: stays in this browser'; tip = 'Demo harnesses never leave this browser.'; }
+    else if (!canSync()) { text = 'In this browser only'; tip = 'Sign in to Signoff EE in this browser to keep harnesses in Loom’s private repo.'; }
+    else if (remote.busy) { text = 'Syncing…'; tip = ''; }
+    else if (remote.error) { text = 'Not synced'; tip = remote.error; }
+    else if (dirty.size) { text = `${dirty.size} unsynced`; tip = 'Changed since the last sync (Ctrl+S).'; }
+    else { text = last ? 'Synced ' + ago(last.at) : 'Not synced yet'; tip = `Kept in ${R.config().owner}/${R.config().dataRepo}`; }
+    foot.innerHTML = `<span class="store-text${remote.error ? ' err' : dirty.size ? ' warn' : ''}" title="${esc(tip)}">${esc(text)}</span>` +
+      (canSync() ? `<button class="btn lm-sync" data-act="sync" title="Sync with ${esc(R.config().dataRepo)} (Ctrl+S)"${remote.busy ? ' disabled' : ''}>Sync</button>` : '');
+  }
+  function ago(at) {
+    const s = Math.max(0, (Date.now() - Date.parse(at)) / 1000);
+    return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : new Date(at).toLocaleDateString('en-US');
   }
 
   function renderToolbar() {
@@ -162,7 +231,7 @@
     $('#toolbar-actions').innerHTML =
       `<button class="icon-btn" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo"${S.past.length ? '' : ' disabled'}>${ICON.undo}</button>` +
       `<button class="icon-btn" data-act="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${S.future.length ? '' : ' disabled'}>${ICON.redo}</button>` +
-      `<button class="btn btn-primary" data-act="save" title="Download this harness as a .loom.json file (Ctrl+S)">${ICON.save}<span class="btn-label">Save file</span></button>`;
+      `<button class="btn btn-primary" data-act="save" title="Download this harness as a .loom.json file${canSync() ? '' : ' (Ctrl+S)'}">${ICON.save}<span class="btn-label">Save file</span></button>`;
   }
 
   function homeHtml() {
@@ -178,7 +247,7 @@
         <div><b>Cables</b>Cables, twisted pairs and shields</div>
         <div><b>Drawing</b>Wiring diagram, wire list, BOM, notes, title block</div>
       </div>
-      <div class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Harnesses stay in this browser until you save a file. Nothing is uploaded.</div>
+      <div class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>${canSync() ? `Harnesses sync with Loom’s private repo, ${esc(R.config().dataRepo)}, and show in Signoff PL by their client project.` : 'Harnesses stay in this browser until you sign in to Signoff EE (they then sync with Loom’s private repo) or save a file.'}</div>
     </div></div>`;
   }
 
@@ -892,6 +961,8 @@
       n.name = `${b.name} ${c.ref}`;
       n.mate = [c.mfr, c.mpn].filter(Boolean).join(' ');
       n.board = { project: b.id, name: b.name, client: b.client || '', ref: c.ref, mpn: c.mpn || '', source: p.source.label };
+      // A harness with no client project yet takes its first board's.
+      if (!h.project && b.client) h.project = b.client;
       S.sel = { kind: 'node', ids: new Set([n.id]) };
       return n;
     });
@@ -977,6 +1048,22 @@
     if (!list.length) return '<div class="rf-ok"><span class="dot ok"></span>No problems found.</div>';
     return list.map((c, i) => `<div class="rf" data-check="${i}"><span class="dot ${c.sev}"></span><div class="rf-t">${esc(c.text)}</div></div>`).join('');
   }
+  // The client project, as on an EE board: Signoff PL offers the harness to every PL project of that
+  // client project (its tray), and the PL Part made from it is the link. Suggestions are the PL
+  // projects and the boards' client projects. Under it, where PL has placed it.
+  function projectField(h) {
+    const pl = !DEMO && R ? R.pl() : null;
+    const names = new Set();
+    (pl ? pl.projects : []).forEach(p => names.add(p.clientProject || p.name));
+    h.nodes.forEach(n => { if (n.board && n.board.client) names.add(n.board.client); });
+    const parts = (pl && pl.links[h.id]) || [];
+    const placed = parts.length ? `<div class="pl-links">${parts.map(p => `<div class="pl-link"><span class="lay-ico">${ICON.harness}</span><div><b>${esc(p.projectName)}</b><div class="f-hint">${esc(p.path.concat(p.name).join(' › '))}</div></div></div>`).join('')}</div>` : '';
+    const hint = DEMO ? 'Signoff PL lists this harness for the PL project of this client project.'
+      : !pl ? 'Signoff PL lists this harness for the PL project of this client project. Sync to read PL’s projects.'
+      : parts.length ? 'In Signoff PL as a Part of:' : h.project ? 'Waiting in that Signoff PL project’s tray: add it there to place it.' : 'Signoff PL lists this harness for the PL project of this client project.';
+    return fld('Project', `<input class="input" data-f="h.project" list="lm-projects" value="${esc(h.project || '')}" placeholder="Client project">` +
+      `<datalist id="lm-projects">${[...names].sort().map(n => `<option value="${esc(n)}">`).join('')}</datalist>`, hint) + placed;
+  }
   function railHarness(h, A) {
     const c = M.checks(h, A);
     const total = h.wires.reduce((t, w) => t + (A.wireLen.get(w.id) || 0), 0);
@@ -984,6 +1071,7 @@
       `<div class="rail-list"><div class="rail-sec">
       ${fld('Title', inp('h.title', h.title))}
       <div class="row2">${fld('Part number', inp('h.pn', h.pn, ' placeholder="2100430-001"'))}${fld('Rev', inp('h.rev', h.rev))}</div>
+      ${projectField(h)}
       <div class="row2">${fld('Drawn by', inp('h.drawnBy', h.drawnBy))}${fld('Date', inp('h.date', h.date, ' type="date"'))}</div>
       <div class="row2">${fld('New wires', gaugeSelect('h.defaults.gauge', h.defaults.gauge))}${fld('&nbsp;', `<select class="input" data-f="h.defaults.color">${Object.entries(M.COLORS).map(([k, v]) => opt(k, v[0], h.defaults.color)).join('')}</select>`)}</div>
       ${fld('Wire allowance', inp('h.allowancePct', h.allowancePct, ' type="number" min="0" max="50" step="1"'), 'Percent added to every BOM length.')}
@@ -1142,7 +1230,12 @@
         if (k === 'notes') h.notes = v.split('\n').map(s => s.trim()).filter(Boolean);
         else if (k === 'allowancePct') h.allowancePct = Math.max(0, +v || 0);
         else if (k.startsWith('defaults.')) h.defaults[k.slice(9)] = v;
-        else h[k] = v;
+        else {
+          // Name and part number also show in Signoff PL, and can be edited there: the newer edit
+          // wins, by identAt (assets/store.js, adoptFromPl).
+          if ((k === 'title' || k === 'pn') && String(h[k] || '') !== String(v)) h.identAt = new Date().toISOString();
+          h[k] = k === 'project' ? String(v).trim() : v;
+        }
       } else if (f.startsWith('len.')) {
         const s = M.seg(h, f.slice(4));
         if (s) s.length = v === '' ? null : Math.max(0, Math.round(+v));
@@ -1267,6 +1360,8 @@
     file.text().then(t => {
       const h = M.normalize(JSON.parse(t));
       if (S.store[h.id]) h.id = U.uid('h');
+      delete h.deleted;
+      if (!DEMO) delete h.demoVersion;   // a saved demo harness opened outside the demo is an ordinary one
       h.updated = Date.now();
       S.store[h.id] = h;
       openHarness(h.id);
@@ -1298,6 +1393,7 @@
       case 'demo': S.store.hdemo1 = LM.demo.harness(); openHarness('hdemo1'); break;
       case 'open': $('#file-input').click(); break;
       case 'save': if (h) U.download(baseName(h) + '.loom.json', JSON.stringify(h, null, 2), 'application/json'); break;
+      case 'sync': syncNow(false); break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
       case 'fit': fitGlide(); break;
@@ -1324,10 +1420,17 @@
       case 'bm-add': addBoardConnector(el.dataset.ref); break;
       case 'match-wire': wireMatches(el.dataset.a, el.dataset.b); break;
       case 'delete': deleteSel(); break;
-      case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); S.store[c.id] = c; openHarness(c.id); break; }
-      case 'delete-harness':
-        if (confirm(`Delete "${h.title}" from this browser? Save a file first if you want to keep it.`)) { delete S.store[h.id]; S.cur = null; persist(); renderAll(); }
+      case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); delete c.identAt; delete c.demoVersion; S.store[c.id] = c; openHarness(c.id); break; }
+      case 'delete-harness': {
+        // Once synced, a harness is kept as a tombstone, so the next sync deletes it everywhere (its file
+        // stays in the repo, marked deleted, and its git history keeps every version).
+        const kept = !DEMO && R && R.wasSynced(h.id);
+        if (!confirm(kept ? `Delete "${h.title}"? The next sync deletes it from Loom's repo too; its history stays in git.` : `Delete "${h.title}" from this browser? Save a file first if you want to keep it.`)) break;
+        if (kept) { h.deleted = true; h.updated = Date.now(); if (R.login()) h.updatedBy = R.login(); } else delete S.store[h.id];
+        S.cur = null; persist(); renderAll();
+        if (kept) syncNow(true);
         break;
+      }
       case 'straight': { const to = $('#straight-to').value; const k = change(x => M.wireStraight(x, el.dataset.node, to)); toast(k ? `Added ${k} wire${k > 1 ? 's' : ''}.` : 'No free pin pairs to wire.'); break; }
       case 'set-flag': setFlag(el.dataset.flag, el.getAttribute('aria-pressed') !== 'true'); break;
       case 'set-holder': {
@@ -1453,7 +1556,8 @@
     if (BM.open) { if (e.key === 'Escape') closeModal(); return; }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); onAct('save'); return; }
+    // Ctrl+S syncs, as in the other Signoff tools; with no sign-in (or in the demo) it saves a file.
+    if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); onAct(canSync() ? 'sync' : 'save'); return; }
     if (typing && e.key === 'Escape' && document.activeElement.closest('.title-edit')) { const a = document.activeElement; a.value = a.defaultValue; a.blur(); return; }
     if (typing) { if (e.key === 'Enter' && document.activeElement.tagName === 'INPUT') document.activeElement.blur(); return; }
     if (e.key === '[' && !mod) { e.preventDefault(); toggleSidebar(); return; }
@@ -1584,6 +1688,9 @@
   $('#version').textContent = LM.VERSION ? 'Build ' + LM.VERSION : '';
   load();
   renderAll();
+  // Sync once on opening, so names and part numbers edited in Signoff PL come over (quietly: no toast
+  // unless something happened or it failed for a reason other than a missing repo).
+  if (canSync()) setTimeout(() => syncNow(true), 400);
   // guide: what assets/guide.js needs to set the page up for each of its steps.
   LM.app = { state: S, renderAll, H, demo: DEMO,
     guide: {
