@@ -141,6 +141,17 @@ links to it so far. Before every commit:
       already placed moves down below it, top down.
     - In this view parts don't drag; set ends do, to the box's true scale (`g.prop` in
       `dragSetEnd`), between the set's other end and the wire ends.
+  - **Notes** (`h.callouts`; Chris). Add › Note, then a click on a connector or splice, a wire's
+    line or a set pins a note there (`placeNote` in `app.js`, preferring them in that order). A
+    note stores where it's pinned relative to that part (`at`: a node's or set's spot as
+    fractions of its size, a wire's `t` along its run; `Lo.noteAt`, `wireT`, `setGeom`), so it
+    follows the part in either view, and its bubble sits `dx`, `dy` from the pin, with a leader.
+    Dragging the bubble (`data-notebox`) moves it; clicking it opens Text, Part number and Qty in
+    Properties (`railNote`). With a part number it's a BOM line. The sheet prints notes. A note
+    goes with the part it's pinned to; one on a dissolved set moves to its first wire. Refs are
+    N1, N2…; the drawing's numbered notes are still `h.notes`.
+  - **How it works** is a glass card over the canvas (`#howto-pop`), open until closed; the ⓘ
+    button by the parts-pane toggle brings it back (`fold.help`, kept in this browser).
   - **Properties.** Several wires or a set show the **Wire set** panel. It has Twist and Shield tick
     boxes, a **Held as** radio choice of None, Cable or Bundle (Chris: show the mutual exclusion), Label, Description and Part number (cable or shield), the wire length,
     each end's overhang with the total (`coversField`), Set color, and a clickable **Hierarchy**

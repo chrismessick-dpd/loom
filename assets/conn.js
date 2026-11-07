@@ -613,7 +613,33 @@
       x1: Math.max(200, ...items.map(i => i.x + i.w)), y1: Math.max(120, ...items.map(i => i.y + i.h)) };
     // The wires on each side of a splice, in port order (for drawing and for drops).
     const portsOf = id => { const S = sides.get(id); return S ? { l: S.l.slice(), r: S.r.slice() } : { l: [], r: [] }; };
-    return { items, itemOf, boxes, wirePath, twistStart, anchor, endY, portsOf, portOf, box };
+    // Notes: where a note is pinned, and the reverse for pinning one (app.js). A wire's t runs along
+    // its box row (or, outside a box, straight between its ends); a set's spot is on its drawn area.
+    function wireEnds(w) {
+      const e = entry(w);
+      if (e) return [e.lIn, e.rIn];
+      const [l, r] = leftFirst(w), li = itemOf.get(l.node), ri = itemOf.get(r.node);
+      return li && ri ? [anchor(l, ri.x + ri.w / 2), anchor(r, li.x + li.w / 2)] : null;
+    }
+    function setGeom(id) {
+      for (const b of boxes) { const sp = b.item.sz.spans.find(x => x.s.id === id); if (sp) { const g = spanGeom(b.item, sp); return { x: g.x, y: g.top, w: g.w, h: g.bot - g.top }; } }
+      return null;
+    }
+    function noteAt(c) {
+      const a = c.at || {};
+      if (a.kind === 'node') { const it = itemOf.get(a.id); return it && { x: it.x + (a.fx || 0) * it.w, y: it.y + (a.fy || 0) * it.h }; }
+      if (a.kind === 'set') { const g = setGeom(a.id); return g && { x: g.x + (a.fx || 0) * g.w, y: g.y + (a.fy || 0) * g.h }; }
+      const w = M.wire(h, a.id), e = w && wireEnds(w), t = a.t == null ? 0.5 : a.t;
+      return e && { x: e[0].x + (e[1].x - e[0].x) * t, y: e[0].y + (e[1].y - e[0].y) * t };
+    }
+    function wireT(w, p) {
+      const e = wireEnds(w);
+      if (!e || Math.abs(e[1].x - e[0].x) < 1) return 0.5;
+      return Math.min(1, Math.max(0, (p.x - e[0].x) / (e[1].x - e[0].x)));
+    }
+    // The diagram's bounds take in the notes' bubbles.
+    (h.callouts || []).forEach(c => { const p = noteAt(c); if (!p) return; const s = noteSize(c); box.x0 = Math.min(box.x0, p.x + c.dx - s.w / 2); box.x1 = Math.max(box.x1, p.x + c.dx + s.w / 2); box.y0 = Math.min(box.y0, p.y + c.dy - s.h / 2); box.y1 = Math.max(box.y1, p.y + c.dy + s.h / 2); });
+    return { items, itemOf, boxes, wirePath, twistStart, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom };
   }
 
   // ── SVG ───────────────────────────────────────────────────────────────────
@@ -816,6 +842,36 @@
       return `<rect class="cv-setarea${on ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(g.x)}" y="${f(g.top)}" width="${f(g.w)}" height="${f(g.bot - g.top)}" rx="${f(g.rx)}" data-set="${esc(sp.s.id)}"><title>${esc(name)}</title></rect>`;
     }).join('');
   }
+  // A note's bubble: its text in lines of up to NOTE_CH characters (at most NOTE_LINES), then its
+  // part number; or its ref while it has no text.
+  const NOTE_CH = 28, NOTE_LINES = 5;
+  function noteLines(c) {
+    const out = [];
+    String(c.text || '').split('\n').forEach(par => {
+      let line = '';
+      par.split(/\s+/).filter(Boolean).forEach(word => { const t = line ? line + ' ' + word : word; if (t.length > NOTE_CH && line) { out.push(line); line = word; } else line = t; });
+      if (line) out.push(line);
+    });
+    if (out.length > NOTE_LINES) { out.length = NOTE_LINES; out[NOTE_LINES - 1] += '…'; }
+    return out.length ? out : [c.ref];
+  }
+  function noteSize(c) {
+    const lines = noteLines(c), pn = c.pn ? `${c.pn}${c.qty > 1 ? ' × ' + c.qty : ''}` : '';
+    return { lines, pn, w: Math.max(64, ...lines.map(l => tw(l, 11.5)), pn ? tw(pn, 10.5) + 18 : 0) + 20, h: lines.length * 15 + (pn ? 14 : 0) + 12 };
+  }
+  // A note: a dot where it's pinned, a leader to its bubble, and the bubble (drags by data-notebox).
+  function noteSvg(c, Lo, opts) {
+    const p = Lo.noteAt(c);
+    if (!p) return '';
+    const s = noteSize(c), cx = p.x + (+c.dx || 0), cy = p.y + (+c.dy || 0), x = cx - s.w / 2, y = cy - s.h / 2;
+    const on = opts.sel && opts.sel.kind === 'note' && opts.sel.ids.has(c.id);
+    let o = `<g class="cv-note${on ? ' sel' : ''}" data-note="${esc(c.id)}"><title>${esc(c.ref)}</title>` +
+      `<path class="cv-note-lead" d="M${f(p.x)} ${f(p.y)}L${f(cx)} ${f(cy)}"/><circle class="cv-note-pin" cx="${f(p.x)}" cy="${f(p.y)}" r="3"/>` +
+      `<rect class="cv-note-box" x="${f(x)}" y="${f(y)}" width="${f(s.w)}" height="${f(s.h)}" rx="8" data-notebox="${esc(c.id)}"/>`;
+    s.lines.forEach((l, i) => { o += `<text class="cv-note-t" x="${f(x + 10)}" y="${f(y + 18 + i * 15)}">${esc(l)}</text>`; });
+    if (s.pn) o += `<text class="cv-note-pn" x="${f(x + 10)}" y="${f(y + 18 + s.lines.length * 15)}">${esc(s.pn)}</text>`;
+    return o + '</g>';
+  }
   // A break across a box's wires where its run is too long to draw to scale (real proportions):
   // a band of paper between two zigzags, and the run's length over it.
   function breakMark(it) {
@@ -952,7 +1008,8 @@
         else if (it.kind === 'conn' && !opts.sheet) dots += `<circle class="cv-end${dim}${rg.cls}" cx="${f(en.at.x)}" cy="${f(en.at.y)}" r="3.4" data-end="${w.id}|${en.which}" data-wire="${w.id}"${rg.style}/>` + hitEnd(en.at.x, en.at.y, w.id, en.which, opts);
       });
     });
-    return { svg: backs + wires + overs + fronts + ends + dots, box: Lo.box, layout: Lo };
+    const notes = (h.callouts || []).map(c => noteSvg(c, Lo, opts)).join('');
+    return { svg: backs + wires + overs + fronts + ends + dots + notes, box: Lo.box, layout: Lo };
   }
 
   LM.conn = { G, layout, render, boxesOf, pinLabel };

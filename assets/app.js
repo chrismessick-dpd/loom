@@ -29,6 +29,9 @@
   if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', () => applyTheme(readTheme()));
 
   const ICON = {
+    note: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4.5h14v8.5H9.5L6 16v-3H3z"/><path d="M6.5 8h7M6.5 10.5h4.5"/></svg>',
+    info: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v5"/><circle cx="10" cy="6.3" r="0.4" fill="currentColor"/></svg>',
+    close: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
     sun: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3.4"/><path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M4.7 15.3 6 14M14 6l1.3-1.3"/></svg>',
     moon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M16 12.3A6.5 6.5 0 0 1 7.7 4a6.5 6.5 0 1 0 8.3 8.3z"/></svg>',
     harness: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 6.5h3.5c3 0 3 7 6 7h5.5M2.5 13.5h3.5c3 0 3-7 6-7h5.5"/></svg>',
@@ -93,7 +96,7 @@
   function tidySel() {
     const h = H();
     if (!S.sel || !h) { if (!h) S.sel = null; return; }
-    const have = { node: h.nodes, seg: h.segments, wire: h.wires, set: h.sets }[S.sel.kind] || [];
+    const have = { node: h.nodes, seg: h.segments, wire: h.wires, set: h.sets, note: h.callouts || [] }[S.sel.kind] || [];
     const ids = new Set([...S.sel.ids].filter(id => have.some(x => x.id === id)));
     S.sel = ids.size ? { kind: S.sel.kind, ids } : null;
   }
@@ -224,7 +227,11 @@
       `<g id="world">${r.svg}</g><g id="ghost"></g>`;
     setView();
     const tip = $('#tip');
-    if (S.pending) {
+    svg.classList.toggle('placing', !!S.placing);
+    if (S.placing) {
+      tip.style.display = 'flex';
+      tip.innerHTML = `<span class="tip-dot"></span><span>Click a wire, a set or a connector to pin a note to it. <span class="tip-k">Esc</span> cancels.</span>`;
+    } else if (S.pending) {
       tip.style.display = 'flex';
       tip.innerHTML = `<span class="tip-dot"></span><span>Wiring from <b>${esc(M.endText(h, S.pending))}</b>. Click a glowing pin or a splice. <span class="tip-k">Esc</span> cancels.</span>`;
     } else tip.style.display = 'none';
@@ -306,7 +313,19 @@
   function renderHud() {
     const h = H(), gs = gridOf(h), placed = h && h.place && Object.keys(h.place).length;
     // Glass capsules, one per kind of control (docs/look-2026-11.md): the panel, the view, the grid.
-    $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
+    $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold${fold.help === false ? '' : ' on'}" data-act="help" title="How it works" aria-label="How it works" aria-expanded="${fold.help !== false}">${ICON.info}</button>` +
+      `<button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
+    // How it works: a card over the canvas, open until closed (remembered in this browser).
+    const pop = $('#howto-pop');
+    if (pop) {
+      pop.hidden = fold.help === false;
+      pop.innerHTML = `<div class="hp-head"><b>How it works</b><button class="hp-close" data-act="help" title="Close" aria-label="Close">${ICON.close}</button></div>
+        <p><i>●</i> Click a pin, then a pin on another end or a splice, to run a wire.</p>
+        <p><i>⇧</i> Shift-click wires, then tick Twist or Shield, or pick Cable or Bundle, to make them a set. Sets nest: select a set and more wires to bundle them.</p>
+        <p><i>◉</i> Click a set's badge, or inside it, to edit it. Drag a set's ends to shorten it or run it past what holds it.</p>
+        <p><i>✎</i> Add › Note, then click a wire, set or connector to pin a note. Drag its bubble; click it to edit.</p>
+        <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p>`;
+    }
     $('#hud').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel" aria-label="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
       `<div class="seg glass"><button class="hud-ico" data-act="fit" title="Fit the diagram (F)">${ICON.fit}<span>Fit</span></button>` +
       (placed ? `<button class="hud-ico" data-act="auto-layout" title="Forget the positions you dragged and lay the diagram out again">${ICON.relayout}<span>Auto layout</span></button>` : '') + `</div>` +
@@ -323,10 +342,12 @@
     const endEl = e.button === 0 && !S.pending && e.target.closest('[data-end]');
     // A nested set's end grip drags that end past its parent's or in from it.
     const setEndEl = e.button === 0 && !S.pending && !endEl && e.target.closest('[data-setend]');
+    // A note's bubble drags the bubble.
+    const noteEl = e.button === 0 && !S.pending && !S.placing && e.target.closest('[data-notebox]');
     const itemEl = e.button === 0 && !endEl && !setEndEl && e.target.closest('[data-item]');
     const end = endEl ? { wire: endEl.dataset.end.split('|')[0], which: endEl.dataset.end.split('|')[1] } : null;
     const setEnd = setEndEl ? { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] } : null;
-    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl ? itemEl.dataset.item : null, end, setEnd };
+    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null };
     svgEl().setPointerCapture(e.pointerId);
   }
   // Where a dragged wire end would land: a splice (the side and port slot under the pointer), a
@@ -380,6 +401,15 @@
       return;
     }
     if (g.setEnd) { dragSetEnd(g, dx); return; }
+    if (g.note) {
+      const c = M.note(H(), g.note);
+      if (!c) { gesture = null; return; }
+      if (!g.moved) { snapshot(); g.n0 = { dx: +c.dx || 0, dy: +c.dy || 0 }; svgEl().classList.add('dragging'); S.sel = { kind: 'note', ids: new Set([c.id]) }; }
+      g.moved = true;
+      c.dx = Math.round(g.n0.dx + dx / S.cam.k); c.dy = Math.round(g.n0.dy + dy / S.cam.k);
+      renderCanvas();
+      return;
+    }
     if (!g.moved && g.item) {
       const it = !fold.prop && lastLayout && lastLayout.items.find(i => i.key === g.item);
       // In the real-proportions view positions come from lengths, so parts don't drag.
@@ -461,17 +491,37 @@
     gesture = null;
     S.lift = null;
     svgEl().classList.remove('dragging', 'dragging-end');
-    if (g && g.setEnd && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
+    if (g && (g.setEnd || g.note) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
       renderAll();
       return;
     }
     if (g && g.item && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
-    if (g && !g.moved && g.button === 0) click(g.t, g.shift);
+    if (g && !g.moved && g.button === 0) click(g.t, g.shift, g);
   }
-  function click(t, shift) {
+  // Pin a note where the click landed: on a connector or splice, a set, or a wire.
+  function placeNote(t, g) {
+    const h = H(), Lo = lastLayout, p = toWorld({ clientX: g.x, clientY: g.y });
+    // Everything under the pointer, so a wire inside a set can be picked by its line: a connector
+    // or splice first, then a wire's line, then a set.
+    const els = document.elementsFromPoint(g.x, g.y), under = sel => els.map(e => e.closest && e.closest(sel)).find(Boolean);
+    const hitW = els.find(e => e.classList && e.classList.contains('w-hit'));
+    const nodeEl = under('[data-node]'), wireEl = hitW ? hitW.closest('[data-wire]') : t.closest('[data-wire]'), setEl = !wireEl && under('[data-set]');
+    let at = null;
+    if (nodeEl) { const it = Lo.itemOf.get(nodeEl.dataset.node); if (it) at = { kind: 'node', id: it.n.id, fx: (p.x - it.x) / (it.w || 1), fy: (p.y - it.y) / (it.h || 1) }; }
+    else if (wireEl) { const w = M.wire(h, wireEl.dataset.wire); if (w) at = { kind: 'wire', id: w.id, t: Lo.wireT(w, p) }; }
+    else if (setEl) { const gm = Lo.setGeom(setEl.dataset.set); if (gm) at = { kind: 'set', id: setEl.dataset.set, fx: (p.x - gm.x) / gm.w, fy: (p.y - gm.y) / gm.h }; }
+    else if (wireEl) { const w = M.wire(h, wireEl.dataset.wire); if (w) at = { kind: 'wire', id: w.id, t: Lo.wireT(w, p) }; }
+    if (!at) { toast('Click a wire, a set or a connector to pin the note to.'); return; }
+    S.placing = null;
+    change(x => { const c = M.addNote(x, at); S.sel = { kind: 'note', ids: new Set([c.id]) }; });
+  }
+  function click(t, shift, g) {
     const h = H();
+    if (S.placing) { placeNote(t, g); return; }
+    const noteEl = t.closest('[data-note]');
+    if (noteEl) { select('note', noteEl.dataset.note); return; }
     const pin = t.closest('[data-pin]');
     const nodeEl = t.closest('[data-node]');
     if (pin) {
@@ -592,6 +642,11 @@
       o += `<div class="side-head"><span class="side-label">Splices</span></div>`;
       o += splices.map(n => `<div class="lay${sel(n.id) ? ' on' : ''}" data-pick="node:${n.id}"><span class="lay-ico">${ICON.splice}</span><span class="nm"><b>${esc(n.ref)}</b></span></div>`).join('');
     }
+    const notes = h.callouts || [];
+    if (notes.length) {
+      o += `<div class="side-head"><span class="side-label">Notes</span><span class="side-count">${notes.length}</span></div>`;
+      o += notes.map(c => `<div class="lay${S.sel && S.sel.kind === 'note' && S.sel.ids.has(c.id) ? ' on' : ''}" data-pick="note:${c.id}"><span class="lay-ico">${ICON.note}</span><span class="nm"><b>${esc(c.ref)}</b> ${esc(c.text || 'No text yet')}</span></div>`).join('');
+    }
     const roots = M.roots(h);
     if (roots.length) {
       o += `<div class="side-head"><span class="side-label">Wire sets</span><span class="side-count">${h.sets.length}</span></div>`;
@@ -600,12 +655,8 @@
     o += `<div class="side-head"><span class="side-label">Add</span></div><div class="palette">
       <button data-act="add-conn">${ICON.conn}<span>Connector</span></button>
       <button data-act="from-board" title="A board connector from Signoff EE, with its pins and nets">${ICON.board}<span>From a board</span></button>
-      <button data-act="add-splice">${ICON.splice}<span>Splice</span></button></div>`;
-    o += `<div class="howto"><b>How it works</b>
-      <p><i>●</i> Click a pin, then a pin on another end or a splice, to run a wire.</p>
-      <p><i>⇧</i> Shift-click wires, then tick Twist, Shield, Cable or Bundle to make them a set. Sets nest: select a set and more wires to bundle them.</p>
-      <p><i>◉</i> Click a set's badge to edit it.</p>
-      <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p></div>`;
+      <button data-act="add-splice">${ICON.splice}<span>Splice</span></button>
+      <button data-act="add-note" title="A note or part pinned to a wire, set or connector">${ICON.note}<span>Note</span></button></div>`;
     return o;
   }
 
@@ -735,6 +786,7 @@
     if (sel.kind === 'node') { const n = M.node(h, [...sel.ids][0]); return M.isConn(n) ? railConnector(h, A, n) : railJunction(h, A, n); }
     if (sel.kind === 'wire') return sel.ids.size > 1 ? railSet(h, A, null, [...sel.ids].map(id => M.wire(h, id))) : railWire(h, A, M.wire(h, [...sel.ids][0]));
     if (sel.kind === 'set') { const st = M.set(h, [...sel.ids][0]); return railSet(h, A, st, M.wiresIn(h, st).map(id => M.wire(h, id))); }
+    if (sel.kind === 'note') return railNote(h, M.note(h, [...sel.ids][0]));
     return '';
   }
   // The left rail is the harness. On a narrow screen the right pane is hidden, so the rail shows the
@@ -821,6 +873,17 @@
       <div class="cat-label">Sets</div>
       <p class="f-hint">Shift-click other wires to make a set with this one: twisted, shielded, a cable or a bundle.</p>
       </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${M.wireName(w)}</button></div></div>`;
+  }
+  // A note: its text, and a part number and quantity when it stands for a part (the BOM lists it).
+  function railNote(h, c) {
+    if (!c) return '';
+    const a = c.at || {}, on = a.kind === 'node' ? M.label(M.node(h, a.id)) : a.kind === 'set' ? (M.set(h, a.id) || {}).label : M.wire(h, a.id) ? M.wireName(M.wire(h, a.id)) : '?';
+    return railHead('Note', `<span class="mono-ref">${esc(c.ref)}</span> on ${esc(on || '?')}`) +
+      `<div class="rail-list"><div class="rail-sec">
+      ${fld('Text', `<textarea class="input" rows="4" data-f="note.text" placeholder="Label with the ref, 25 mm from the housing">${esc(c.text || '')}</textarea>`, 'Drag its bubble on the canvas to move it.')}
+      <div class="row2">${fld('Part number', inp('note.pn', c.pn, ' placeholder="Optional"'))}${fld('Qty', inp('note.qty', c.qty || 1, ' type="number" min="1" step="1"'))}</div>
+      <p class="f-hint">With a part number, it's listed in the BOM.</p>
+      </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${esc(c.ref)}</button></div></div>`;
   }
   // A set's chip color: what holds it, else what it is.
   const setKind = st => (st.cable ? 'cable' : st.bundle ? 'bundle' : st.twist ? 'twist' : 'shield');
@@ -910,6 +973,10 @@
       } else if (f.startsWith('s.')) {
         const s = M.seg(h, one()), k = f.slice(2);
         s[k] = k === 'length' ? (v === '' ? null : Math.max(0, Math.round(+v))) : v;
+      } else if (f.startsWith('note.')) {
+        const c = M.note(h, one()), k = f.slice(5);
+        if (!c) return;
+        c[k] = k === 'qty' ? Math.max(1, Math.round(+v || 1)) : v;
       } else if (f.startsWith('set.')) {
         const st = M.set(h, one()), k = f.slice(4);
         if (!st) return;
@@ -1057,6 +1124,8 @@
       case 'auto-layout': change(x => { x.place = {}; }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
+      case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;
+      case 'help': fold.help = fold.help === false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } renderHud(); break;
       case 'from-board': openBoards(); break;
       case 'bm-close': closeModal(); break;
       case 'bm-back': BM.step = BM.boards ? 'boards' : 'loading'; renderModal(); break;
@@ -1117,6 +1186,7 @@
       if (kind === 'seg') ids.forEach(id => M.removeSegment(h, id));
       if (kind === 'wire') M.removeWires(h, ids);
       if (kind === 'set') ids.forEach(id => M.dissolveSet(h, id));
+      if (kind === 'note') h.callouts = (h.callouts || []).filter(c => !ids.includes(c.id));
       S.sel = null;
     });
   }
@@ -1184,7 +1254,7 @@
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (S.view !== 'build') return;
-    if (e.key === 'Escape') { S.pending ? (S.pending = null) : (S.sel = null); $('#ghost') && ($('#ghost').innerHTML = ''); renderAll(); }
+    if (e.key === 'Escape') { S.placing ? (S.placing = null) : S.pending ? (S.pending = null) : (S.sel = null); $('#ghost') && ($('#ghost').innerHTML = ''); renderAll(); }
     else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); }
     else if (e.key === 'f' || e.key === 'F') fitGlide();
     else if (e.key === '+' || e.key === '=') zoomBy(1.25);

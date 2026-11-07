@@ -47,14 +47,14 @@
   function nextRef(h, prefix) {
     let max = 0;
     const re = new RegExp('^' + prefix + '(\\d+)$');
-    h.nodes.concat(h.sets || []).forEach(x => { const m = re.exec(x.ref || x.label || ''); if (m) max = Math.max(max, +m[1]); });
+    h.nodes.concat(h.sets || [], h.callouts || []).forEach(x => { const m = re.exec(x.ref || x.label || ''); if (m) max = Math.max(max, +m[1]); });
     return prefix + (max + 1);
   }
   function blank(title) {
     const h = {
       schema: SCHEMA, id: U.uid('h'), title: title || 'New harness', pn: '', rev: 'A', drawnBy: '', date: U.today(),
       allowancePct: 5, notes: DEFAULT_NOTES.slice(), defaults: { gauge: '24', color: 'BK' },
-      nodes: [], segments: [], wires: [], sets: [], updated: Date.now(),
+      nodes: [], segments: [], wires: [], sets: [], callouts: [], updated: Date.now(),
     };
     const a = addConnector(h, 160, 240, { family: 'jst-ph', pins: 4 });
     const b = addConnector(h, 640, 240, { family: 'jst-ph', pins: 4 });
@@ -113,6 +113,7 @@
     h.wires = h.wires.filter(w => w.from.node !== id && w.to.node !== id);
     h.nodes = h.nodes.filter(x => x !== n);
     tidySets(h);
+    tidyNotes(h);
     tidyLoose(h);
   }
   function tidyLoose(h) {
@@ -167,6 +168,27 @@
     h.wires = h.wires.filter(w => !ids.includes(w.id));
     tidySets(h);
     tidyLoose(h);
+    tidyNotes(h);
+  }
+
+  // ── Notes ─────────────────────────────────────────────────────────────────
+  // A note (h.callouts; h.notes is the drawing's numbered notes) is a bubble of text pinned to a
+  // part of the diagram (Chris): a connector or splice (at: { kind: 'node', id, fx, fy }, a spot on
+  // it as fractions of its size), a set ({ kind: 'set', id, fx, fy }, on its drawn area) or a wire
+  // ({ kind: 'wire', id, t }, how far along its run, 0 to 1). The bubble sits dx, dy from the pin,
+  // so both follow the part in either view. It can stand for a part: with a part number it's
+  // listed in the BOM, qty times.
+  function addNote(h, at, props) {
+    if (!Array.isArray(h.callouts)) h.callouts = [];
+    const c = Object.assign({ id: U.uid('c'), ref: nextRef(h, 'N'), text: '', pn: '', qty: 1, at, dx: 60, dy: -70 }, props || {});
+    h.callouts.push(c);
+    return c;
+  }
+  const note = (h, id) => (h.callouts || []).find(c => c.id === id);
+  // Notes pinned to a part that's gone go with it.
+  function tidyNotes(h) {
+    if (!Array.isArray(h.callouts)) { h.callouts = []; return; }
+    h.callouts = h.callouts.filter(c => c && c.at && (c.at.kind === 'node' ? node(h, c.at.id) : c.at.kind === 'set' ? set(h, c.at.id) : wire(h, c.at.id)));
   }
 
   // ── Sets ──────────────────────────────────────────────────────────────────
@@ -301,6 +323,9 @@
     const p = parentOf(h, id), kids = s.sets.map(x => set(h, x)).filter(Boolean), so = ov(s);
     kids.forEach(c => { const co = ov(c); c.over = { l: co.l + so.l, r: co.r + so.r }; if (!p && s.length != null) c.length = Math.max(0, s.length + co.l + co.r); });
     if (p) { p.sets = p.sets.filter(x => x !== id).concat(s.sets); p.wires = p.wires.concat(s.wires); }
+    // A note pinned to it moves to the middle of its first wire.
+    const w0 = wiresIn(h, s)[0];
+    (h.callouts || []).forEach(c => { if (c.at && c.at.kind === 'set' && c.at.id === id && w0) c.at = { kind: 'wire', id: w0, t: 0.5 }; });
     h.sets = h.sets.filter(x => x !== s);
   }
   // Keep the forest sound: wires that exist, in one set each; sets in one parent each, no loops;
@@ -555,6 +580,8 @@
       const desc = s.cable ? `${s.shield ? 'Shielded cable' : 'Cable'}, ${n} conductor${n > 1 ? 's' : ''}${s.note ? ', ' + s.note : ''}` : `Shield braid${s.note ? ', ' + s.note : ''}`;
       add('g|' + s.id, { desc, pn: s.pn || '', unit: 'mm', refs: [s.label] }, len * allow);
     });
+    // Notes with a part number are parts.
+    (h.callouts || []).filter(c => c.pn).forEach(c => add('n|' + c.pn + '|' + c.text, { desc: c.text || 'Part', pn: c.pn, unit: 'ea', refs: [c.ref] }, Math.max(1, +c.qty || 1)));
     h.segments.filter(s => s.cover && s.cover !== 'none' && s.length).forEach(s => {
       add('c|' + s.cover, { desc: COVERS[s.cover], pn: '', unit: 'mm', refs: [] }, s.length * allow);
     });
@@ -570,6 +597,7 @@
     h.id = h.id || U.uid('h');
     ['segments', 'wires'].forEach(k => { if (!Array.isArray(h[k])) h[k] = []; });
     if (!Array.isArray(h.sets)) h.sets = [];
+    if (!Array.isArray(h.callouts)) h.callouts = [];
     if (!Array.isArray(h.notes)) h.notes = DEFAULT_NOTES.slice();
     h.defaults = Object.assign({ gauge: '24', color: 'BK' }, h.defaults || {});
     if (h.allowancePct == null) h.allowancePct = 5;
@@ -584,6 +612,7 @@
       s.over = ov(s);
     });
     tidySets(h);
+    tidyNotes(h);
     // Before overhangs, a set's length was its own s.length (Covers). It becomes an overhang on
     // the right past what holds it (the wire ends, or its parent), outermost first so each
     // parent's length is final. Where the length of what holds it isn't known yet, it stays.
@@ -618,7 +647,8 @@
     isConn, isLoose, node, seg, wire, set, other, nextRef, blank, addConnector, addNode, connect, splitSegment, removeNode, removeSegment, moveEnd,
     addWire, removeWires, wireStraight,
     holderOf, setWord, setPrefix, setTraits, parentOf, setOfWire, roots, wiresIn, chainOf, setChain, matchSet, crossing, membersFor, whyNot,
-    makeSet, setFlag, dissolveSet, tidySets, setLength, setRun, ov, reach, setEnd, setRun, ov, pinList, label, wireName, endText, parseEnd,
+    makeSet, setFlag, dissolveSet, tidySets, setLength, setRun, ov, reach, setEnd,
+    addNote, note, tidyNotes, setRun, ov, pinList, label, wireName, endText, parseEnd,
     analyze, spanLength, checks, fromTo, bom, qtyText, normalize,
   };
 })(window.LM = window.LM || {});

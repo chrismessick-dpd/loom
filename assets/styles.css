@@ -86,7 +86,7 @@ body.has-banner .build-view { height: calc(100dvh - 56px - 33px); }
 .lay-ico svg { width: 17px; height: 17px; }
 .lay.on .lay-ico { color: var(--accent); }
 .lay-n { font: 11px var(--mono); color: var(--text-3); }
-.palette { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 2px 4px; }
+.palette { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 2px 4px; }
 .palette button { display: flex; flex-direction: column; align-items: center; gap: 4px; border: none; border-radius: 10px; background: var(--bg-sunk); padding: 10px 4px 8px; font-size: 11.5px; color: var(--text-2); transition: background 0.15s, color 0.15s; }
 .palette button:hover { background: var(--accent-soft); color: var(--accent-ink); }
 .palette svg { width: 20px; height: 20px; }
@@ -597,6 +597,28 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-break rect { fill: var(--cv-halo); }
 .lm-canvas .cv-break path { fill: none; stroke: var(--cv-ink); stroke-width: 1.2; stroke-linejoin: round; }
 .lm-canvas .cv-break text { fill: var(--cv-ink-2); font: 600 10.5px var(--mono); }
+/* A note: a dot where it's pinned, a leader, and a bubble that drags. */
+.lm-canvas .cv-note-lead { fill: none; stroke: var(--cv-ink-2); stroke-width: 1; pointer-events: none; }
+.lm-canvas .cv-note-pin { fill: var(--cv-ink); pointer-events: none; }
+.lm-canvas .cv-note-box { fill: var(--cv-paper); stroke: var(--cv-card-edge); stroke-width: 1; filter: var(--cv-card-shadow); cursor: grab; }
+.lm-canvas .cv-note:hover .cv-note-box { stroke: var(--cv-sel); stroke-opacity: 0.6; }
+.lm-canvas .cv-note.sel .cv-note-box { stroke: var(--cv-sel); stroke-width: 1.8; filter: drop-shadow(0 0 5px var(--cv-glow)); }
+.lm-canvas .cv-note.sel .cv-note-lead { stroke: var(--cv-sel); }
+.lm-canvas .cv-note-t { fill: var(--cv-ink); font: 11.5px var(--sans); pointer-events: none; }
+.lm-canvas .cv-note-pn { fill: var(--cv-ink-2); font: 600 10.5px var(--mono); pointer-events: none; }
+.lm-canvas.placing, .lm-canvas.placing * { cursor: crosshair !important; }
+/* How it works: a glass card over the canvas, open by default; the i button brings it back. */
+.howto-pop { position: absolute; top: 56px; right: 12px; width: 290px; z-index: 5; padding: 12px 14px 12px; border-radius: 16px; background: var(--glass-bg); -webkit-backdrop-filter: blur(20px) saturate(1.8); backdrop-filter: blur(20px) saturate(1.8); border: 0.5px solid var(--glass-edge); box-shadow: var(--glass-hi), var(--glass-shadow); font-size: 12px; color: var(--text-2); line-height: 1.45; }
+.howto-pop[hidden] { display: none; }
+.howto-pop .hp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.howto-pop .hp-head b { color: var(--text); font-size: 12.5px; }
+.howto-pop .hp-close { width: 24px; height: 24px; border: none; border-radius: 50%; background: none; color: var(--text-3); cursor: pointer; display: grid; place-items: center; }
+.howto-pop .hp-close:hover { background: var(--glass-on); color: var(--text); }
+.howto-pop .hp-close svg { width: 12px; height: 12px; }
+.howto-pop p { margin: 7px 0 0; display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
+.howto-pop i { font-style: normal; font-weight: 700; color: var(--accent); text-align: center; }
+.canvas-wrap .seg.glass .hud-fold.on { color: var(--accent); }
+@media (max-width: 860px) { .howto-pop { display: none; } }
 .lm-canvas .cv-leader { pointer-events: none; }
 .lm-canvas .cv-leader path { fill: none; stroke: var(--cv-ink-2); stroke-opacity: 0.7; stroke-width: 1; stroke-linejoin: round; }
 .lm-canvas .cv-leader circle { fill: var(--cv-ink-2); }
