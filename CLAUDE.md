@@ -101,7 +101,8 @@ links to it so far. Before every commit:
     each badge up to the bottom edge of its set, ending in a dot; leaders are drawn under the
     wires. On the canvas a badge is a lit pill like the cards, with a dot in its set's color (the
     Properties chip colors: cable blue, bundle gray, twist amber, shield violet). The sheet prints
-    plain pills. Clicking a badge selects its set; the selected one and its leader glow.
+    plain pills. Clicking a badge selects its set; the selected one and its leader glow. Hovering
+    a badge lights its set's area as hovering the set does (`lightBadgeSet` in `app.js`).
   - **Twist leaders** (`.cv-lead`) are drawn in the main ink at 1.4 with a dot where the twist
     starts (Chris: more prominent).
   - **Set areas** (`setAreas`, canvas only). Each set's bounds are a hit area over the wires,

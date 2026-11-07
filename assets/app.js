@@ -227,6 +227,14 @@
       tip.style.display = 'flex';
       tip.innerHTML = `<span class="tip-dot"></span><span>Wiring from <b>${esc(M.endText(h, S.pending))}</b>. Click a glowing pin or a splice. <span class="tip-k">Esc</span> cancels.</span>`;
     } else tip.style.display = 'none';
+    lightBadgeSet();
+  }
+  // Hovering a set's badge lights the set's area as hovering the set does (Chris). Kept across
+  // redraws, which replace the canvas's elements.
+  let badgeHover = null;
+  function lightBadgeSet() {
+    svgEl().querySelectorAll('.cv-setarea.hover').forEach(el => el.classList.remove('hover'));
+    if (badgeHover) svgEl().querySelectorAll('.cv-setarea').forEach(el => { if (el.dataset.set === badgeHover) el.classList.add('hover'); });
   }
   // The camera only moves the viewBox: zoom, pan and Fit never redraw the diagram.
   function setView() {
@@ -1140,6 +1148,12 @@
   });
   const svg = svgEl();
   svg.addEventListener('pointerdown', onDown);
+  svg.addEventListener('pointerover', e => {
+    const b = e.target.closest && e.target.closest('.cv-badge');
+    const id = b ? b.dataset.set : null;
+    if (id !== badgeHover) { badgeHover = id; lightBadgeSet(); }
+  });
+  svg.addEventListener('pointerleave', () => { if (badgeHover) { badgeHover = null; lightBadgeSet(); } });
   svg.addEventListener('pointermove', onMove);
   svg.addEventListener('pointerup', onUp);
   svg.addEventListener('pointercancel', () => { const g = gesture; gesture = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
