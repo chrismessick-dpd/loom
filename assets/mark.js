@@ -42,6 +42,21 @@
     return e;
   }
   function f(v) { return Math.round(v * 1000) / 1000; }
+  // [r, g, b] from #rgb, #rrggbb or rgb()/rgba(); null if transparent or unreadable.
+  function rgb(c) {
+    var m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c || '');
+    if (m) {
+      var h = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1];
+      return [0, 2, 4].map(function (i) { return parseInt(h.substr(i, 2), 16); });
+    }
+    m = /rgba?\(([^)]+)\)/.exec(c || '');
+    if (!m) return null;
+    var v = m[1].split(/[\s,\/]+/).map(Number);
+    return v.length > 3 && v[3] === 0 ? null : v.slice(0, 3);
+  }
+  function mix(a, b, k) {
+    return 'rgb(' + a.map(function (v, i) { return Math.round(v + (b[i] - v) * k); }).join(',') + ')';
+  }
 
   // Path data for the front and back pieces of both strands at one spin angle.
   function pieces(spin) {
@@ -67,7 +82,10 @@
     return { front: front, back: back };
   }
 
-  var DEFAULTS = { fill: '#fff', size: 0.72, weight: 1.7, turnTime: 2.4, turns: 1, rest: 3, restGap: true, firstRest: null };
+  var DEFAULTS = { fill: '#fff', size: 0.72, weight: 1.7, turnTime: 2.4, turns: 1, rest: 3, restGap: true, top: 0, bottom: 0, firstRest: null };
+  // top, bottom: how far the strands' color moves toward the background at the top and bottom of
+  // the drawing: a vertical gradient that softens the white and shades each strand as it rises
+  // and falls.
 
   function create(host, opts) {
     var o = {}, k;
@@ -78,6 +96,11 @@
     var svg = el('svg', { 'aria-hidden': 'true' });
     svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;overflow:visible';
     var defs = el('defs', {}, svg);
+    var grad = el('linearGradient', { id: id + '-g', gradientUnits: 'userSpaceOnUse', x1: 0, x2: 0,
+      y1: AXIS - R - 1.5, y2: AXIS + R + 1.5 }, defs);
+    var stopTop = el('stop', { offset: 0 }, grad), stopBot = el('stop', { offset: 1 }, grad);
+    // The background the gradient shades toward: the host's own (the tile), else Loom's teal.
+    var bg = rgb(getComputedStyle(host).backgroundColor) || [0, 73, 82];
     var mask = el('mask', { id: id, maskUnits: 'userSpaceOnUse' }, defs);
     var maskBg = el('rect', { fill: '#fff' }, mask);
     var halo = el('path', { fill: 'none', stroke: '#000', 'stroke-linecap': 'butt', 'stroke-linejoin': 'round' }, mask);
@@ -130,7 +153,10 @@
       front.setAttribute('d', p.front);
       back.setAttribute('d', p.back);
       halo.setAttribute('d', p.front);
-      front.setAttribute('stroke', o.fill); back.setAttribute('stroke', o.fill);
+      var c = rgb(o.fill) || [255, 255, 255];
+      stopTop.setAttribute('stop-color', mix(c, bg, o.top));
+      stopBot.setAttribute('stop-color', mix(c, bg, o.bottom));
+      front.setAttribute('stroke', 'url(#' + id + '-g)'); back.setAttribute('stroke', 'url(#' + id + '-g)');
       front.setAttribute('stroke-width', f(sw));
       back.setAttribute('stroke-width', f(sw * (1 - 0.18 * cue)));
       halo.setAttribute('stroke-width', f(gap > 0 ? sw + 2 * 0.55 * sw * gap : 0));
@@ -163,8 +189,8 @@
     };
   }
 
-  // Loom's fixed settings (Chris, 2026-11-06, from the lab; rest 36 s).
-  var TOOL = { size: 0.75, weight: 2, turns: 0.5, turnTime: 8, rest: 36, restGap: true };
+  // Loom's fixed settings (Chris, 2026-11-06, from the lab).
+  var TOOL = { size: 0.75, weight: 2, turns: 0.5, turnTime: 8, rest: 24, restGap: true, top: 0.15, bottom: 0 };
 
   // Swaps the sidebar's static mark for the animated one. With reduced motion it is drawn once
   // and stays still.

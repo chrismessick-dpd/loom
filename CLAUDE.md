@@ -21,7 +21,8 @@ links to it so far. Before every commit:
 ## Status (2026-11-06)
 
 - **Animated mark:** `assets/mark.js` swaps the sidebar's static icon for a twisted pair that spins
-  half a turn about its axis every 36 s and rests over-and-under (still with reduced motion).
+  half a turn about its axis every 24 s and rests over-and-under (still with reduced motion). The
+  strands shade from 15% toward the teal at the top to white at the bottom (`top`, `bottom`).
   Settings are `TOOL` in that file, tuned in the hub's `lab/logo-motion.html` (Loom tab), which
   loads it.
 
