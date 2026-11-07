@@ -47,7 +47,14 @@ links to it so far. Before every commit:
   - The right pane has two tabs, **Parts** (the parts list and Add palette) and **Properties** (the
     selection's fields and its Delete button). A new selection switches to Properties, and clearing
     it goes back to Parts (`renderParts`, `propsHtml`). The left rail shows only the harness, except
-    under 860 px, where the right pane is hidden and the rail shows the selection.
+    on a phone.
+  - Phones (`PHONE` in app.js: under 860 px wide, or under 500 px tall held sideways; 2026-11-06):
+    the canvas fills the screen, the sidebar slides in from a ☰ button (`nav-open`), the parts pane
+    is hidden, and the rail is a sheet over the canvas showing the selection, else the harness: from
+    the bottom upright, from the right sideways. It pops up for a new selection (not one made by
+    tapping a pin to start a wire), goes when the selection clears, and the HUD's panel button and
+    its × toggle it (`S.sheet`). Touch: one finger drags parts and pans empty canvas; two fingers
+    pinch to zoom about their midpoint (`touches`, `pinch`).
   - Boxes: one per outermost wire set (`kind: 'set'`, key `g:<set id>`), and the wires in no set run
     in a plain stack per end pair (`kind: 'stack'`, key `p:<pair>`, or `s:<pair>` for a wire alone),
     with no badge or decoration. See *Wire sets* below. A stack nobody dragged follows its ends

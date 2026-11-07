@@ -564,11 +564,39 @@ button.chip.g-chip { cursor: pointer; }
 }
 
 @media (max-width: 1100px) { .build-view:not(.fold-rail) { --rail-w: 300px; } .build-view:not(.fold-parts) { --parts-w: 270px; } }
-@media (max-width: 860px) {
-  .build-view { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; grid-template-areas: "canvas" "rail"; }
-  .build-view.fold-rail { grid-template-rows: 1fr 0; }
+.sheet-close { display: none; }
+/* Phones (app.js PHONE): narrow, or short when held sideways. The canvas fills the screen, the
+   menu slides in from the ☰ button (suite.css does it below 860 px wide; this adds short screens),
+   and Properties is a sheet that pops up over the canvas: from the bottom upright, from the side
+   held sideways. The parts pane is hidden. */
+@media (max-width: 860px), (max-height: 500px) {
+  .build-view, .build-view.fold-rail { grid-template-columns: 1fr; grid-template-rows: 1fr; grid-template-areas: "canvas"; position: relative; overflow: hidden; min-height: 0; }
   .parts-pane, .hud-fold[data-act="fold-parts"] { display: none; }
   .drop-tiles { grid-template-columns: repeat(2, 1fr); }
+  .build-view .rail, .build-view.fold-rail .rail { grid-area: auto; visibility: visible; position: absolute; z-index: 30; left: 0; right: 0; bottom: 0; height: min(62%, 560px);
+    border: none; border-radius: 18px 18px 0 0; box-shadow: var(--shadow-lg); transform: translateY(calc(100% + 16px)); transition: transform 0.32s var(--ease); padding: 0; }
+  .build-view.sheet-open .rail { transform: none; }
+  .build-view .rail::before { content: ''; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--hair-2); }
+  .build-view .rail-head { padding-right: 52px; padding-top: 18px; }
+  .sheet-close { display: grid; place-items: center; position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border: none; border-radius: 50%; background: var(--bg-sunk); color: var(--text-2); cursor: pointer; }
+  .sheet-close svg { width: 14px; height: 14px; }
+  .sheet-close:hover { color: var(--text); }
+  .build-view.sheet-open .hud-br { opacity: 0; pointer-events: none; }
+  .hud-br { transition: opacity 0.2s; }
+}
+@media (max-height: 500px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: 280px; z-index: 50; transform: translateX(-100%); transition: transform 0.28s var(--ease); background: var(--bg-elev); }
+  .app.nav-open .sidebar { transform: none; box-shadow: var(--shadow-lg); }
+  .menu-toggle { display: inline-grid; }
+  .build-view .rail, .build-view.fold-rail .rail { left: auto; top: 8px; right: 8px; bottom: 8px; width: min(360px, 52%); height: auto; border-radius: 18px; transform: translateX(calc(100% + 24px)); }
+  .build-view .rail::before { display: none; }
+  .build-view .rail-head { padding-top: 14px; }
+  .build-view.sheet-open .board-hud { max-width: calc(48% - 24px); }
+}
+/* The sidebar's scrim on phones: a tap outside closes it (app.js). */
+@media (max-width: 860px), (max-height: 500px) {
+  .app.nav-open::after { content: ''; position: fixed; inset: 0; z-index: 49; background: rgba(0, 0, 0, 0.32); }
 }
 
 /* Wire sets: the property ticks, the set tree (Properties and Parts), the badge on a set's box and a

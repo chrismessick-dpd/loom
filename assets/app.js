@@ -330,8 +330,32 @@
   // anywhere); drag with the right or middle button to pan; wheel to zoom; click to pick or wire.
   // A left drag on empty canvas does nothing.
   let gesture = null;
+  // Touch: one finger works like the mouse, except that dragging empty canvas pans; two fingers
+  // pinch to zoom and pan about their midpoint. touches: the fingers down, by pointer id.
+  const touches = new Map();
+  let pinch = null;
+  const pinchAt = () => {
+    const [a, b] = [...touches.values()];
+    return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
   function onDown(e) {
     if (e.button > 2) return;
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size >= 2) {
+        // A second finger turns whatever the first began into a pinch; a part it was moving stays put.
+        const g = gesture;
+        gesture = null; S.lift = null;
+        svgEl().classList.remove('dragging', 'dragging-end');
+        if (g && (g.item || g.note || g.setEnd) && g.moved) { H().updated = Date.now(); persist(); renderAll(); }
+        else if (g && g.end && g.moved) renderCanvas();
+        cancelAnimationFrame(glideRaf);
+        const m = pinchAt();
+        pinch = Object.assign(m, { cam0: Object.assign({}, S.cam), w: toWorld({ clientX: m.x, clientY: m.y }) });
+        svgEl().setPointerCapture(e.pointerId);
+        return;
+      }
+    }
     // A wire-end dot (a splice port, a loose end, or where a wire meets a pin) drags that end.
     const endEl = e.button === 0 && !S.pending && e.target.closest('[data-end]');
     // A nested set's end grip drags that end past its parent's or in from it.
@@ -341,7 +365,7 @@
     const itemEl = e.button === 0 && !endEl && !setEndEl && e.target.closest('[data-item]');
     const end = endEl ? { wire: endEl.dataset.end.split('|')[0], which: endEl.dataset.end.split('|')[1] } : null;
     const setEnd = setEndEl ? { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] } : null;
-    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null };
+    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null };
     svgEl().setPointerCapture(e.pointerId);
   }
   // Where a dragged wire end would land: a splice (the side and port slot under the pointer), a
@@ -384,10 +408,19 @@
     renderCanvas(hp, { drop: g.target && g.target.side ? g.target.node : null, carry: g.end.wire, dropPin: g.target && g.target.pin != null ? g.target : null });
   }
   function onMove(e) {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch) {
+      if (touches.size < 2) return;
+      const m = pinchAt(), rc = svgEl().getBoundingClientRect();
+      const k = Math.max(0.2, Math.min(4, pinch.cam0.k * m.d / pinch.d));
+      S.cam = { k, x: pinch.w.x - (m.x - rc.left) / k, y: pinch.w.y - (m.y - rc.top) / k };
+      setView();
+      return;
+    }
     const g = gesture;
     if (!g) { if (S.pending) drawGhost(e); return; }
     const dx = e.clientX - g.x, dy = e.clientY - g.y;
-    if (!g.moved && Math.hypot(dx, dy) < 4) return;
+    if (!g.moved && Math.hypot(dx, dy) < (g.touch ? 8 : 4)) return;
     if (g.end) {
       if (!g.moved) { g.lo = lastLayout; svgEl().classList.add('dragging', 'dragging-end'); }
       g.moved = true;
@@ -421,7 +454,8 @@
       renderCanvas();
       return;
     }
-    if (g.button === 0) return; // a left drag on empty canvas does nothing; the right or middle button pans
+    // A left drag on empty canvas does nothing; the right or middle button pans, and so does a finger.
+    if (g.button === 0 && !g.touch) return;
     svgEl().classList.add('dragging');
     cancelAnimationFrame(glideRaf);
     S.cam.x = g.cam0.x - dx / S.cam.k; S.cam.y = g.cam0.y - dy / S.cam.k;
@@ -481,7 +515,14 @@
       : (v < 0 ? `stops ${-v} mm short of the wire ends` : v > 0 ? `runs ${v} mm past the wire ends` : 'reaches the wire ends');
     tip.innerHTML = `<b>${esc(st.label)}</b> ${what} on the ${d.side === 'r' ? 'right' : 'left'}` + (total != null ? ` · ${U.fmtLen(total)} in all` : '');
   }
-  function onUp() {
+  // A finger lifting ends a pinch; the one left down does nothing until it lifts too.
+  function endTouch(e) {
+    if (!touches.delete(e.pointerId) || !pinch) return false;
+    if (!touches.size) pinch = null;
+    return true;
+  }
+  function onUp(e) {
+    if (endTouch(e) || pinch) return;
     const g = gesture;
     gesture = null;
     S.lift = null;
@@ -794,12 +835,18 @@
     if (sel.kind === 'note') return railNote(h, M.note(h, [...sel.ids][0]));
     return '';
   }
-  // The left rail is the harness. On a narrow screen the right pane is hidden, so the rail shows the
-  // selection instead.
-  const narrow = () => window.matchMedia('(max-width: 860px)').matches;
+  // The left rail is the harness. On a phone (narrow, or short when held sideways; styles.css) the
+  // right pane is hidden and the rail is a sheet over the canvas showing the selection, else the
+  // harness. Like Signoff's detail panel it pops up for a new selection (not while wiring) and
+  // goes when the selection clears; the HUD's panel button and its close button toggle it.
+  const PHONE = '(max-width: 860px), (max-height: 500px)';
+  const narrow = () => window.matchMedia(PHONE).matches;
   function renderRail() {
-    const h = H();
-    paint($('#rail'), (narrow() && propsHtml()) || railHarness(h, M.analyze(h)));
+    const h = H(), sel = S.sel, key = sel ? sel.kind + ':' + [...sel.ids].sort().join(',') : '';
+    if (key !== S.sheetKey && !(S.pending && key)) { S.sheetKey = key; S.sheet = !!key; }
+    $('#build-view').classList.toggle('sheet-open', !!S.sheet);
+    paint($('#rail'), ((narrow() && propsHtml()) || railHarness(h, M.analyze(h))) +
+      `<button class="sheet-close" data-act="sheet-close" title="Close" aria-label="Close">${ICON.close}</button>`);
   }
   const railHead = (eyebrow, title, extra) => `<div class="rail-head"><div class="eyebrow">${eyebrow}</div><div class="rail-title">${title}</div>${extra || ''}</div>`;
 
@@ -1131,7 +1178,9 @@
       case 'zoom-in': zoomBy(1.25); break;
       case 'zoom-out': zoomBy(0.8); break;
       case 'zoom-reset': zoomBy(0); break;
-      case 'fold-rail': toggleFold('rail'); break;
+      case 'fold-rail': if (narrow()) { S.sheet = !S.sheet; $('#build-view').classList.toggle('sheet-open', S.sheet); } else toggleFold('rail'); break;
+      case 'sheet-close': S.sheet = false; $('#build-view').classList.remove('sheet-open'); break;
+      case 'nav': $('#app').classList.toggle('nav-open'); break;
       case 'fold-parts': toggleFold('parts'); break;
       case 'pane-tab': S.paneTab = el.dataset.tab; renderParts(); break;
       case 'auto-layout': change(x => { x.place = {}; }); S.cam = null; renderCanvas(); break;
@@ -1215,6 +1264,11 @@
 
   document.addEventListener('click', e => {
     const t = e.target;
+    const app = $('#app');
+    if (app.classList.contains('nav-open') && !t.closest('.menu-toggle') && (!t.closest('#sidebar') || t.closest('[data-open], [data-act="new"], [data-act="home"], [data-act="open"], a'))) {
+      app.classList.remove('nav-open');
+      if (!t.closest('#sidebar')) return;
+    }
     const a = t.closest('[data-act]');
     if (a && !a.disabled) { onAct(a.dataset.act, a); return; }
     const v = t.closest('[data-view]');
@@ -1278,7 +1332,9 @@
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (S.view !== 'build') return;
-    if (e.key === 'Escape') { S.placing ? (S.placing = null) : S.pending ? (S.pending = null) : (S.sel = null); $('#ghost') && ($('#ghost').innerHTML = ''); renderAll(); }
+    if (e.key === 'Escape' && $('#app').classList.contains('nav-open')) { $('#app').classList.remove('nav-open'); return; }
+    if (e.key === 'Escape' && !S.sel && S.sheet) { S.sheet = false; $('#build-view').classList.remove('sheet-open'); return; }
+    if (e.key === 'Escape') { S.placing ? (S.placing = null) : S.pending ? (S.pending = null, S.sel = null) : (S.sel = null); $('#ghost') && ($('#ghost').innerHTML = ''); renderAll(); }
     else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); }
     else if (e.key === 'f' || e.key === 'F') fitGlide();
     else if (e.key === '+' || e.key === '=') zoomBy(1.25);
@@ -1296,7 +1352,7 @@
   svg.addEventListener('pointerleave', () => { if (badgeHover) { badgeHover = null; lightBadgeSet(); } });
   svg.addEventListener('pointermove', onMove);
   svg.addEventListener('pointerup', onUp);
-  svg.addEventListener('pointercancel', () => { const g = gesture; gesture = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
+  svg.addEventListener('pointercancel', e => { if (endTouch(e) || pinch) return; const g = gesture; gesture = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
   svg.addEventListener('wheel', onWheel, { passive: false });
   svg.addEventListener('contextmenu', e => e.preventDefault()); // the right button pans
   let wasNarrow = narrow();
