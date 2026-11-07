@@ -26,7 +26,7 @@
 .lm-sheet .cv-sp-line{fill:none;stroke:#1d1d1f;stroke-width:1.3;stroke-linecap:round}.lm-sheet .cv-port{fill:#fff;stroke:#1d1d1f;stroke-width:1.4}
 .lm-sheet .cv-wrow text,.lm-sheet .cv-halo{paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
 .lm-sheet .cv-sketch .fv-body,.lm-sheet .cv-sketch .fv-latch,.lm-sheet .cv-sketch .fv-flange,.lm-sheet .cv-sketch .fv-cav,.lm-sheet .cv-sketch .fv-hole,.lm-sheet .cv-sketch .fv-key,.lm-sheet .cv-sketch .fv-collar{stroke-width:inherit}
-.lm-sheet .cv-sketch .fv-lead,.lm-sheet .cv-sketch .fv-strip{stroke-width:inherit}.lm-sheet .cv-sketch text{display:none}
+.lm-sheet .cv-sketch .fv-lead,.lm-sheet .cv-sketch .fv-strip,.lm-sheet .cv-sketch .fv-edge,.lm-sheet .cv-sketch .fv-outline{stroke-width:inherit}.lm-sheet .cv-sketch text{display:none}
 .lm-sheet .cell-cap{font-size:10px;font-weight:700;letter-spacing:.08em;fill:#515154}.lm-sheet .cv-rule{stroke:#1d1d1f}
 .lm-sheet .cv-t{font-size:12px}.lm-sheet .cv-ref{font-size:13px;font-weight:600}.lm-sheet .cv-name{font-size:11px;fill:#6e6e73}
 .lm-sheet .cv-tag{font:600 10.5px ${MONO};fill:#6e6e73}.lm-sheet .cv-num{font-family:${MONO}}.lm-sheet .cv-hit{fill:none}
@@ -53,7 +53,7 @@
 .lm-sheet .fv-cav{stroke:#1d1d1f;stroke-width:1}.lm-sheet .fv-cav:not(.on){fill:#fff}.lm-sheet .fv-num{font-family:${MONO};font-weight:600}
 .lm-sheet .fv-one{fill:#d70015}.lm-sheet .fv-hole,.lm-sheet .fv-key{fill:#fff;stroke:#1d1d1f}.lm-sheet .fv-jacket{fill:#3a3a3c}
 .lm-sheet .fv-lead{fill:none;stroke-width:3;stroke-linecap:round}.lm-sheet .fv-strip{stroke:#b08d57;stroke-width:2.2}
-.lm-sheet .fv-num-out{font:600 10px ${MONO}}.lm-sheet .fv-collar{fill:#d8dade;stroke:#1d1d1f}
+.lm-sheet .fv-edge,.lm-sheet .fv-outline{fill:none;stroke:#1d1d1f;stroke-width:1;stroke-linecap:round;stroke-linejoin:round}.lm-sheet .fv-num-out{font:600 10px ${MONO}}.lm-sheet .fv-collar{fill:#d8dade;stroke:#1d1d1f}
 .lm-sheet .sec-t{font-size:11px;font-weight:700;letter-spacing:.09em;fill:#00727f}
 .lm-sheet .cell{fill:none;stroke:#d1d1d6}.lm-sheet .cell-t{font-size:13px;font-weight:700}.lm-sheet .cell-s{font-size:11px;fill:#515154}
 .lm-sheet .cell-n{font-size:10px;fill:#86868b;font-style:italic}
@@ -111,7 +111,7 @@
     o += `<text class="cell-t" x="${x + 12}" y="${y + 21}">${esc(n.ref)}<tspan class="cell-s" dx="8">${esc(U.clip(n.name, 11, cw - 60))}</tspan></text>`;
     o += v.svg;
     const lines = [
-      `${fam.name}, ${n.pins} pos${n.rows === 2 && fam.style === 'rect' ? ', dual row' : ''}${L.hasHousing(fam) ? ', ' + n.gender : ''}`,
+      `${L.kindName(n)}, ${n.pins} pos${n.rows === 2 && fam.style === 'rect' ? ', dual row' : ''}${L.hasHousing(fam) ? ', ' + n.gender : ''}`,
       (L.hasHousing(fam) ? 'Housing ' : 'Part ') + (n.mpn || L.suggestHousing(n) || 'not set'),
     ];
     if (L.hasHousing(fam)) lines.push('Terminal ' + (n.terminal || 'not set'));

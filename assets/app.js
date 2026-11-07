@@ -32,6 +32,7 @@
     note: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4.5h14v8.5H9.5L6 16v-3H3z"/><path d="M6.5 8h7M6.5 10.5h4.5"/></svg>',
     pencil: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M10.5 3.5l2 2L6 12H4v-2z"/></svg>',
     close: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+    sliders: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/><circle cx="10" cy="4.5" r="1.6"/><circle cx="6" cy="11.5" r="1.6"/></svg>',
     sun: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3.4"/><path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M4.7 15.3 6 14M14 6l1.3-1.3"/></svg>',
     moon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M16 12.3A6.5 6.5 0 0 1 7.7 4a6.5 6.5 0 1 0 8.3 8.3z"/></svg>',
     harness: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 6.5h3.5c3 0 3 7 6 7h5.5M2.5 13.5h3.5c3 0 3-7 6-7h5.5"/></svg>',
@@ -994,10 +995,12 @@
   function railConnector(h, A, n) {
     const fam = L.family(n.family);
     const groups = [...new Set(L.FAMILIES.map(f => f.group))];
-    const famSel = `<select class="input" data-f="n.family">${groups.map(g => `<optgroup label="${g}">${L.FAMILIES.filter(f => f.group === g).map(f => opt(f.id, f.name, n.family)).join('')}</optgroup>`).join('')}</select>`;
+    // Custom is offered once Configure has drawn one; switching away keeps its drawing.
+    const famSel = `<select class="input" data-f="n.family">${groups.filter(g => g !== 'Custom' || n.custom).map(g => `<optgroup label="${g}">${L.FAMILIES.filter(f => f.group === g).map(f => opt(f.id, f.style === 'custom' ? 'Custom: ' + L.kindName(Object.assign({}, n, { family: 'custom' })) : f.name, n.family)).join('')}</optgroup>`).join('')}</select>`;
     const pins = L.pinChoices(fam);
     const fromBoard = Array.isArray(n.pinNames) && n.pinNames.length;
     const pinSel = fromBoard ? `<div class="input ro">${n.pinNames.length} from the board</div>`
+      : fam.style === 'custom' ? `<button class="input ro cfg-ro" data-act="configure" title="Set in Configure">${n.pins} positions</button>`
       : `<select class="input" data-f="n.pins"${pins.length < 2 ? ' disabled' : ''}>${pins.map(p => opt(p, p + (fam.style === 'flying' ? ' leads' : ' pins'), n.pins)).join('')}</select>`;
     const others = h.nodes.filter(x => M.isConn(x) && x.id !== n.id);
     const wired = h.wires.filter(w => w.from.node === n.id || w.to.node === n.id).length;
@@ -1005,8 +1008,8 @@
     const sugg = matchRows(h, n);
     const boardBox = n.board ? `<div class="board-src"><span class="lay-ico">${ICON.board}</span><div><b>${esc(n.board.name)} ${esc(n.board.ref)}</b><div class="f-hint">${esc(n.board.source)}${n.board.mpn ? ' · board part ' + esc(n.board.mpn) : ''}. Pins and labels come from its netlist.</div></div></div>` : '';
     const suggBox = sugg.length ? `<div class="cat-label">Suggested wires</div><div class="rail-sec">${sugg.map(r => `<div class="sugg"><div><b>${r.pairs.length} pin${r.pairs.length > 1 ? 's' : ''} match ${esc(r.other.ref)}</b><div class="f-hint">${esc([...new Set(r.pairs.map(p => p.label))].slice(0, 6).join(', '))}${new Set(r.pairs.map(p => p.label)).size > 6 ? '…' : ''}</div></div><button class="btn" data-act="match-wire" data-a="${n.id}" data-b="${r.other.id}">Wire them</button></div>`).join('')}<p class="f-hint">Same net name on both ends, on pins with no wire yet. Check each against the boards.</p></div>` : '';
-    return railHead('Connector', `<span class="mono-ref">${esc(n.ref)}</span> ${esc(n.name || fam.name)}`) +
-      `<div class="rail-list">${boardBox}${suggBox}<div class="face-tile">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.fitViews(h, n, 0, 0, 330, 150).note)}</span></div>
+    return railHead('Connector', `<span class="mono-ref">${esc(n.ref)}</span> ${esc(n.name || L.kindName(n))}`, `<button class="btn cfg-open" data-act="configure" title="Name, type and a custom face drawing">${ICON.sliders}Configure</button>`) +
+      `<div class="rail-list">${boardBox}${suggBox}<div class="face-tile" data-act="configure" title="Configure">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.fitViews(h, n, 0, 0, 330, 150).note)}</span></div>
       <div class="rail-sec">
       ${LM.shapes.hasBack(n) ? fld('Views', segBtns('n.faceView', LM.shapes.views(n).length > 1 ? 'both' : LM.shapes.views(n)[0], [['front', 'Front'], ['back', 'Back'], ['both', 'Both']]), 'Front is the mating face, back the wire side. The drawing prints these.') : ''}
       <div class="row2 r-ref">${fld('Ref', inp('n.ref', n.ref))}${fld('Name', inp('n.name', n.name, ' placeholder="Main PCBA J6"'))}</div>
@@ -1316,6 +1319,7 @@
       case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;
       case 'help': fold.help = fold.help === false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } renderParts(); break;
       case 'from-board': openBoards(); break;
+      case 'configure': { const n = S.sel && S.sel.kind === 'node' && M.node(h, [...S.sel.ids][0]); if (n && M.isConn(n)) LM.configure.open({ h: H, nodeId: n.id, apply: fn => change(fn) }); break; }
       case 'guide': if (LM.guide) LM.guide.start(); break;
       case 'bm-close': closeModal(); break;
       case 'bm-back': BM.step = BM.boards ? 'boards' : 'loading'; renderModal(); break;
@@ -1450,6 +1454,7 @@
     if (el.dataset && el.dataset.f) setField(el.dataset.f, el.value, el);
   });
   document.addEventListener('keydown', e => {
+    if (LM.configure.isOpen()) { LM.configure.onKey(e); return; }
     if (BM.open) { if (e.key === 'Escape') closeModal(); return; }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
     const mod = e.ctrlKey || e.metaKey;

@@ -23,12 +23,12 @@
     }
     return worker;
   }
-  function readStep(bytes) {
+  function readStep(bytes, kind) {
     return new Promise((resolve, reject) => {
       const id = ++seq;
       pending.set(id, { resolve, reject });
       const copy = bytes.slice();
-      cadWorker().postMessage({ id, lib: OCCT, kind: 'step', bytes: copy, params: { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: 0.0015, angularDeflection: 0.25 } }, [copy.buffer]);
+      cadWorker().postMessage({ id, lib: OCCT, kind: kind || 'step', bytes: copy, params: { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: 0.0015, angularDeflection: 0.25 } }, [copy.buffer]);
     });
   }
 
@@ -68,13 +68,17 @@
       wid[v] = w;
     }
     const nrm = new Float32Array(nt * 3);
+    let vol = 0;
     for (let t = 0; t < nt; t++) {
       const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
       const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
       const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
       const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, l = Math.hypot(x, y, z) || 1;
       nrm[t * 3] = x / l; nrm[t * 3 + 1] = y / l; nrm[t * 3 + 2] = z / l;
+      vol += pos[a] * x + pos[a + 1] * y + pos[a + 2] * z;
     }
+    // Triangles wound inside out (a negative volume) would make every front face look away.
+    if (vol < 0) for (let i = 0; i < nrm.length; i++) nrm[i] = -nrm[i];
     const W = wpos.length / 3, emap = new Map(), ea = [], eb = [], t1 = [], t2 = [], cnt = [];
     for (let t = 0; t < nt; t++) for (let k = 0; k < 3; k++) {
       let a = wid[idx[t * 3 + k]], b = wid[idx[t * 3 + (k + 1) % 3]];
@@ -110,10 +114,11 @@
   };
   const dot3 = (a, i, b) => a[i] * b[0] + a[i + 1] * b[1] + a[i + 2] * b[2];
 
-  // The visible edges of a view as one path, in sketch units: the longer side is 1000.
+  // The visible edges of a view as one path, in sketch units: the longer side is 1000. The view is
+  // one of VIEWS by key, or any { look, right, up } (unit vectors, right × up = −look).
   function sketch(mesh, viewKey, rot, res) {
     prepare(mesh);
-    const V = VIEWS[viewKey] || VIEWS['+Z'], RES = res || 1400;
+    const V = viewKey && typeof viewKey === 'object' ? viewKey : VIEWS[viewKey] || VIEWS['+Z'], RES = res || 1400;
     const { wpos, idx, pos, nrm, ea, eb, t1, t2, cnt, model } = mesh;
     const nw = wpos.length / 3, nt = idx.length / 3;
     // Project: x right, y up, z toward the viewer.
@@ -232,6 +237,14 @@
   }
   function simplify(pts, tol) {
     if (pts.length < 3) return pts;
+    // A closed loop (its ends meet) has no chord to measure from: split it at its far point.
+    const [sx, sy] = pts[0], [ex, ey] = pts[pts.length - 1];
+    if (Math.hypot(ex - sx, ey - sy) < 1e-6) {
+      let far = 1, fd = -1;
+      pts.forEach((p, i) => { const d = Math.hypot(p[0] - sx, p[1] - sy); if (d > fd) { fd = d; far = i; } });
+      if (far <= 0 || far >= pts.length - 1) return pts;
+      return simplify(pts.slice(0, far + 1), tol).concat(simplify(pts.slice(far), tol).slice(1));
+    }
     const keep = new Uint8Array(pts.length);
     keep[0] = keep[pts.length - 1] = 1;
     const stack = [[0, pts.length - 1]];
@@ -248,13 +261,37 @@
     return pts.filter((_, i) => keep[i]);
   }
 
-  // Read a STEP file into a prepared mesh.
+  // An STL (binary or ASCII) as a mesh with no b-rep faces: angles find its edges.
+  function fromStl(buf) {
+    const dv = new DataView(buf), head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(buf.byteLength, 512)));
+    const tris = buf.byteLength >= 84 ? dv.getUint32(80, true) : 0;
+    let pos;
+    if (tris && 84 + tris * 50 === buf.byteLength) {
+      pos = new Float32Array(tris * 9);
+      for (let t = 0; t < tris; t++) for (let k = 0; k < 9; k++) pos[t * 9 + k] = dv.getFloat32(84 + t * 50 + 12 + k * 4, true);
+    } else if (/^\s*solid/i.test(head)) {
+      const nums = [], re = /vertex\s+(\S+)\s+(\S+)\s+(\S+)/g, txt = new TextDecoder().decode(buf);
+      let m;
+      while ((m = re.exec(txt))) nums.push(+m[1], +m[2], +m[3]);
+      pos = Float32Array.from(nums);
+    } else throw new Error("This doesn't read as an STL file.");
+    const nt = Math.floor(pos.length / 9);
+    if (!nt) throw new Error('The STL has no triangles.');
+    const idx = new Uint32Array(nt * 3);
+    for (let i = 0; i < idx.length; i++) idx[i] = i;
+    return { pos, idx, face: new Int32Array(nt).fill(-1), tris: nt };
+  }
+  // The kinds of file a model can come from, by extension.
+  const KINDS = { step: 'step', stp: 'step', iges: 'iges', igs: 'iges', stl: 'stl' };
+  const kindOf = name => KINDS[(String(name).match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase()] || null;
+  // Read a STEP, IGES or STL file into a prepared mesh.
   async function load(file) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const res = await readStep(bytes);
-    if (!res.success) throw new Error("OpenCascade couldn't read this STEP file.");
+    const kind = kindOf(file.name || '') || 'step', buf = await file.arrayBuffer();
+    if (kind === 'stl') return prepare(fromStl(buf));
+    const res = await readStep(new Uint8Array(buf), kind);
+    if (!res.success) throw new Error("OpenCascade couldn't read this " + kind.toUpperCase() + ' file.');
     return prepare(toMesh(res));
   }
 
-  LM.step = { load, sketch, prepare, VIEWS, OCCT };
+  LM.step = { load, sketch, prepare, kindOf, VIEWS, OCCT };
 })(window.LM = window.LM || {});

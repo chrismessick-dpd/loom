@@ -27,6 +27,9 @@
     { id: 'dsub', group: 'Wire to wire', name: 'D-sub', style: 'dsub', pitch: 2.77, rows: [2], pinsList: [9, 15, 25, 37], awg: [22, 28] },
     { id: 'm8', group: 'Wire to wire', name: 'M8 circular', style: 'circular', pinsList: [3, 4, 8], awg: [22, 26] },
     { id: 'm12', group: 'Wire to wire', name: 'M12 circular', style: 'circular', pinsList: [4, 5, 8, 12], awg: [18, 26] },
+
+    // Drawn in Configure from a 3D model's face or a sketch, with a mark per position (n.custom).
+    { id: 'custom', group: 'Custom', name: 'Custom', style: 'custom', pins: [1, 200] },
   ];
   const byId = new Map(FAMILIES.map(f => [f.id, f]));
   const family = id => byId.get(id) || byId.get('generic-rect');
@@ -45,6 +48,7 @@
   // Fit a connector's pins and rows to its family (after a family change).
   function conform(node) {
     const f = family(node.family);
+    if (f.style === 'custom') return node; // its positions are set in Configure
     const choices = pinChoices(f);
     if (!choices.includes(node.pins)) node.pins = choices.reduce((b, n) => (Math.abs(n - node.pins) < Math.abs(b - node.pins) ? n : b), choices[0]);
     const rows = f.rows || [1];
@@ -68,7 +72,9 @@
     return 'generic-rect';
   }
   const wireToWire = f => f.style === 'dsub' || f.style === 'circular';
-  const hasHousing = f => ['rect', 'dsub', 'circular'].includes(f.style);
+  const hasHousing = f => ['rect', 'dsub', 'circular', 'custom'].includes(f.style);
+  // What the connector is, in words: the family's name, or a custom one's description.
+  const kindName = n => { const f = family(n.family); return f.style === 'custom' ? (n.custom && n.custom.kind) || 'Custom connector' : f.short || f.name; };
 
-  LM.library = { FAMILIES, family, pinChoices, suggestHousing, conform, wireToWire, hasHousing, guessFamily };
+  LM.library = { FAMILIES, family, pinChoices, suggestHousing, conform, wireToWire, hasHousing, guessFamily, kindName };
 })(window.LM = window.LM || {});

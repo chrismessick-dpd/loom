@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <!-- Harnesses are drawn and kept in this browser tab. The only network use is reading a board's fab
      package from Signoff EE's private repos (GitHub, read only), with JSZip and SheetJS pinned like Fabcheck's. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.sheetjs.com; connect-src 'self' https://api.github.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.sheetjs.com https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://api.github.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light dark">
 <title>Loom · Harness drawings</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23004952'/%3E%3Cpath d='M7 11h6c4 0 4 10 8 10h4M7 21h6c4 0 4-10 8-10h4' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/suite.css?v=ca389ce24694">
-<link rel="stylesheet" href="assets/styles.css?v=ca389ce24694">
+<link rel="stylesheet" href="assets/suite.css?v=f395bfe330b5">
+<link rel="stylesheet" href="assets/styles.css?v=f395bfe330b5">
 </head>
 <body>
 <div id="demo-banner" class="demo-banner" hidden></div>
@@ -88,27 +88,30 @@
   </main>
 </div>
 <div class="toasts" id="toasts"></div>
+<div class="lm-modal-back" id="cfg-modal" hidden><div class="lm-modal cfg" role="dialog" aria-modal="true" aria-label="Configure connector" id="cfg-body"></div></div>
 <div class="lm-modal-back" id="board-modal" hidden><div class="lm-modal" role="dialog" aria-modal="true" aria-label="Add a board connector" id="board-modal-body"></div></div>
 <input type="file" id="file-input" accept=".json,application/json" hidden>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT" crossorigin="anonymous"></script>
-<script src="assets/vendor/ipc356.js?v=ca389ce24694"></script>
-<script src="assets/vendor/assembly.js?v=ca389ce24694"></script>
-<script src="assets/version.js?v=ca389ce24694"></script>
-<script src="assets/util.js?v=ca389ce24694"></script>
-<script src="assets/library.js?v=ca389ce24694"></script>
-<script src="assets/model.js?v=ca389ce24694"></script>
-<script src="assets/conn.js?v=ca389ce24694"></script>
-<script src="assets/boards.js?v=ca389ce24694"></script>
-<script src="assets/shapes.js?v=ca389ce24694"></script>
-<script src="assets/sheet.js?v=ca389ce24694"></script>
-<script src="assets/demo.js?v=ca389ce24694"></script>
-<script src="assets/app.js?v=ca389ce24694"></script>
+<script src="assets/vendor/ipc356.js?v=f395bfe330b5"></script>
+<script src="assets/vendor/assembly.js?v=f395bfe330b5"></script>
+<script src="assets/version.js?v=f395bfe330b5"></script>
+<script src="assets/util.js?v=f395bfe330b5"></script>
+<script src="assets/library.js?v=f395bfe330b5"></script>
+<script src="assets/model.js?v=f395bfe330b5"></script>
+<script src="assets/conn.js?v=f395bfe330b5"></script>
+<script src="assets/boards.js?v=f395bfe330b5"></script>
+<script src="assets/shapes.js?v=f395bfe330b5"></script>
+<script src="assets/sheet.js?v=f395bfe330b5"></script>
+<script src="assets/step.js?v=f395bfe330b5"></script>
+<script src="assets/configure.js?v=f395bfe330b5"></script>
+<script src="assets/demo.js?v=f395bfe330b5"></script>
+<script src="assets/app.js?v=f395bfe330b5"></script>
 <!-- Animated logo: assets/mark.js swaps the sidebar's static mark for the spinning one. -->
-<script src="assets/mark.js?v=ca389ce24694"></script>
+<script src="assets/mark.js?v=f395bfe330b5"></script>
 <!-- The guide, before the suite's demo tour, whose Loom step offers it. -->
-<script src="assets/guide.js?v=ca389ce24694"></script>
+<script src="assets/guide.js?v=f395bfe330b5"></script>
 <!-- Demo tour: signoff/assets/tour.js does nothing outside ?demo, or before the hub starts the tour. -->
 <script src="../signoff/assets/tour.js"></script>
 </body>

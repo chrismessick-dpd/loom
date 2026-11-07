@@ -564,8 +564,8 @@
       const wired = new Set(h.wires.flatMap(w => [w.from, w.to]).filter(e => e.node === n.id).map(e => e.pin)).size;
       if (L.hasHousing(f)) {
         const pn = n.mpn || L.suggestHousing(n);
-        add('h|' + f.id + '|' + n.pins + '|' + pn, { desc: `${f.name} housing, ${n.pins} pos${n.rows === 2 && f.style === 'rect' ? ', dual row' : ''}`, pn, unit: 'ea', refs: [n.ref] }, 1);
-        if (wired) add('t|' + f.id + '|' + n.terminal, { desc: `${f.name} terminal`, pn: n.terminal || '', unit: 'ea', refs: [] }, wired);
+        add('h|' + f.id + '|' + L.kindName(n) + '|' + n.pins + '|' + pn, { desc: `${L.kindName(n)}${f.style === 'custom' ? '' : ' housing'}, ${n.pins} pos${n.rows === 2 && f.style === 'rect' ? ', dual row' : ''}`, pn, unit: 'ea', refs: [n.ref] }, 1);
+        if (wired) add('t|' + f.id + '|' + L.kindName(n) + '|' + n.terminal, { desc: `${L.kindName(n)} terminal`, pn: n.terminal || '', unit: 'ea', refs: [] }, wired);
       } else if (f.style === 'ring' || f.style === 'ferrule') {
         add('t|' + f.id + '|' + n.mpn, { desc: f.name, pn: n.mpn || '', unit: 'ea', refs: [n.ref] }, 1);
       }
