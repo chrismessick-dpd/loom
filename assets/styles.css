@@ -487,6 +487,9 @@ button.chip.g-chip { cursor: pointer; }
    3 px and 6 px glow). A selected set's wires carry one at half the wire's (.soft). */
 .lm-canvas .w-pulse { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 0.05 0.95; stroke-opacity: 0.5; pointer-events: none; filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.5)) drop-shadow(0 0 3px var(--cv-glow)); animation: lmfx-pulse 1.8s linear infinite; animation-delay: var(--phase, 0s); }
 .lm-canvas .w-pulse.soft { stroke-opacity: 0.25; filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.25)); }
+/* On a light wire (white, yellow…) the pulse is a dark bead, so it shows (Chris; conn.js isLight). */
+.lm-canvas .w-pulse.ink { stroke: #1d1d1f; stroke-opacity: 0.6; filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.45)); }
+.lm-canvas .w-pulse.soft.ink { stroke-opacity: 0.32; filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.3)); }
 @keyframes lmfx-pulse { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 /* The holders: a smoked-glass sheath and glossy shrink-tube bands. */
 .lm-canvas .cv-sheath { fill: url(#lmfx-sheath); stroke: var(--cv-sheath-edge); stroke-width: 1; }

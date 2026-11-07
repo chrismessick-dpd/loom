@@ -4,7 +4,7 @@
 (function (LM) {
   'use strict';
   const M = LM.model;
-  const VERSION = 12; // bump when the demo changes, so stored copies rebuild
+  const VERSION = 13; // bump when the demo changes, so stored copies rebuild
 
   function harness() {
     const h = M.blank('Display & Sensor Harness');

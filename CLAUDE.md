@@ -126,8 +126,24 @@ links to it so far. Before every commit:
     first wire and below its last. Each set draws its parts outermost first: lacing for a bundle
     (`lacing`), the sheath for a cable, and a crosshatch braid for a shield (`holders`; the braid
     goes over the sheath). The pattern ids are `lm-braid-canvas` and `lm-braid-sheet`. A twisted
-    set's wires twist inside its stretch. The box's label table is gone. A cable reaches `CABLE_R`
-    (18) above and below its wires, so its sheath clears the first row's text.
+    set's wires twist inside its stretch. The box's label table is gone. A shield's braid and a
+    cable's sheath reach `SET_R` (6) past their outer wires, and a bundle `BUNDLE_R` (12).
+  - **Cables pack their wires** (2026-11-07, Chris: look more like a cable). Across a cable's
+    stretch its wires run `PACK` (5) apart, edges touching, round its middle, so the sheath is as
+    thick as its conductors need (`SET_R` past the outer ones, more when it holds sets). Before it
+    they fan in from grid spacing and after it back out, each over `fanLen` (24 to 90, longer for
+    more wires; a smoothstep, `packY`). A cable inside another packs with it (`packSpans`).
+    - The box makes room (`sizeBox`): the fan-in before the cable (in `lx`, so the frame and a
+      placed box's wires stay put), and after it the fan-out plus a straight run at grid spacing
+      for the labels (`LABEL_PAD` either side). The labels default there (`labelX0`). In Real
+      proportions a cable can fill its box; then its labels go before it if they fit, else they
+      keep their rows at grid spacing over it until slid (`offLane`).
+    - Wire paths, lanes, twist leaders and `wireAt` all go through the packing (`packPts`). A set
+      inside a cable is drawn round the packed wires (`spanGeom`); one that runs past the cable
+      (TP1 past a cabled B1) narrows inside it and widens with its wires as they fan out (`vary`,
+      `edge(x)`; `jacket`, `capOf`, lacing ties, grips and badge leaders follow its edges).
+    - The canvas draws the sheath only just see-through (Chris: 90%): opaque colors at the tint the
+      old smoked glass showed, at `fill-opacity` 0.9. The sheet keeps its see-through gray.
   - **Badges** (`badgeRow`, `badges`, `badgeLeaders`; Chris). Every set in a box gets a badge, in a
     row under the box from the outermost set's left end (so it follows that end when it's
     dragged), outermost first and then down the tree. A leader runs from
@@ -167,7 +183,9 @@ links to it so far. Before every commit:
   - **Selection look** (Chris). A selected wire's pulse (`.w-pulse`) is half its first strength
     (opacity 0.5, a smaller glow). A selected set's wires carry one at half that (`.w-pulse.soft`,
     wire class `setsel`). What a selection isn't about dims half as much as before (`.dim` 0.6,
-    wires 0.56, pins 0.65).
+    wires 0.56, pins 0.65). On a light wire (white, yellow, pink, orange, turquoise: relative
+    luminance over 0.3, `isLight`) the pulse is a dark bead (`.w-pulse.ink`), since a light one
+    doesn't show (Chris).
   - **Real proportions** (Chris). A checkbox beside Wire labels (`#propview`, `fold.prop`, kept per
     browser) switches the canvas to a to-scale view (`conn.layout(h, A, { prop: true })`,
     `proportion`); unticking goes back to the arranged (casual) view, whose dragged positions

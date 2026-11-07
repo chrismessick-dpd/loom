@@ -31,6 +31,13 @@
   // snug round the wires; a cable is as thick as a shield (Chris, 2026-11-07). A set holding sets
   // reaches 3 past them, and a bundle keeps room for its lacing knots (BUNDLE_R).
   const SET_R = 6, BUNDLE_R = 12;
+  // A cable packs its wires PACK apart, edges touching (Chris, 2026-11-07), so its sheath is as thick
+  // as its conductors need: SET_R past its outer wires. They fan in to it from grid spacing and back
+  // out over fanLen, and its box keeps LABEL_PAD either side of its wires' labels after the fan-out.
+  const PACK = 5, LABEL_PAD = 8;
+  const fanLen = sp => Math.max(24, Math.min(90, (sp.i1 - sp.i0) * (PITCH - PACK) * 0.7));
+  // The cables that pack their wires: those inside no other cable (an inner one packs with it).
+  const packSpans = sz => (sz.spans || []).filter(sp => sp.s.cable && !sz.spans.some(o => o !== sp && o.s.cable && o.depth < sp.depth && o.i0 <= sp.i0 && o.i1 >= sp.i1));
   // The badges: one per set, in a row under the box, left-aligned (Chris).
   const BADGE_H = 22, BADGE_GAP = 8;
   const badgeW = label => Math.max(34, tw(label, 11) + 30);
@@ -200,6 +207,19 @@
     }
     w = sz.w;
     arrange(h, b, sz, w2 => w2.no);
+    // Room for a cable's wires to fan in before it, and after it to fan out and carry their labels
+    // at grid spacing (Chris). Left room goes in lx, so the frame (and a placed box's wires) stay put.
+    if (b.kind === 'set') {
+      let addL = 0, need = 0;
+      packSpans(sz).forEach(sp => {
+        const e = sz.ext.get(sp.s.id), F = fanLen(sp);
+        if (!e) return;
+        addL = Math.max(addL, F - e.x0);
+        need = Math.max(need, e.x1 + F + 2 * LABEL_PAD + sz.inner);
+      });
+      if (addL > 0) { sz.lx += addL; sz.ext.forEach(e => { e.x0 += addL; e.x1 += addL; }); sz.w += addL; need += addL; }
+      sz.w = Math.max(sz.w, need);
+    }
     return sz;
   }
   // Order a box's rows and find each set's rows in it. yOf(wire) is where the wire comes from, so
@@ -580,12 +600,14 @@
         return { d: `M${f(p.x)} ${f(p.y)}` + curve(p, q), over: [], ends: [{ which: whichOf(w, l), at: p, e: l }, { which: whichOf(w, r), at: q, e: r }] };
       }
       const { b, it, l, r, lIn, rIn } = e;
-      const segs = [];
       const L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
-      segs.push(`M${f(L0.x)} ${f(L0.y)}`, curve(L0, lIn));
-      const tw = twist(w, b, lIn, rIn);
-      segs.push(tw ? tw.d : `L${f(rIn.x)} ${f(rIn.y)}`, curve(rIn, R0));
-      return { d: segs.join(''), over: tw ? tw.over : [], ends: [{ which: whichOf(w, l), at: L0, e: l }, { which: whichOf(w, r), at: R0, e: r }] };
+      // Across the box: on its row, twisting where its set twists, and packed where its cable runs.
+      const tw = twist(w, b, lIn, rIn), p = packFor(it, lIn.y);
+      let pts = [{ x: lIn.x, y: lIn.y }].concat(tw || [], [{ x: rIn.x, y: rIn.y }]);
+      if (p) pts = packPts(p, pts);
+      const a = pts[0], z = pts[pts.length - 1];
+      return { d: `M${f(L0.x)} ${f(L0.y)}` + curve(L0, a) + pts.slice(1).map(q => `L${f(q.x)} ${f(q.y)}`).join('') + curve(z, R0), over: overOf(pts),
+        ends: [{ which: whichOf(w, l), at: L0, e: l }, { which: whichOf(w, r), at: R0, e: r }] };
     }
     // A twisted wire's run through its box, drawn as a helix seen from the side: past the box's ends
     // (the sheath's caps or the bundle's bands) every wire of the set swings across the set's rows,
@@ -609,7 +631,9 @@
     // start while the label sits over the twist.
     function twistAt(w, end) {
       const e = entry(w), s = e && twistSpan(w, e.b, e.lIn, e.rIn);
-      return s ? { x: (end ? Math.max : Math.min)(s.xa, s.xb), y: e.lIn.y } : null;
+      if (!s) return null;
+      const x = (end ? Math.max : Math.min)(s.xa, s.xb), p = packFor(e.it, e.lIn.y);
+      return { x, y: p ? packY(p, x, e.lIn.y) : e.lIn.y };
     }
     const twistStart = w => twistAt(w, false), twistEnd = w => twistAt(w, true);
     // The helix a twisted wire follows from its row y0: y dx along its twist (0 to run), and whether
@@ -631,10 +655,10 @@
     function wireAt(w, q) {
       const e = entry(w);
       if (!e) return null;
-      const s = twistSpan(w, e.b, e.lIn, e.rIn);
-      if (!s) return { x: q.x, y: e.lIn.y };
+      const s = twistSpan(w, e.b, e.lIn, e.rIn), p = packFor(e.it, e.lIn.y), pk = (x, y) => ({ x, y: p ? packY(p, x, y) : y });
+      if (!s) return pk(q.x, e.lIn.y);
       const dx = Math.min(s.run, Math.max(0, (q.x - s.xa) * s.dir));
-      return { x: s.xa + s.dir * dx, y: helix(s, e.lIn.y)(dx).y };
+      return pk(s.xa + s.dir * dx, helix(s, e.lIn.y)(dx).y);
     }
     function twist(w, b, lIn, rIn) {
       const s = twistSpan(w, b, lIn, rIn);
@@ -643,16 +667,18 @@
       const steps = Math.max(24, Math.ceil(run / 3));
       const pts = [];
       for (let k = 0; k <= steps; k++) { const dx = run * k / steps, v = at(dx); pts.push({ x: xa + dir * dx, y: v.y, front: v.front }); }
-      let d = `L${f(xa)} ${f(y0)}`;
-      pts.forEach(p => { d += `L${f(p.x)} ${f(p.y)}`; });
+      return pts;
+    }
+    // The near-side stretches of a twisted wire's points (front), drawn over the other wires.
+    function overOf(pts) {
       const over = [];
       let cur = null;
       pts.forEach((p, k) => {
-        if (p.front) { if (!cur) { cur = `M${f(pts[Math.max(0, k - 1)].x)} ${f(pts[Math.max(0, k - 1)].y)}`; } cur += `L${f(p.x)} ${f(p.y)}`; }
+        if (p.front) { if (!cur) { const q = pts[Math.max(0, k - 1)]; cur = `M${f(q.x)} ${f(q.y)}`; } cur += `L${f(p.x)} ${f(p.y)}`; }
         else if (cur) { over.push(cur); cur = null; }
       });
       if (cur) over.push(cur);
-      return { d: d + `L${f(rIn.x)} ${f(rIn.y)}`, over };
+      return over;
     }
     const box = { x0: Math.min(0, ...items.map(i => i.x)), y0: Math.min(0, ...items.map(i => i.y)),
       x1: Math.max(200, ...items.map(i => i.x + i.w)), y1: Math.max(120, ...items.map(i => i.y + i.h)) };
@@ -662,14 +688,15 @@
     // lane is the line its label rides: its path from pin to pin, but across its box on its row
     // without a twist's swing, so a label over a twist stays level with its row. Points with arc
     // length s (laneAt, project).
-    const lanes = new Map(), labelX = new Map();
+    const lanes = new Map(), labelX = new Map(), offLane = new Set();
     function lane(w) {
       if (lanes.has(w.id)) return lanes.get(w.id);
       const e = entry(w);
       let out = null;
       if (e) {
-        const { it, l, r, lIn, rIn } = e, L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
-        const pts = curvePts(L0, lIn).concat(curvePts(rIn, R0));
+        const { it, l, r, lIn, rIn } = e, L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2), p = packFor(it, lIn.y);
+        const mid = p ? packPts(p, [{ x: lIn.x, y: lIn.y }, { x: rIn.x, y: rIn.y }]) : [lIn, rIn];
+        const pts = curvePts(L0, mid[0]).concat(mid.slice(1, -1), curvePts(mid[mid.length - 1], R0));
         let s = 0;
         out = { pts: pts.map((p, i) => { if (i) s += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y); return { x: p.x, y: p.y, s }; }), S: 0, it };
         out.S = s;
@@ -677,12 +704,22 @@
       lanes.set(w.id, out);
       return out;
     }
-    // Where a box's labels sit until one is slid: centered on its frame (in Real proportions, right
-    // of a break), but where rows twist, left to just past where the first twist starts, so the
-    // leaders stay short. Each label is its box's label width (sz.inner), so they line up as a table.
+    // Where a box's labels sit until one is slid: in a box with a cable, past its fan-out where the
+    // wires are back at grid spacing (Chris; in Real proportions where that fits, else before its
+    // fan-in). Otherwise centered on its frame (in Real proportions, right of a break), but where
+    // rows twist, left to just past where the first twist starts, so the leaders stay short. Each
+    // label is its box's label width (sz.inner), so they line up as a table.
     function labelX0(it) {
       if (labelX.has(it)) return labelX.get(it);
-      const sz = it.sz, x = it.x;
+      const sz = it.sz, x = it.x, P = packs(it);
+      if (P.length) {
+        const after = Math.max(...P.map(p => p.x1 + p.F)) + LABEL_PAD, before = Math.min(...P.map(p => p.x0 - p.F)) - LABEL_PAD - sz.inner;
+        const x0 = after + sz.inner <= x + it.w - (it.fan || 0) - 4 ? after : before >= x + (it.fan || 0) + 4 ? before : null;
+        if (x0 != null) { labelX.set(it, x0); return x0; }
+        // No room past or before the cable (it spans its box in Real proportions): its labels keep
+        // their rows at grid spacing over it until slid, so they don't pile up on the packed wires.
+        offLane.add(it);
+      }
       let x0 = x + (sz.textC != null ? sz.textC : (sz.lx || 0) + sz.rootW / 2) - (sz.inner - sz.lead) / 2;
       const starts = sz.rows.map(r => r.w && twistStart(r.w)).filter(Boolean);
       if (starts.length) {
@@ -698,7 +735,8 @@
       const ln = lane(w);
       if (!ln) return null;
       const t = w.labelAt == null ? null : Math.min(1, Math.max(0, +w.labelAt));
-      const s = t != null ? t * ln.S : project(ln, { x: labelX0(ln.it) + ln.it.sz.inner / 2, y: boxRowY.get(w.id) });
+      const q = { x: labelX0(ln.it) + ln.it.sz.inner / 2, y: boxRowY.get(w.id) }, s = t != null ? t * ln.S : project(ln, q);
+      if (t == null && offLane.has(ln.it)) return { x: q.x, y: q.y, t: ln.S ? s / ln.S : 0.5, it: ln.it };
       const p = laneAt(ln, s);
       return { x: p.x, y: p.y, t: ln.S ? s / ln.S : 0.5, it: ln.it };
     }
@@ -765,14 +803,22 @@
       (c.stripe ? `<path class="w-stripe" style="stroke:${c.stripe}" d="${d}"/>` : '') +
       (fx ? `<path class="w-gloss" d="${d}"/>` : '') + '</g>').join('');
   }
+  // A light insulation color (white, yellow, pink, orange, turquoise; relative luminance over 0.3):
+  // the pulse on it is a dark bead (.ink), since a light one doesn't show (Chris).
+  const isLight = hex => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return false;
+    const v = parseInt(m[1], 16), ch = k => { const s = ((v >> k) & 255) / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+    return 0.2126 * ch(16) + 0.7152 * ch(8) + 0.0722 * ch(0) > 0.3;
+  };
   function wireSvg(w, d, cls, fx, draw, i) {
-    const c = M.colorInfo(w.color);
+    const c = M.colorInfo(w.color), ink = isLight(c.base) ? ' ink' : '';
     const pl = draw && c.base ? ' pathLength="1"' : '';
     return `<g class="w${c.base ? '' : ' nocolor'}${cls || ''}" data-wire="${w.id}"${fx ? ` style="color:${c.base || '#9a9aa0'}${i != null ? ';--i:' + i : ''}"` : ''}><path class="w-hit" d="${d}"/>` +
       (fx ? `<path class="w-shade" d="${d}"/>` : '') + `<path class="w-edge"${pl} d="${d}"/>` +
       `<path class="w-base"${pl} style="stroke:${c.base || '#9a9aa0'}" d="${d}"/>` +
       (c.stripe ? `<path class="w-stripe" style="stroke:${c.stripe}" d="${d}"/>` : '') +
-      (fx ? `<path class="w-gloss"${pl} d="${d}"/>` + (cls && /\s(sel|carry)\b/.test(cls) ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : cls && /\ssetsel\b/.test(cls) ? `<path class="w-pulse soft" pathLength="1" d="${d}"/>` : '') : '') + '</g>';
+      (fx ? `<path class="w-gloss"${pl} d="${d}"/>` + (cls && /\s(sel|carry)\b/.test(cls) ? `<path class="w-pulse${ink}" pathLength="1" d="${d}"/>` : cls && /\ssetsel\b/.test(cls) ? `<path class="w-pulse soft${ink}" pathLength="1" d="${d}"/>` : '') : '') + '</g>';
   }
   // Canvas-only ids, kept apart from anything a sheet or print SVG defines.
   const fxId = (kind, id) => 'lmfx-' + kind + '-' + String(id).replace(/[^\w-]/g, '_');
@@ -880,16 +926,65 @@
   // A box's sets, drawn round their rows. Each set's stretch of the box is inset NEST per level in.
   const wireYAt = (it, i) => it.y + it.sz.port0 + PITCH * i;
   const spanX = (it, sp) => { const e = it.sz.ext.get(sp.s.id); return e ? { x0: it.x + e.x0, x1: it.x + e.x1 } : { x0: it.x, x1: it.x + it.w }; };
+  // A cable's packing (Chris): across its stretch its wires run PACK apart round its middle, and they
+  // ease (smoothstep) from grid spacing over F before it and back out over F after it. A set inside
+  // it is drawn round the packed wires.
+  function packs(it) {
+    if (it.b.kind !== 'set') return [];
+    return packSpans(it.sz).map(sp => {
+      const g = spanX(it, sp), y0 = wireYAt(it, sp.i0), y1 = wireYAt(it, sp.i1);
+      return { sp, y0, y1, x0: g.x0, x1: g.x1, F: fanLen(sp), cy: (y0 + y1) / 2 };
+    });
+  }
+  const packFor = (it, y) => packs(it).find(p => y >= p.y0 - 0.5 && y <= p.y1 + 0.5) || null;
+  const packed = (p, y) => p.cy + (y - p.cy) * PACK / PITCH;
+  const smooth = u => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u); };
+  function packY(p, x, y) {
+    const m = x < p.x0 ? smooth((x - p.x0 + p.F) / p.F) : x > p.x1 ? smooth((p.x1 + p.F - x) / p.F) : 1;
+    return y + (packed(p, y) - y) * m;
+  }
+  // A wire's points through its box, with points added every 3 where it fans, packed.
+  function packPts(p, pts) {
+    const out = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      if (Math.abs(b.x - a.x) > 0.5) {
+        const xs = [];
+        [[p.x0 - p.F, p.x0], [p.x1, p.x1 + p.F]].forEach(([z0, z1]) => { for (let x = z0; x < z1 + 1.5; x += 3) { const v = Math.min(x, z1); if ((v - a.x) * (v - b.x) < 0) xs.push(v); } });
+        xs.sort((u, v) => (b.x > a.x ? u - v : v - u)).forEach(x => { const t = (x - a.x) / (b.x - a.x); out.push({ x, y: a.y + (b.y - a.y) * t }); });
+      }
+      out.push(b);
+    }
+    return out.map(q => Object.assign({}, q, { y: packY(p, q.x, q.y) }));
+  }
+  // A set's drawing: its stretch (x, w), its edges SET_R or R past its outer wires (top, bot), and
+  // edge(x), its edges at x. Inside a cable a set is drawn round the packed wires; one that runs
+  // past the cable (vary) narrows inside it and widens with its wires as they fan back out, so its
+  // edges are sampled (xs). top and bot then bound it.
   function spanGeom(it, sp) {
-    const g = spanX(it, sp), top = wireYAt(it, sp.i0) - sp.R, bot = wireYAt(it, sp.i1) + sp.R, hh = bot - top;
-    return { x: g.x0, w: g.x1 - g.x0, top, bot, rx: Math.min(14, hh / 2), ry: hh / 2 };
+    const p = packs(it).find(q => sp.i0 >= q.sp.i0 && sp.i1 <= q.sp.i1), yA = wireYAt(it, sp.i0), yB = wireYAt(it, sp.i1);
+    const edge = p ? x => ({ top: packY(p, x, yA) - sp.R, bot: packY(p, x, yB) + sp.R }) : () => ({ top: yA - sp.R, bot: yB + sp.R });
+    const g = spanX(it, sp), vary = !!p && (g.x0 < p.x0 - 0.5 || g.x1 > p.x1 + 0.5);
+    const xs = [g.x0, g.x1];
+    if (vary) [[p.x0 - p.F, p.x0], [p.x1, p.x1 + p.F]].forEach(([z0, z1]) => { for (let x = z0; x < z1 + 1.5; x += 3) { const v = Math.min(x, z1); if (v > g.x0 && v < g.x1) xs.push(v); } });
+    xs.sort((a, b) => a - b);
+    const es = (vary ? xs : [(g.x0 + g.x1) / 2]).map(edge), top = Math.min(...es.map(e => e.top)), bot = Math.max(...es.map(e => e.bot));
+    const a = edge(g.x0), b = edge(g.x1), hh = Math.min(a.bot - a.top, b.bot - b.top);
+    return { x: g.x0, w: g.x1 - g.x0, top, bot, rx: Math.min(14, hh / 2), ry: (bot - top) / 2, edge, vary, xs };
   }
   // A cylinder's jacket: a rounded far end on the left, and on the right it stops at the near half
-  // of its cut end's ellipse.
+  // of its cut end's ellipse. One that varies follows its edges.
   function jacket(g) {
     const cx = g.x + g.w - g.rx, lx = g.x + g.rx;
-    return `M${f(lx)} ${f(g.top)}H${f(cx)}A${f(g.rx)} ${f(g.ry)} 0 0 0 ${f(cx)} ${f(g.bot)}H${f(lx)}A${f(g.rx)} ${f(g.ry)} 0 0 1 ${f(lx)} ${f(g.top)}Z`;
+    if (!g.vary) return `M${f(lx)} ${f(g.top)}H${f(cx)}A${f(g.rx)} ${f(g.ry)} 0 0 0 ${f(cx)} ${f(g.bot)}H${f(lx)}A${f(g.rx)} ${f(g.ry)} 0 0 1 ${f(lx)} ${f(g.top)}Z`;
+    const xs = [lx].concat(g.xs.filter(x => x > lx && x < cx), [cx]), E = xs.map(x => g.edge(x)), n = xs.length - 1;
+    return `M${f(lx)} ${f(E[0].top)}` + xs.slice(1).map((x, i) => `L${f(x)} ${f(E[i + 1].top)}`).join('') +
+      `A${f(g.rx)} ${f((E[n].bot - E[n].top) / 2)} 0 0 0 ${f(cx)} ${f(E[n].bot)}` +
+      xs.slice(0, -1).map((x, i) => i).reverse().map(i => `L${f(xs[i])} ${f(E[i].bot)}`).join('') +
+      `A${f(g.rx)} ${f((E[0].bot - E[0].top) / 2)} 0 0 1 ${f(lx)} ${f(E[0].top)}Z`;
   }
+  // A cylinder's cut end: an ellipse at the right end of its stretch, the height of its edges there.
+  const capOf = g => { const cx = g.x + g.w - g.rx, e = g.edge(cx); return `cx="${f(cx)}" cy="${f((e.top + e.bot) / 2)}" rx="${f(g.rx)}" ry="${f((e.bot - e.top) / 2)}"`; };
   const boxDim = (it, opts) => !!opts.focus && !it.b.wires.some(w => opts.focus.wires.has(w.id));
   // The whole box reads as selected when its outermost set is, or all its wires are.
   const boxSel = (it, opts) => {
@@ -905,7 +1000,7 @@
     it.sz.spans.forEach(sp => {
       const cls = spanCls(it, sp, opts), g = spanGeom(it, sp);
       if (sp.s.bundle) o += lacing(g, cls, 'back');
-      if (sp.s.cable) o += `<ellipse class="cv-sheath-face${cls}" cx="${f(g.x + g.w - g.rx)}" cy="${f(g.top + g.ry)}" rx="${f(g.rx)}" ry="${f(g.ry)}"/>`;
+      if (sp.s.cable) o += `<ellipse class="cv-sheath-face${cls}" ${capOf(g)}/>`;
     });
     return o;
   }
@@ -913,9 +1008,9 @@
   // off in a knot at the top with two short tails. Its far side runs behind the wires (part 'back')
   // and its near side, knot and tails in front, so it reads as wrapped round them.
   function lacing(g, cls, part) {
-    const top = g.top + 3, bot = g.bot - 3, H = bot - top, c = END / 2;
+    const c = END / 2;
     return [g.x + c, g.x + g.w - c].map(kx => {
-      const bx = kx - 2;
+      const e = g.edge(kx), top = e.top + 3, bot = e.bot - 3, H = bot - top, bx = kx - 2;
       if (part === 'back') return `<path class="cv-lace${cls}" d="M${f(kx)} ${f(top)}C${f(kx + 9)} ${f(top + H * 0.25)} ${f(bx + 8)} ${f(bot - H * 0.3)} ${f(bx)} ${f(bot)}"/>`;
       return `<g class="cv-lace${cls}"><path d="M${f(kx)} ${f(top)}C${f(kx - 10)} ${f(top + H * 0.3)} ${f(bx - 9)} ${f(bot - H * 0.25)} ${f(bx)} ${f(bot)}"/>` +
         `<path d="M${f(kx - 1)} ${f(top - 1)}Q${f(kx - 4)} ${f(top - 6)} ${f(kx - 7)} ${f(top - 8)}M${f(kx + 1.5)} ${f(top - 1.5)}Q${f(kx + 5)} ${f(top - 5)} ${f(kx + 9)} ${f(top - 5.5)}"/>` +
@@ -932,7 +1027,7 @@
       if (sp.s.bundle) o += lacing(g, cls, 'front');
       if (sp.s.cable) o += `<path class="cv-sheath${cls}" d="${jacket(g)}"/>`;
       if (sp.s.shield) o += `<g class="cv-braid${cls}"><path fill="url(#${hatch})" d="${jacket(g)}"/>` +
-        `<ellipse fill="url(#${hatch})" cx="${f(g.x + g.w - g.rx)}" cy="${f(g.top + g.ry)}" rx="${f(g.rx)}" ry="${f(g.ry)}"/></g>`;
+        `<ellipse fill="url(#${hatch})" ${capOf(g)}/></g>`;
     });
     return o;
   }
@@ -997,9 +1092,9 @@
     return it.sz.spans.map(sp => {
       const g = spanGeom(it, sp), on = spanSel(sp, opts) ? ' on' : '';
       return ['l', 'r'].map(k => {
-        const x = k === 'l' ? g.x : g.x + g.w;
-        return `<g class="cv-setend${on}" data-setend="${esc(sp.s.id)}|${k}" data-set="${esc(sp.s.id)}"><rect class="cv-setend-hit" x="${f(x - 6)}" y="${f(g.top)}" width="12" height="${f(g.bot - g.top)}"/>` +
-          `<rect class="cv-setend-grip" x="${f(x - 2)}" y="${f(g.top + g.ry - 8)}" width="4" height="16" rx="2"/></g>`;
+        const x = k === 'l' ? g.x : g.x + g.w, e = g.edge(x);
+        return `<g class="cv-setend${on}" data-setend="${esc(sp.s.id)}|${k}" data-set="${esc(sp.s.id)}"><rect class="cv-setend-hit" x="${f(x - 6)}" y="${f(e.top)}" width="12" height="${f(e.bot - e.top)}"/>` +
+          `<rect class="cv-setend-grip" x="${f(x - 2)}" y="${f((e.top + e.bot) / 2 - 8)}" width="4" height="16" rx="2"/></g>`;
       }).join('');
     }).join('');
   }
@@ -1017,7 +1112,7 @@
       const w = badgeW(sp.s.label), g = spanGeom(it, sp), cx = x + w / 2;
       // The leader meets its set's bottom edge straight above the badge, or as near as it can.
       const ax = Math.min(Math.max(cx, g.x + g.rx + 4), g.x + g.w - g.rx - 4);
-      const out = { sp, x, y, w, cx, ax, ay: g.bot };
+      const out = { sp, x, y, w, cx, ax, ay: g.edge(ax).bot };
       x += w + BADGE_GAP;
       return out;
     });
