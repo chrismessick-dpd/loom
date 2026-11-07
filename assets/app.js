@@ -315,6 +315,16 @@
     renderHud();
     renderCanvas();
   }
+  // The sidebar (the menu: brand, harnesses, tools) hides as in Signoff EE (Chris): its button in
+  // the top-right corner, the toolbar's ☰ button or [. Kept in this browser (fold.side). On a phone
+  // it's a drawer instead (nav-open), and styles.css keeps the collapse from hiding it there.
+  function applySide() { $('#app').classList.toggle('side-collapsed', !!fold.side); }
+  function toggleSidebar() {
+    if (narrow()) { $('#app').classList.toggle('nav-open'); return; }
+    fold.side = !fold.side;
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ }
+    applySide();
+  }
   function renderHud() {
     const h = H(), gs = gridOf(h), placed = h && h.place && Object.keys(h.place).length;
     // Glass capsules, one per kind of control (docs/look-2026-11.md): the panel, the view, the grid.
@@ -1180,7 +1190,7 @@
       case 'zoom-reset': zoomBy(0); break;
       case 'fold-rail': if (narrow()) { S.sheet = !S.sheet; $('#build-view').classList.toggle('sheet-open', S.sheet); } else toggleFold('rail'); break;
       case 'sheet-close': S.sheet = false; $('#build-view').classList.remove('sheet-open'); break;
-      case 'nav': $('#app').classList.toggle('nav-open'); break;
+      case 'nav': toggleSidebar(); break;
       case 'fold-parts': toggleFold('parts'); break;
       case 'pane-tab': S.paneTab = el.dataset.tab; renderParts(); break;
       case 'auto-layout': change(x => { x.place = {}; }); S.cam = null; renderCanvas(); break;
@@ -1265,7 +1275,7 @@
   document.addEventListener('click', e => {
     const t = e.target;
     const app = $('#app');
-    if (app.classList.contains('nav-open') && !t.closest('.menu-toggle') && (!t.closest('#sidebar') || t.closest('[data-open], [data-act="new"], [data-act="home"], [data-act="open"], a'))) {
+    if (app.classList.contains('nav-open') && !t.closest('[data-act="nav"]') && (!t.closest('#sidebar') || t.closest('[data-open], [data-act="new"], [data-act="home"], [data-act="open"], a'))) {
       app.classList.remove('nav-open');
       if (!t.closest('#sidebar')) return;
     }
@@ -1328,6 +1338,7 @@
     if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); onAct('save'); return; }
     if (typing && e.key === 'Escape' && document.activeElement.closest('.title-edit')) { const a = document.activeElement; a.value = a.defaultValue; a.blur(); return; }
     if (typing) { if (e.key === 'Enter' && document.activeElement.tagName === 'INPUT') document.activeElement.blur(); return; }
+    if (e.key === '[' && !mod) { e.preventDefault(); toggleSidebar(); return; }
     if (!H()) return;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
@@ -1355,6 +1366,17 @@
   svg.addEventListener('pointercancel', e => { if (endTouch(e) || pinch) return; const g = gesture; gesture = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
   svg.addEventListener('wheel', onWheel, { passive: false });
   svg.addEventListener('contextmenu', e => e.preventDefault()); // the right button pans
+  // When the canvas changes size (the sidebar sliding, a panel folding, the window), the picture
+  // stays where it is on screen: the camera follows the canvas's left edge, and the viewBox its
+  // size, every frame of the slide. Not when it appears from hidden (another view).
+  let wrapWas = null;
+  if (window.ResizeObserver) new ResizeObserver(() => {
+    const r = $('#canvas-wrap').getBoundingClientRect(), was = wrapWas;
+    wrapWas = r.width ? { left: r.left } : null;
+    if (!was || !r.width || !S.cam || !H() || S.view !== 'build') return;
+    S.cam.x += (r.left - was.left) / S.cam.k;
+    setView();
+  }).observe($('#canvas-wrap'));
   let wasNarrow = narrow();
   window.addEventListener('resize', () => {
     if (!H() || S.view !== 'build') return;
@@ -1430,6 +1452,11 @@
 
   // ── Start ──
   applyTheme(readTheme());
+  // Start with the sidebar as it was left, without playing the slide.
+  $('#app').style.transition = 'none';
+  applySide();
+  void $('#app').offsetWidth;
+  $('#app').style.transition = '';
   if (DEMO) {
     const b = $('#demo-banner');
     b.hidden = false; document.body.classList.add('has-banner');

@@ -55,6 +55,11 @@ links to it so far. Before every commit:
     tapping a pin to start a wire), goes when the selection clears, and the HUD's panel button and
     its × toggle it (`S.sheet`). Touch: one finger drags parts and pans empty canvas; two fingers
     pinch to zoom about their midpoint (`touches`, `pinch`).
+  - Off phones the sidebar hides as in Signoff EE (2026-11-07, Chris): a button in its top-right
+    corner (`.side-collapse`), the toolbar's ☰ button (`.menu-toggle`, shown while it's hidden) or
+    `[`, kept in this browser (`fold.side`; `toggleSidebar`, `applySide`). On a phone the same
+    buttons and key open and close the drawer. While the canvas changes size, a `ResizeObserver`
+    keeps the picture where it is on screen.
   - Boxes: one per outermost wire set (`kind: 'set'`, key `g:<set id>`), and the wires in no set run
     in a plain stack per end pair (`kind: 'stack'`, key `p:<pair>`, or `s:<pair>` for a wire alone),
     with no badge or decoration. See *Wire sets* below. A stack nobody dragged follows its ends

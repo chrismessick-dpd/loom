@@ -593,6 +593,9 @@ button.chip.g-chip { cursor: pointer; }
   .build-view .rail::before { display: none; }
   .build-view .rail-head { padding-top: 14px; }
   .build-view.sheet-open .board-hud { max-width: calc(48% - 24px); }
+  /* The desktop collapse (fold.side, suite.css above 860 px wide) never hides the drawer. */
+  .app.side-collapsed { grid-template-columns: 1fr; }
+  .app.side-collapsed .sidebar { visibility: visible; overflow: visible; border-right: 1px solid var(--hair); }
 }
 /* The sidebar's scrim on phones: a tap outside closes it (app.js). */
 @media (max-width: 860px), (max-height: 500px) {
