@@ -20,6 +20,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Animated mark:** `assets/mark.js` swaps the sidebar's static icon for a twisted pair that spins
+  half a turn about its axis every 36 s and rests over-and-under (still with reduced motion).
+  Settings are `TOOL` in that file, tuned in the hub's `lab/logo-motion.html` (Loom tab), which
+  loads it.
+
 - **Direction:** `docs/direction-2026-11.md` covers the name options, the look (three references:
   WireViz, RapidHarness, Wirely), the EE → PL → Loom connector integration and the harness software
   audit with its feature options list. Chris: strip it back to a clean interface and add features as
