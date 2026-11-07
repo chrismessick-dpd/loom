@@ -153,7 +153,8 @@
     // A cable: label table, note, then the wire rows. A bundle: the wire rows, then the table.
     const table = G.HEAD + G.INFO;
     const h0 = 6;
-    const rowsBot = h0 + rows.length * G.BROW + 6;
+    // A cable's sheath leaves as much room under its last wire as over its first.
+    const rowsBot = h0 + rows.length * G.BROW + (b.kind === 'cable' ? 14 : 6);
     const headY = rowsBot;
     return { w, h: rowsBot + table + (note ? NOTE_H : 0), h0, rowsBot, headY, lead, port0: h0 + G.BROW - 3, rows, info, note, cols: { from: colFrom, c: colC, to: colTo, t: colT } };
   }
@@ -513,7 +514,19 @@
   function boxBack(it, opts) {
     const b = it.b, sel = boxSel(it, opts);
     return `<rect class="cv-box${b.kind === 'cable' ? ' cable' : ''}${sel ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>` +
-      lacing(it, opts, 'back');
+      lacing(it, opts, 'back') + sheathFace(it, opts);
+  }
+  // A cable's sheath is a cylinder. Its cut end on the right is a full ellipse, lighter, drawn under
+  // the wires so they come out of it; the jacket (holder) is drawn over them and stops at the
+  // ellipse's near rim.
+  function sheathGeom(it) {
+    const top = it.y + it.sz.h0 + 2, hh = it.sz.rowsBot - it.sz.h0 - 4;
+    return { x: it.x, w: it.w, top, bot: top + hh, rx: Math.min(14, hh / 2), ry: hh / 2 };
+  }
+  function sheathFace(it, opts) {
+    if (it.b.kind !== 'cable') return '';
+    const g = sheathGeom(it), cls = (boxSel(it, opts) ? ' sel' : '') + dimIf(boxDim(it, opts));
+    return `<ellipse class="cv-sheath-face${cls}" cx="${f(g.x + g.w - g.rx)}" cy="${f(g.top + g.ry)}" rx="${f(g.rx)}" ry="${f(g.ry)}"/>`;
   }
   // A bundle of more than two wires (not a cable, not one twisted set) is laced: at each end a tie
   // loops around the wires, a little lens tied off in a knot at the top with two short tails. Its
@@ -539,8 +552,10 @@
     const b = it.b, x = it.x, w = it.w, top = it.y + it.sz.h0, bot = it.y + it.sz.rowsBot;
     const cls = (boxSel(it, opts) ? ' sel' : '') + dimIf(boxDim(it, opts));
     if (b.kind === 'cable') {
-      const hh = bot - top - 4;
-      return `<rect class="cv-sheath${cls}" x="${f(x)}" y="${f(top + 2)}" width="${f(w)}" height="${f(hh)}" rx="${f(Math.min(14, hh / 2))}" ry="${f(hh / 2)}"/>`;
+      // The jacket: a rounded far end on the left, and on the right it stops at the near half of
+      // the cut end's ellipse (sheathFace, under the wires).
+      const g = sheathGeom(it), cx = g.x + g.w - g.rx, lx = g.x + g.rx;
+      return `<path class="cv-sheath${cls}" d="M${f(lx)} ${f(g.top)}H${f(cx)}A${f(g.rx)} ${f(g.ry)} 0 0 0 ${f(cx)} ${f(g.bot)}H${f(lx)}A${f(g.rx)} ${f(g.ry)} 0 0 1 ${f(lx)} ${f(g.top)}Z"/>`;
     }
     if (b.twistOnly) return '';
     if (laced(b)) return lacing(it, opts, 'front');

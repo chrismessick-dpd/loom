@@ -48,7 +48,10 @@ links to it so far. Before every commit:
 - **Diagram look (2026-11-06, Chris):**
   - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
     the view the drawing prints; the front when it prints both).
-  - A cable's wire rows sit under a dark, see-through sheath with rounded ends, and a bundle's
+  - A cable's wire rows sit under a dark, see-through sheath drawn as a cylinder: its right end is
+    a full, lighter ellipse (`sheathFace`, drawn under the wires so they come out of it) and the
+    jacket over the wires stops at that ellipse's near rim (`holder`, `sheathGeom`). The sheath
+    leaves as much room under the last wire as over the first (cable `rowsBot` + 8), and a bundle's
     under a shrink-tube band at each end (`holder`), in place of the solid and dashed frames. Both
     are drawn over the wires, so row text has a paper halo. `BOX_END` widens boxes to make room.
     Only the header and info rows keep a frame.

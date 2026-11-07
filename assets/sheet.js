@@ -14,7 +14,7 @@
 .lm-sheet .card-bg{fill:#fff;stroke:#1d1d1f;stroke-width:1.1}.lm-sheet .head-hit{fill:#e9f3f4;stroke:#1d1d1f;stroke-width:1.1}
 .lm-sheet .cv-bg,.lm-sheet .cv-box{fill:#fff}.lm-sheet .cv-cell{fill:none;stroke:#1d1d1f;stroke-width:1}.lm-sheet .cv-headbg{fill:#f2f2f4}
 .lm-sheet .cv-frame{fill:none;stroke:#1d1d1f;stroke-width:1.2}
-.lm-sheet .cv-sheath{fill:rgba(29,29,31,.38);stroke:rgba(29,29,31,.85);stroke-width:1.4}.lm-sheet .cv-band rect{fill:#2c2c2e;stroke:rgba(29,29,31,.85)}
+.lm-sheet .cv-sheath{fill:rgba(29,29,31,.38);stroke:rgba(29,29,31,.85);stroke-width:1.4}.lm-sheet .cv-sheath-face{fill:rgba(29,29,31,.17);stroke:rgba(29,29,31,.85);stroke-width:1.4}.lm-sheet .cv-band rect{fill:#2c2c2e;stroke:rgba(29,29,31,.85)}
 .lm-sheet .cv-band line{stroke:rgba(255,255,255,.3);stroke-width:2;stroke-linecap:round}
 .lm-sheet .cv-lace,.lm-sheet .cv-lace path{fill:none;stroke:#1d1d1f;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.lm-sheet .cv-lace .cv-lace-knot{fill:#fff;stroke:#1d1d1f;stroke-width:1.6}
 .lm-sheet .cv-lead{fill:none;stroke:#6e6e73;stroke-width:.9;stroke-linecap:round}
