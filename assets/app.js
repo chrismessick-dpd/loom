@@ -214,19 +214,22 @@
     };
     $('#harness-list').innerHTML = list.length ? keys.map(k => `<div class="side-group">` + (keys.length > 1 || k ? `<div class="side-group-head lm-group-head" title="Client project"><span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></div>` : '') + groups.get(k).map(row).join('') + `</div>`).join('')
       : '<div class="side-empty">No harnesses yet.</div>';
-    // The footer: where harnesses are kept, and the sync button.
-    const foot = $('#store-state');
-    if (!foot) return;
-    const last = R && R.lastSync();
-    let text, tip;
-    if (DEMO) { text = 'Demo: stays in this browser'; tip = 'Demo harnesses never leave this browser.'; }
-    else if (!canSync()) { text = 'In this browser only'; tip = 'Sign in to Signoff EE in this browser to keep harnesses in Loom’s private repo.'; }
-    else if (remote.busy) { text = 'Syncing…'; tip = ''; }
-    else if (remote.error) { text = 'Not synced'; tip = remote.error; }
-    else if (dirty.size) { text = `${dirty.size} unsynced`; tip = 'Changed since the last sync (Ctrl+S).'; }
-    else { text = last ? 'Synced ' + ago(last.at) : 'Not synced yet'; tip = `Kept in ${R.config().owner}/${R.config().dataRepo}`; }
-    foot.innerHTML = `<span class="store-text${remote.error ? ' err' : dirty.size ? ' warn' : ''}" title="${esc(tip)}">${esc(text)}</span>` +
-      (canSync() ? `<button class="btn lm-sync" data-act="sync" title="Sync with ${esc(R.config().dataRepo)} (Ctrl+S)"${remote.busy ? ' disabled' : ''}>Sync</button>` : '');
+    // The footer's sync pill, as Signoff EE's: a dot, a title and a sub line; its tooltip carries the
+    // build hash (EE keeps that off the sidebar).
+    const pill = $('#sync-pill');
+    if (!pill) return;
+    const last = R && R.lastSync(), login = R && R.login();
+    let tone, title, sub, tip;
+    if (DEMO) { tone = 'idle'; title = 'Demo mode'; sub = 'Changes stay in this browser'; tip = 'Demo harnesses never leave this browser.'; }
+    else if (!canSync()) { tone = 'idle'; title = 'Local only'; sub = 'Sign in to Signoff EE to sync'; tip = 'Sign in to Signoff EE in this browser to keep harnesses in Loom’s private repo.'; }
+    else if (remote.busy) { tone = 'busy'; title = 'Syncing…'; sub = R.config().owner; tip = ''; }
+    else if (remote.error) { tone = 'error'; title = 'Sync failed'; sub = remote.error; tip = remote.error; }
+    else if (dirty.size) { tone = 'warn'; title = `${dirty.size} unsynced change${dirty.size === 1 ? '' : 's'}`; sub = 'Click to sync'; tip = 'Changed since the last sync.'; }
+    else { tone = 'ok'; title = 'Synced'; sub = (last ? ago(last.at) : 'Ready') + (login ? ' · ' + login : ''); tip = `Kept in ${R.config().owner}/${R.config().dataRepo}`; }
+    $('#sync-dot').dataset.tone = tone;
+    $('#sync-title').textContent = title;
+    $('#sync-sub').textContent = sub;
+    pill.title = [tip, canSync() ? 'Click to sync (Ctrl+S)' : '', LM.VERSION ? 'Build ' + LM.VERSION : ''].filter(Boolean).join('\n');
   }
   function ago(at) {
     const s = Math.max(0, (Date.now() - Date.parse(at)) / 1000);
@@ -1795,7 +1798,6 @@
     b.innerHTML = 'Demo: a harness for the made-up Smart Thermostat for Acme Climate. Edits stay in this browser. <button class="btn btn-plain" data-act="demo">Reset demo</button> <a href="./">Leave the demo</a>';
     document.querySelectorAll('[data-demo-href]').forEach(a => { a.href = a.getAttribute('href') + '?demo'; });
   }
-  $('#version').textContent = LM.VERSION ? 'Build ' + LM.VERSION : '';
   load();
   renderAll();
   // Sync once on opening, so names and part numbers edited in Signoff PL come over (quietly: no toast

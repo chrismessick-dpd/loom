@@ -1,6 +1,6 @@
 """Stamp Loom's asset URLs in index.html with ?v=<hash>, and assets/version.js with the same hash,
 so browsers load fresh files after an update instead of mixing a new page with cached old scripts
-(Pages caches about 10 minutes). The sidebar shows the hash as "Build <hash>".
+(Pages caches about 10 minutes). The sidebar's sync pill shows the hash in its tooltip, "Build <hash>".
 
     python tools/stamp_version.py           # stamp
     python tools/stamp_version.py --check   # exit 1 if the stamp is stale

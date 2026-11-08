@@ -9,7 +9,6 @@
 #page[hidden] { display: none; }
 .page.wide { max-width: 1440px; }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
-.lm-version { font-size: 11px; color: var(--text-3); }
 .lm-toast-error { background: var(--issue); }
 
 /* Sidebar (Fabcheck's package rows) */
@@ -21,14 +20,7 @@
 .pkg-icon { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
 .proj.active .pkg-icon { background: rgba(255, 255, 255, 0.2); color: #fff; }
 .pkg-icon svg { width: 16px; height: 16px; }
-.privacy { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 7px 8px; font-size: 12px; color: var(--text-3); line-height: 1.25; }
-.privacy svg { width: 15px; height: 15px; flex: none; color: var(--pass); }
-/* The footer's sync state and button (assets/store.js), and the client-project groups above it. */
-#store-state { justify-content: space-between; padding: 4px 4px 4px 8px; }
-#store-state .store-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-#store-state .store-text.warn { color: var(--warn); }
-#store-state .store-text.err { color: var(--issue); }
-.lm-sync { padding: 4px 10px; font-size: 12px; min-height: 0; }
+/* The sidebar's client-project groups (the footer's sync pill is EE's, from suite.css). */
 .lm-group-head { cursor: default; }
 .lm-group-head:hover { color: var(--text-3); }
 /* Where Signoff PL has placed this harness (the harness rail, under Project). */
@@ -855,8 +847,9 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
 .cfg-upline { stroke: var(--accent); stroke-width: 1.5px; stroke-dasharray: 5 4; pointer-events: none; }
 .cfg-upc { fill: var(--accent); pointer-events: none; }
 .cfg-ring { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.cfg-ring-c { fill: none; stroke: color-mix(in srgb, var(--accent) 70%, transparent); stroke-width: 1.5px; pointer-events: none; }
-.cfg-ring-tick { stroke: color-mix(in srgb, var(--accent) 70%, transparent); stroke-width: 1.5px; pointer-events: none; }
+/* The ring is a faint guide (Chris: much more transparent); its dot stays solid. */
+.cfg-ring-c { fill: none; stroke: color-mix(in srgb, var(--accent) 22%, transparent); stroke-width: 1.5px; pointer-events: none; }
+.cfg-ring-tick { stroke: color-mix(in srgb, var(--accent) 22%, transparent); stroke-width: 1.5px; pointer-events: none; }
 .cfg-ring-dot { fill: var(--accent); stroke: #fff; stroke-width: 2px; cursor: grab; pointer-events: all; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5)); }
 .cfg-ring-dot:hover, .cfg-ring-dot.live { fill: #fff; stroke: var(--accent); }
 .cfg-ring-dot.live { cursor: grabbing; }

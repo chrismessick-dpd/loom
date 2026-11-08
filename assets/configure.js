@@ -253,7 +253,7 @@
     const st = $('#cfg-stage');
     if (!st) return;
     if (D.tab === 'model' && D.busy) { st.innerHTML = `<div class="cfg-empty"><span class="spinner"></span>${esc(D.busy)}</div>`; return; }
-    if (D.tab === 'model' && D.mode3d && mesh) { st.innerHTML = '<div class="cfg-3d" id="cfg-3d"></div><svg class="cfg-ring" id="cfg-ring3"></svg><div class="cfg-tip glass" id="cfg-tip">Drag to turn · click a face to look straight at it · drag the dot on the ring to turn it in place</div>'; mount3d($('#cfg-3d')); return; }
+    if (D.tab === 'model' && D.mode3d && mesh) { st.innerHTML = '<div class="cfg-3d" id="cfg-3d"></div><svg class="cfg-ring" id="cfg-ring3"></svg><div class="cfg-tip glass" id="cfg-tip">Drag to turn · click a face to look straight at it · drag the dot to turn it in place</div>'; mount3d($('#cfg-3d')); return; }
     if (D.tab === 'model' && !D.custom.model) {
       st.innerHTML = `<div class="cfg-empty cfg-drop" id="cfg-drop">${ico('cube', 'big')}<b>Drop a STEP, IGES or STL file here</b><span>or</span><button class="btn btn-primary" data-cfg="import">Import a model…</button>
         <p class="f-hint">Turn it, or click a face to look straight at it, then make the face view. Loom keeps that drawing; the model itself stays in this tab only. Vendors’ sites and 3D ContentCentral usually have connector models.</p></div>`;

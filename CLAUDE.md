@@ -40,7 +40,9 @@ links to it so far. Before every commit:
     button; Ctrl+S saves a file only with no sign-in or in the demo). It uses the token Signoff EE keeps
     (`signoff.token`) and the owner in `signoff.v1.settings`; repos can be changed under
     `loom.v1.repos`. A 404 says to ask for access or create the repo. The footer says where harnesses
-    are (`#store-state`), and the sidebar groups them by client project and dots unsynced ones.
+    are (`#sync-pill`, Signoff EE's pill: dot, title and sub line, with the build hash in its tooltip;
+    2026-11-07, Chris: match EE's footer), and the sidebar groups them by client project and dots
+    unsynced ones.
   - **Signoff PL.** A harness has a client project (`h.project`, the Project field in the harness rail,
     suggested from PL's projects and the boards' clients; From a board fills it when empty). PL offers it
     in that PL project's tray like an EE board, and the PL Part made from it (`source: 'loom'`) is the
@@ -116,7 +118,8 @@ links to it so far. Before every commit:
   - **The ring (2026-11-07, Chris).** While looking straight at a face (after clicking one or a ±X/Y/Z
     button, and in the face view) a ring sits just outside the face, with a dot at its turn (12 o'clock
     unturned). Dragging the dot turns the model about the axis into the screen and shows the angle: 1°
-    steps, Shift 15°, Alt free (`ringStart`, `ringMove`; `ringSvg` draws both). In 3D it rolls the camera
+    steps, Shift 15°, Alt free (`ringStart`, `ringMove`; `ringSvg` draws both). The ring itself is faint
+    (accent at 22%; Chris, 2026-11-07: much more transparent), the dot solid. In 3D it rolls the camera
     (`V3.roll`, `V3.faced`, which a free orbit clears); in the face view it turns the drawing from a
     snapshot taken at the grab, one undo. Picking a face zooms to fit it (`fitFace`, `faceRadius`: the
     model's reach from the view axis). The dot works during Assign without dropping a mark. The 3D turns
