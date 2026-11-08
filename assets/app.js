@@ -2036,6 +2036,13 @@
       // Both panels shown off phones, so the guide can point into them.
       panels() { if (narrow() || !(fold.rail || fold.parts)) return; fold.rail = false; fold.parts = false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } if (S.view === 'build') { applyFold(); renderHud(); renderCanvas(); } },
       menu() { if (narrow() || !fold.side) return; toggleSidebar(); },
+      // The harness panel folded away (Running a wire: it covered P1), then the diagram fits the wider
+      // canvas once the fold has played. The next step's build() brings it back.
+      rail(open) {
+        if (narrow() || !H() || !fold.rail === open) return;
+        fold.rail = !open; saveFold();
+        if (S.view === 'build') { applyFold(); renderHud(); renderCanvas(); setTimeout(() => { if (H() && S.view === 'build') fitGlide(); }, 350); }
+      },
       // The suite tour's first Loom step (signoff/assets/tour.js): the menu and the parts pane fold
       // away and the diagram fits the bigger canvas. A selection brings the parts pane back.
       focus() {
