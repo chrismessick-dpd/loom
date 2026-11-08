@@ -1168,13 +1168,20 @@
   // What a selection is about: its wires, the ends they join, and the selected ends themselves.
   // Everything else is dimmed on the canvas. No dimming while a wire is being drawn, so every pin
   // stays easy to pick.
+  // What's selected, by kind, as sets of ids (app.js: one kind, or a mix of several), plus the
+  // wires of the selected sets.
+  function pickOf(h, sel) {
+    const P = { node: new Set(), wire: new Set(), set: new Set(), note: new Set(), setWires: new Set() };
+    if (sel && sel.kind === 'mix') Object.keys(sel.parts).forEach(k => { if (P[k]) sel.parts[k].forEach(id => P[k].add(id)); });
+    else if (sel && P[sel.kind]) sel.ids.forEach(id => P[sel.kind].add(id));
+    P.set.forEach(id => { const st = M.set(h, id); if (st) M.wiresIn(h, st).forEach(w => P.setWires.add(w)); });
+    return P;
+  }
   function focusOf(h, sel, pending) {
     if (!sel || pending) return null;
-    const ids = sel.ids, wires = new Set(), nodes = new Set(), picked = new Set();
-    if (sel.kind === 'wire') ids.forEach(id => wires.add(id));
-    else if (sel.kind === 'node') { ids.forEach(id => { picked.add(id); nodes.add(id); }); h.wires.forEach(w => { if (ids.has(w.from.node) || ids.has(w.to.node)) wires.add(w.id); }); }
-    else if (sel.kind === 'set') ids.forEach(id => { const st = M.set(h, id); if (st) M.wiresIn(h, st).forEach(w => wires.add(w)); });
-    else return null;
+    const P = pickOf(h, sel), wires = new Set([...P.wire, ...P.setWires]), nodes = new Set(P.node), picked = new Set(P.node);
+    h.wires.forEach(w => { if (P.node.has(w.from.node) || P.node.has(w.to.node)) wires.add(w.id); });
+    if (!wires.size && !nodes.size) return null;
     h.wires.forEach(w => { if (wires.has(w.id)) { nodes.add(w.from.node); nodes.add(w.to.node); } });
     const pins = new Set();
     h.wires.forEach(w => { if (wires.has(w.id)) [w.from, w.to].forEach(e => pins.add(e.node + '|' + e.pin)); });
@@ -1184,7 +1191,7 @@
 
   function connSvg(h, it, opts, Lo) {
     const n = it.n, sz = it.sz, x = it.x, y = it.y, w = it.w, F = opts.focus;
-    const sel = opts.sel && opts.sel.kind === 'node' && opts.sel.ids.has(n.id);
+    const sel = !!opts.pick && opts.pick.node.has(n.id);
     const pinDim = p => !!F && F.nodes.has(n.id) && !F.picked.has(n.id) && !F.pins.has(n.id + '|' + p);
     // Pin numbers go on the side the wires leave from.
     const toRight = h.wires.some(wr => { const o = wr.from.node === n.id ? wr.to : wr.to.node === n.id ? wr.from : null; if (!o) return false; const ot = Lo.itemOf.get(o.node); return ot && ot.x > x; });
@@ -1239,7 +1246,7 @@
   // A bigger, invisible circle around each end's dot on the canvas, so it's easy to grab.
   const hitEnd = (x, y, id, which, opts) => (opts.sheet ? '' : `<circle class="cv-hitend" cx="${f(x)}" cy="${f(y)}" r="9" data-end="${id}|${which}" data-wire="${id}"/>`);
   function spliceSvg(it, opts, Lo) {
-    const n = it.n, sel = opts.sel && opts.sel.kind === 'node' && opts.sel.ids.has(n.id);
+    const n = it.n, sel = !!opts.pick && opts.pick.node.has(n.id);
     const x = it.x, y = it.y, w = it.w, cx = x + w / 2, cy = y + it.sz.port0, half = Math.max(9, tw(n.ref, 13) / 2) + 5;
     const P = Lo.portsOf(n.id), F = opts.focus;
     let lines = '', ports = '';
@@ -1309,10 +1316,10 @@
   const boxDim = (it, opts) => !!opts.focus && !it.b.wires.some(w => opts.focus.wires.has(w.id));
   // The whole box reads as selected when its outermost set is, or all its wires are.
   const boxSel = (it, opts) => {
-    const b = it.b, sel = opts.sel;
-    return !!sel && ((sel.kind === 'set' && b.set && sel.ids.has(b.set.id)) || (sel.kind === 'wire' && b.wires.every(w => sel.ids.has(w.id))));
+    const b = it.b, P = opts.pick;
+    return !!P && ((b.set && P.set.has(b.set.id)) || (P.wire.size > 0 && b.wires.every(w => P.wire.has(w.id))));
   };
-  const spanSel = (sp, opts) => !!opts.sel && opts.sel.kind === 'set' && opts.sel.ids.has(sp.s.id);
+  const spanSel = (sp, opts) => !!opts.pick && opts.pick.set.has(sp.s.id);
   const spanCls = (it, sp, opts) => (spanSel(sp, opts) || (!sp.depth && boxSel(it, opts)) ? ' sel' : '') + dimIf(boxDim(it, opts));
   // Under the wires: the box's paper, the far side of each lacing tie and each cable's cut end (a
   // full, lighter ellipse the wires come out of).
@@ -1438,7 +1445,7 @@
     const p = Lo.noteAt(c);
     if (!p) return '';
     const s = noteSize(c), cx = p.x + (+c.dx || 0), cy = p.y + (+c.dy || 0), x = cx - s.w / 2, y = cy - s.h / 2;
-    const on = opts.sel && opts.sel.kind === 'note' && opts.sel.ids.has(c.id), area = c.at && c.at.kind === 'area';
+    const on = !!opts.pick && opts.pick.note.has(c.id), area = c.at && c.at.kind === 'area';
     let o = `<g class="cv-note${on ? ' sel' : ''}" data-note="${esc(c.id)}"><title>${esc(c.ref)}</title>` + (area ? areaSvg(c, Lo, opts, on) : '') +
       `<path class="cv-note-lead" d="M${f(p.x)} ${f(p.y)}L${f(cx)} ${f(cy)}"/><circle class="cv-note-pin" cx="${f(p.x)}" cy="${f(p.y)}" r="3"/>` +
       (area && !opts.sheet ? `<circle class="cv-note-pinhit" cx="${f(p.x)}" cy="${f(p.y)}" r="8" data-areapin="${esc(c.id)}"/>` : '') +
@@ -1553,7 +1560,7 @@
     opts = opts || {};
     A = A || M.analyze(h);
     const Lo = layout(h, A, { prop: !!opts.prop });
-    opts = Object.assign({}, opts, { focus: focusOf(h, opts.sel, opts.pending) });
+    opts = Object.assign({}, opts, { pick: pickOf(h, opts.sel), focus: focusOf(h, opts.sel, opts.pending) });
     const fx = !!opts.fx;
     // The intro reveals parts left to right.
     if (fx && opts.intro) Lo.items.slice().sort((a, b) => a.x - b.x || a.y - b.y).forEach((it, i) => { it.order = i; });
@@ -1582,8 +1589,8 @@
       const fresh = fx && (opts.intro || opts.fresh === w.id);
       // `carry`: the wire whose end is being dragged (canvas only), lit like a selection.
       // A selected set's wires carry a softer pulse (setsel).
-      const inSet = opts.sel && opts.sel.kind === 'set' && opts.focus && opts.focus.wires.has(w.id);
-      const cls = (opts.sel && opts.sel.kind === 'wire' && opts.sel.ids.has(w.id) ? ' sel' : '') + (inSet ? ' setsel' : '') + dim + (fresh ? ' fresh' : '') + (fx && opts.carry === w.id ? ' carry' : '');
+      const inSet = opts.pick.setWires.has(w.id);
+      const cls = (opts.pick.wire.has(w.id) ? ' sel' : '') + (inSet ? ' setsel' : '') + dim + (fresh ? ' fresh' : '') + (fx && opts.carry === w.id ? ' carry' : '');
       wires += wireSvg(w, p.d, cls, fx, fresh, opts.intro ? i : null);
       labels += labelSvg(w, Lo, opts);
       overs += overSvg(w, p.over, cls, fx);

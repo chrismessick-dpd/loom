@@ -20,6 +20,34 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Marquee and mixed selection (2026-11-07, Chris):** a left drag that grabs nothing on the canvas
+  (empty stage, or a wire's line) draws a selection box (`drawMarquee`, `finishMarquee` in `app.js`;
+  the rect goes in `#ghost`, `.cv-marquee`). Dragged right to left it's green and dashed and picks
+  everything it touches; left to right it's light blue and picks what lies wholly inside it. It
+  picks everything: connectors and splices, wires and notes (bubble and area). A wire counts by its
+  line in the open: points within `MQ_MARGIN` (8) of a connector's or splice's card are left out
+  (`marqueeTargets` samples the drawn `.w-hit` path every `MQ_STEP` units at the drag's start).
+  Shift adds to the selection; a box that picks nothing clears it (not with Shift). What it would
+  pick lights as it's drawn (`.mq`), and Esc cancels. A finger still pans, and the right or middle
+  button pans as before.
+  - **The selection** (`S.sel`) is one kind, `{ kind, ids }`, or a mix, `{ kind: 'mix', ids: Set of
+    'kind:id', parts: { kind: Set } }` (`selParts`, `mkSel`, `selHas`; `conn.js` reads it through
+    `pickOf`). Picked wires regroup: every set whose wires are all picked stands for them
+    (`collapseSets`, outermost first). Only whole sets select the sets (several show the sets
+    panel); sets and more wires stay a wire selection, so Properties can make one set of them all
+    (the guide's Bundle step). Shift-click toggles anything in or out (`toggleSel`), across kinds.
+  - **Scoped options** (Chris: gray out what doesn't apply). A mix, or several connectors or
+    notes, shows `railMulti`: the items by kind as chips (a chip narrows to that one), and, when
+    wires or sets are in it, the wire set ticks and Held as disabled. Several sets show `railSets`:
+    *Each set* (Twist and Shield, half-ticked `.tick.part` when only some have it; Held as; applied
+    to every set by `setFlag` and `set-holder`), *Together* (one bundle or cable of all of them,
+    `setFlag(flag, on, together)`, i.e. `makeSet` over their wires) and Set color. Label, part
+    number and lengths are edited one set at a time.
+  - **Drag and delete.** Dragging a selected connector, splice or box moves the whole selection
+    (`selectedKeys`: `n:<node>` and the box of each selected set or wire; `g.parts` in `onMove`,
+    one snapshot), in Real proportions up and down only. Delete deletes every kind in it
+    (`deleteSel`: notes, sets dissolved, wires, nodes). No tests (the canvas has none).
+
 - **Storage and Signoff PL (2026-11-07, Chris; branch `store`, merged to `main` with Configure and pushed, as was `signoff_pl` branch `loom`):** harnesses
   sync with one private repo for all of them, `loom_data` (`assets/store.js`, `LM.store`), through the
   Signoff engine's `GitHubStore`, vendored from EE into `assets/vendor/model.js` and `github.js`
@@ -62,7 +90,7 @@ links to it so far. Before every commit:
   - **Not done:** the live sync with a real token; PL's demo has no harness Part yet (its snapshot
     generator would need Loom's demo summary).
     Demo `VERSION` 15 (the demo harness's client project).
-  - **Shared harnesses (2026-11-07, branch `sharing`, with `signoff_pl`'s):** Signoff PL shares a
+  - **Shared harnesses (2026-11-07, pushed `fa25c7d`, with `signoff_pl` `f3e2087`):** Signoff PL shares a
     product's harnesses when it shares the product (`signoff_pl/docs/sharing.md`): each moves into its
     own private `review-loom-<slug>` repo and `loom_data/users.json` (the engine's roster) records it in
     `shared`. `sync` now runs like EE's workspace: the data repo with the roster (`loom.v1.roster`,

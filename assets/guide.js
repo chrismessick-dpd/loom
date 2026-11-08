@@ -101,7 +101,7 @@
     ] },
     { title: 'Wire sets', steps: [
       { title: 'Twists, shields, cables and bundles',
-        text: '{k:Shift}-click two or more wires, then tick {Twist} or {Shield}, or pick {Cable} or {Bundle} under {Held as}, in Properties: the wires become a wire set. C1 is a two-wire cable, TP2 a twisted pair, and B1 a laced bundle.',
+        text: '{k:Shift}-click two or more wires, or drag a box over them (right to left, green: everything it touches; left to right, blue: everything inside it), then tick {Twist} or {Shield}, or pick {Cable} or {Bundle} under {Held as}, in Properties: the wires become a wire set. C1 is a two-wire cable, TP2 a twisted pair, and B1 a laced bundle.',
         do: 'C1 is selected. Its {Wire set} panel holds its label, part number, the cable note and its color. Try ticking {Shield}.',
         setup() { build(); const s = set('C1'); if (s) pick('set', s.id); },
         spot: () => [...props(), box('C1')] },

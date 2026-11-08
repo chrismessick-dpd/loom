@@ -154,26 +154,82 @@
   }
   const undo = () => swapHistory(S.past, S.future);
   const redo = () => swapHistory(S.future, S.past);
+  // The selection: things of one kind ({ kind, ids }: node, wire, set, note or seg), or of several
+  // kinds at once ({ kind: 'mix', ids: Set of 'kind:id', parts: { kind: Set } }), which a marquee
+  // or shift-clicks across kinds make (Chris, 2026-11-07). A mix drags and deletes as one;
+  // Properties shows what's in it, with the wire set options off (railMulti).
+  const KINDS = ['node', 'wire', 'set', 'note', 'seg'];
+  // The ids by kind, as arrays, for any selection.
+  const selParts = sel => {
+    const P = { node: [], wire: [], set: [], note: [], seg: [] };
+    if (!sel) return P;
+    if (sel.kind === 'mix') KINDS.forEach(k => { P[k] = [...(sel.parts[k] || [])]; });
+    else if (P[sel.kind]) P[sel.kind] = [...sel.ids];
+    return P;
+  };
+  // A selection from ids by kind: one kind plain, several a mix, none null.
+  function mkSel(P) {
+    const parts = {}, kinds = KINDS.filter(k => { const ids = [...(P[k] || [])]; if (ids.length) parts[k] = new Set(ids); return ids.length; });
+    if (!kinds.length) return null;
+    if (kinds.length === 1) return { kind: kinds[0], ids: parts[kinds[0]] };
+    return { kind: 'mix', ids: new Set(kinds.flatMap(k => [...parts[k]].map(id => k + ':' + id))), parts };
+  }
+  const selHas = (sel, kind, id) => !!sel && (sel.kind === kind ? sel.ids.has(id) : sel.kind === 'mix' && !!sel.parts[kind] && sel.parts[kind].has(id));
   function tidySel() {
     const h = H();
     if (!S.sel || !h) { if (!h) S.sel = null; return; }
-    const have = { node: h.nodes, seg: h.segments, wire: h.wires, set: h.sets, note: h.callouts || [] }[S.sel.kind] || [];
-    const ids = new Set([...S.sel.ids].filter(id => have.some(x => x.id === id)));
-    S.sel = ids.size ? { kind: S.sel.kind, ids } : null;
+    const have = { node: h.nodes, seg: h.segments, wire: h.wires, set: h.sets, note: h.callouts || [] }, P = selParts(S.sel);
+    KINDS.forEach(k => { P[k] = P[k].filter(id => (have[k] || []).some(x => x.id === id)); });
+    S.sel = mkSel(P);
   }
   const select = (kind, ids) => { S.sel = kind ? { kind, ids: new Set([].concat(ids)) } : null; renderAll(); };
-  // The wires a selection is about: its wires, or a set's.
+  // The wires a selection is about: its wires, and its sets'.
   function selWireIds(h, sel) {
-    if (!sel) return [];
-    if (sel.kind === 'wire') return [...sel.ids];
-    if (sel.kind === 'set') return [...sel.ids].flatMap(id => { const st = M.set(h, id); return st ? M.wiresIn(h, st) : []; });
-    return [];
+    const P = selParts(sel);
+    return [...new Set(P.wire.concat(P.set.flatMap(id => { const st = M.set(h, id); return st ? M.wiresIn(h, st) : []; })))];
   }
-  // A selection of wires; two or more that are exactly one set's wires select that set.
+  // Wires regrouped: each set whose wires are all there stands for them (outermost first, so a
+  // bundle takes its pairs with it); what's left stays wires.
+  function collapseSets(h, ids) {
+    const rest = new Set(ids), sets = [];
+    const visit = st => {
+      const ws = M.wiresIn(h, st);
+      if (ws.length && ws.every(id => rest.has(id))) { sets.push(st.id); ws.forEach(id => rest.delete(id)); return; }
+      st.sets.map(id => M.set(h, id)).filter(Boolean).forEach(visit);
+    };
+    M.roots(h).forEach(visit);
+    return { wires: [...rest], sets };
+  }
+  // A selection of wires. Two or more that are exactly whole sets select those sets (one, as
+  // before; several show the sets panel); sets and more wires stay a wire selection, so Properties
+  // can make one set of them all.
   function wiresSel(h, ids) {
     if (!ids.length) return null;
-    const st = ids.length > 1 && M.matchSet(h, ids);
-    return st ? { kind: 'set', ids: new Set([st.id]) } : { kind: 'wire', ids: new Set(ids) };
+    const c = ids.length > 1 ? collapseSets(h, ids) : { wires: ids, sets: [] };
+    return c.sets.length && !c.wires.length ? { kind: 'set', ids: new Set(c.sets) } : { kind: 'wire', ids: new Set(ids) };
+  }
+  // Wires added to a selection's parts (a marquee's pick, or a shift-click): the selection's own
+  // wires and sets' wires plus these, regrouped (wiresSel) into P.wire and P.set.
+  function addWires(h, P, ids) {
+    const ws = wiresSel(h, [...new Set(P.wire.concat(P.set.flatMap(id => { const st = M.set(h, id); return st ? M.wiresIn(h, st) : []; }), ids))]);
+    P.wire = ws && ws.kind === 'wire' ? [...ws.ids] : []; P.set = ws && ws.kind === 'set' ? [...ws.ids] : [];
+    return P;
+  }
+  // Shift-click: a thing goes into the selection or comes out of it. A set's wires go together,
+  // and wires regroup into sets.
+  function toggleSel(kind, id) {
+    const h = H(), P = selParts(S.sel);
+    if (kind === 'wire' || kind === 'set') {
+      const st = kind === 'set' ? M.set(h, id) : null, its = st ? M.wiresIn(h, st) : [id];
+      const ws = new Set(selWireIds(h, S.sel)), all = its.every(w => ws.has(w));
+      its.forEach(w => (all ? ws.delete(w) : ws.add(w)));
+      P.wire = []; P.set = [];
+      addWires(h, P, [...ws]);
+    } else {
+      const s = new Set(P[kind]); s.has(id) ? s.delete(id) : s.add(id); P[kind] = [...s];
+    }
+    S.sel = mkSel(P);
+    renderAll();
   }
   function openHarness(id) {
     S.cur = id; S.sel = null; S.pending = null; S.past = []; S.future = []; S.cam = null;
@@ -437,7 +493,7 @@
 
   // Pointer: drag a connector, splice or box to move it (snapping to the grid; Ctrl places it
   // anywhere); drag with the right or middle button to pan; wheel to zoom; click to pick or wire.
-  // A left drag on empty canvas does nothing.
+  // A left drag on empty canvas draws a selection box (drawMarquee).
   let gesture = null;
   // Touch: one finger works like the mouse, except that dragging empty canvas pans; two fingers
   // pinch to zoom and pan about their midpoint. touches: the fingers down, by pointer id.
@@ -499,6 +555,10 @@
     const setEnd = !setEndEl ? null : setEndEl.dataset.anchor ? { wire: setEndEl.dataset.anchor.split('|')[0], side: setEndEl.dataset.anchor.split('|')[1] }
       : { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] };
     gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null, label: labelEl ? labelEl.dataset.label : null, ldot, badge };
+    // A left drag that grabs nothing (empty canvas, or a wire's line) draws a selection box
+    // (marquee). A finger pans instead.
+    const g = gesture;
+    if (g.button === 0 && !g.touch && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge) g.marquee = true;
     svgEl().setPointerCapture(e.pointerId);
   }
   // Where a dragged wire end would land: a splice (the side and port slot under the pointer), a
@@ -561,6 +621,7 @@
       return;
     }
     if (g.draw) { drawArea(g, e); return; }
+    if (g.marquee) { drawMarquee(g, e); return; }
     if (g.area) { dragArea(g, e); return; }
     if (g.setEnd) { dragSetEnd(g, e); return; }
     if (g.label) { (g.ldot ? slideDot : moveLabel)(g, e); return; }
@@ -577,10 +638,17 @@
     if (!g.moved && g.item) {
       // In Real proportions x comes from lengths, so parts and sets drag only up and down there
       // (h.propY; Chris). A box nobody moved follows its ends.
-      const it = lastLayout && lastLayout.items.find(i => i.key === g.item && (!fold.prop || i.kind !== 'loose'));
+      const Lo = lastLayout, ok = i => !fold.prop || i.kind !== 'loose', it = Lo && Lo.items.find(i => i.key === g.item && ok(i));
       if (!it) g.item = null;
-      // A box's stored x is its outermost set's left end (conn.js), past any set running out on the left.
-      else { snapshot(); g.prop = !!fold.prop; g.start = { x: it.x + (it.kind === 'box' ? it.sz.lx || 0 : 0), y: it.y }; g.port0 = it.sz.port0 || 0; S.lift = g.item; svgEl().classList.add('dragging'); }
+      else {
+        snapshot(); g.prop = !!fold.prop;
+        // A selected part takes the whole selection with it (Chris, 2026-11-07): every selected
+        // connector and splice, and the box of every selected set or wire, moves the same way.
+        // A box's stored x is its outermost set's left end (conn.js), past any set running out on the left.
+        const keys = selectedKeys(Lo), group = keys.has(it.key) ? Lo.items.filter(i => keys.has(i.key) && ok(i)) : [it];
+        g.parts = group.map(i => ({ key: i.key, start: { x: i.x + (i.kind === 'box' ? i.sz.lx || 0 : 0), y: i.y }, port0: i.sz.port0 || 0 }));
+        S.lift = g.item; svgEl().classList.add('dragging');
+      }
     }
     g.moved = true;
     if (g.item) {
@@ -589,21 +657,31 @@
       // Snap the first port, not the top edge, so the part's ports land on grid lines.
       if (g.prop) {
         h.propY = h.propY || {};
-        h.propY[g.item] = snap(g.start.y + dy / S.cam.k + g.port0) - g.port0;
+        g.parts.forEach(p => { h.propY[p.key] = snap(p.start.y + dy / S.cam.k + p.port0) - p.port0; });
         renderCanvas();
         return;
       }
       h.place = h.place || {};
-      h.place[g.item] = { x: snap(g.start.x + dx / S.cam.k), y: snap(g.start.y + dy / S.cam.k + g.port0) - g.port0, v: 3 };
+      g.parts.forEach(p => { h.place[p.key] = { x: snap(p.start.x + dx / S.cam.k), y: snap(p.start.y + dy / S.cam.k + p.port0) - p.port0, v: 3 }; });
       renderCanvas();
       return;
     }
-    // A left drag on empty canvas does nothing; the right or middle button pans, and so does a finger.
+    // The right or middle button pans, and so does a finger (a left drag on empty canvas is a marquee).
     if (g.button === 0 && !g.touch) return;
     svgEl().classList.add('dragging');
     cancelAnimationFrame(glideRaf);
     S.cam.x = g.cam0.x - dx / S.cam.k; S.cam.y = g.cam0.y - dy / S.cam.k;
     setView();
+  }
+  // The layout items the selection covers: n:<node> for its connectors and splices, and the box of
+  // every selected set (its outermost set's) or wire (its set's box, or its stack).
+  function selectedKeys(Lo) {
+    const P = selParts(S.sel), keys = new Set(P.node.map(id => 'n:' + id)), ws = new Set(P.wire), ss = new Set(P.set);
+    Lo.items.forEach(it => {
+      if (it.kind !== 'box') return;
+      if (it.b.wires.some(w => ws.has(w.id)) || (it.sz.spans || []).some(sp => ss.has(sp.s.id))) keys.add(it.key);
+    });
+    return keys;
   }
   // Drag a set's end along its box's path (conn.js it.path: the straight run across the box and
   // the leads off its sides toward the connectors). The pointer, less where the end was grabbed, is
@@ -764,6 +842,7 @@
       if (g.moved && g.rect && g.rect.w >= AREA_MIN && g.rect.h >= AREA_MIN) { placeArea(g.rect); return; }
       if (g.moved) { renderCanvas(); toast('Drag a bigger box, or click a part to pin the note to it.'); return; }
     }
+    if (g && g.marquee && g.moved) { finishMarquee(g); return; }
     if (g && (g.setEnd || g.note || g.badge || g.area) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
@@ -772,6 +851,72 @@
     }
     if (g && g.item && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && !g.moved && g.button === 0) click(g.t, g.shift, g);
+  }
+  // Marquee selection (Chris, 2026-11-07): a left drag on empty canvas draws a box. Dragged right
+  // to left (green) it selects whatever it touches; left to right (blue) whatever lies wholly
+  // inside it, as in CAD. It picks everything: connectors and splices, wires (regrouped into the
+  // sets they fill, wiresSel) and notes, as one mixed selection when they're of several kinds. A
+  // wire counts by its line in the open: the part of it inside a connector's or splice's card (and
+  // a little either side) is left out, so a box across a part needn't take every wire landing on
+  // it. Shift adds to the selection. What the box would select lights up as it's drawn (.mq).
+  const MQ_MARGIN = 8, MQ_STEP = 6;
+  // Everything the box can pick, measured once at the drag's start in world units: nodes by their
+  // cards, wires by points along their lines (sampled from the drawn path, which is in world
+  // units), notes by their bubbles and areas.
+  function marqueeTargets() {
+    const Lo = lastLayout, svg = svgEl();
+    if (!Lo) return { nodes: [], wires: [], notes: [] };
+    const nodes = Lo.items.filter(it => (it.kind === 'conn' || it.kind === 'splice') && it.n).map(it => ({ id: it.n.id, x: it.x, y: it.y, w: it.w, h: it.h }));
+    const inCard = p => nodes.some(n => p.x >= n.x - MQ_MARGIN && p.x <= n.x + n.w + MQ_MARGIN && p.y >= n.y - MQ_MARGIN && p.y <= n.y + n.h + MQ_MARGIN);
+    const wires = [];
+    svg.querySelectorAll('#world g.w[data-wire]').forEach(gw => {
+      const path = gw.querySelector('path.w-hit');
+      if (!path || !path.getTotalLength) return;
+      const L = path.getTotalLength(), pts = [];
+      for (let s = 0; s <= L; s += MQ_STEP) { const p = path.getPointAtLength(s); if (!inCard(p)) pts.push({ x: p.x, y: p.y }); }
+      if (pts.length) wires.push({ id: gw.dataset.wire, pts });
+    });
+    const notes = [];
+    svg.querySelectorAll('#world .cv-note[data-note]').forEach(gn => {
+      const rects = [...gn.querySelectorAll('rect.cv-note-box, rect.cv-area')].map(r => ({ x: +r.getAttribute('x'), y: +r.getAttribute('y'), w: +r.getAttribute('width'), h: +r.getAttribute('height') }));
+      if (rects.length) notes.push({ id: gn.dataset.note, rects });
+    });
+    return { nodes, wires, notes };
+  }
+  // The ids the box picks, by kind: touch (any overlap) or inside (wholly within).
+  function marqueePick(T, r, touch) {
+    const x1 = r.x + r.w, y1 = r.y + r.h;
+    const rectIn = b => b.x >= r.x && b.y >= r.y && b.x + b.w <= x1 && b.y + b.h <= y1;
+    const rectHit = b => b.x < x1 && b.x + b.w > r.x && b.y < y1 && b.y + b.h > r.y;
+    const ptIn = p => p.x >= r.x && p.x <= x1 && p.y >= r.y && p.y <= y1;
+    return {
+      wire: T.wires.filter(w => (touch ? w.pts.some(ptIn) : w.pts.every(ptIn))).map(w => w.id),
+      node: T.nodes.filter(n => (touch ? rectHit(n) : rectIn(n))).map(n => n.id),
+      note: T.notes.filter(n => (touch ? n.rects.some(rectHit) : n.rects.every(rectIn))).map(n => n.id),
+    };
+  }
+  function drawMarquee(g, e) {
+    if (!g.moved) { g.p0 = toWorld({ clientX: g.x, clientY: g.y }); g.targets = marqueeTargets(); svgEl().classList.add('marquee'); }
+    g.moved = true;
+    const p = toWorld(e), touch = p.x < g.p0.x;
+    const r = { x: Math.min(p.x, g.p0.x), y: Math.min(p.y, g.p0.y), w: Math.abs(p.x - g.p0.x), h: Math.abs(p.y - g.p0.y) };
+    g.rect = r; g.touch = touch;
+    const gh = $('#ghost');
+    if (gh) gh.innerHTML = `<rect class="cv-marquee ${touch ? 'touch' : 'inside'}" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"/>`;
+    // Light what it would pick.
+    const pick = marqueePick(g.targets, r, touch), svg = svgEl();
+    svg.querySelectorAll('#world .mq').forEach(el => el.classList.remove('mq'));
+    const light = (sel, attr, ids) => { const s = new Set(ids); if (s.size) svg.querySelectorAll('#world ' + sel).forEach(el => { if (s.has(el.dataset[attr])) el.classList.add('mq'); }); };
+    light('g.w[data-wire]', 'wire', pick.wire); light('[data-item][data-node]', 'node', pick.node); light('.cv-note[data-note]', 'note', pick.note);
+  }
+  function finishMarquee(g) {
+    svgEl().classList.remove('marquee');
+    const h = H(), pick = g.rect ? marqueePick(g.targets, g.rect, g.touch) : { wire: [], node: [], note: [] };
+    const P = g.shift ? selParts(S.sel) : selParts(null);
+    P.node = [...new Set(P.node.concat(pick.node))]; P.note = [...new Set(P.note.concat(pick.note))];
+    addWires(h, P, pick.wire);
+    S.sel = mkSel(P);
+    renderAll();
   }
   // Draw an area for a note (Add › Note, then a drag): a dashed box from where the drag began.
   const AREA_MIN = 16;
@@ -854,7 +999,7 @@
     const h = H();
     if (S.placing) { placeNote(t, g); return; }
     const noteEl = t.closest('[data-note]');
-    if (noteEl) { select('note', noteEl.dataset.note); return; }
+    if (noteEl) { shift ? toggleSel('note', noteEl.dataset.note) : select('note', noteEl.dataset.note); return; }
     const pin = t.closest('[data-pin]');
     const nodeEl = t.closest('[data-node]');
     if (pin) {
@@ -870,26 +1015,12 @@
     }
     if (S.pending) { S.pending = null; renderAll(); return; }
     // A set's badge or area selects the set; shift-click adds its wires to the selection (or takes
-    // them out), so a set and more wires can be bundled. Shift-click on a wire does the same for it.
+    // them out), so a set and more wires can be bundled. Shift-click on a wire does the same for
+    // it, and on a connector or splice adds the part (a mix, with wires).
     const badgeEl = t.closest('[data-set]'), wire = t.closest('[data-wire]');
-    if (badgeEl) {
-      const st = M.set(h, badgeEl.dataset.set);
-      if (shift && st && S.sel && (S.sel.kind === 'wire' || S.sel.kind === 'set')) {
-        const ids = new Set(selWireIds(h, S.sel)), its = M.wiresIn(h, st);
-        const all = its.every(id => ids.has(id));
-        its.forEach(id => (all ? ids.delete(id) : ids.add(id)));
-        S.sel = wiresSel(h, [...ids]);
-        renderAll();
-      } else select('set', badgeEl.dataset.set);
-    } else if (wire) {
-      const id = wire.dataset.wire;
-      if (shift && S.sel && (S.sel.kind === 'wire' || S.sel.kind === 'set')) {
-        const ids = new Set(selWireIds(h, S.sel));
-        ids.has(id) ? ids.delete(id) : ids.add(id);
-        S.sel = wiresSel(h, [...ids]);
-        renderAll();
-      } else select('wire', id);
-    } else if (nodeEl) select('node', nodeEl.dataset.node);
+    if (badgeEl) shift ? toggleSel('set', badgeEl.dataset.set) : select('set', badgeEl.dataset.set);
+    else if (wire) shift ? toggleSel('wire', wire.dataset.wire) : select('wire', wire.dataset.wire);
+    else if (nodeEl) shift ? toggleSel('node', nodeEl.dataset.node) : select('node', nodeEl.dataset.node);
     // A shift-click that misses keeps what's selected: it was meant to add to it.
     else if (!shift) select(null);
   }
@@ -983,7 +1114,7 @@
   }
   function partsHtml() {
     const h = H();
-    const sel = id => S.sel && S.sel.kind === 'node' && S.sel.ids.has(id);
+    const sel = id => selHas(S.sel, 'node', id);
     const splices = h.nodes.filter(n => n.kind === 'splice');
     let o = '';
     if (splices.length) {
@@ -993,12 +1124,12 @@
     const notes = h.callouts || [];
     if (notes.length) {
       o += `<div class="side-head"><span class="side-label">Notes</span><span class="side-count">${notes.length}</span></div>`;
-      o += notes.map(c => `<div class="lay${S.sel && S.sel.kind === 'note' && S.sel.ids.has(c.id) ? ' on' : ''}" data-pick="note:${c.id}"><span class="lay-ico">${ICON.note}</span><span class="nm"><b>${esc(c.ref)}</b> ${esc(c.text || 'No text yet')}</span></div>`).join('');
+      o += notes.map(c => `<div class="lay${selHas(S.sel, 'note', c.id) ? ' on' : ''}" data-pick="note:${c.id}"><span class="lay-ico">${ICON.note}</span><span class="nm"><b>${esc(c.ref)}</b> ${esc(c.text || 'No text yet')}</span></div>`).join('');
     }
     const roots = M.roots(h);
     if (roots.length) {
       o += `<div class="side-head"><span class="side-label">Wire sets</span><span class="side-count">${h.sets.length}</span></div>`;
-      o += roots.map(r => setTree(h, r, S.sel && S.sel.kind === 'set' ? [...S.sel.ids][0] : null, true)).join('');
+      o += roots.map(r => setTree(h, r, new Set(selParts(S.sel).set), true)).join('');
     }
     o += `<div class="side-head"><span class="side-label">Add</span></div><div class="palette">
       <button data-act="add-conn">${ICON.conn}<span>Connector</span></button>
@@ -1133,11 +1264,13 @@
   function propsHtml() {
     const h = H(), A = M.analyze(h), sel = S.sel;
     if (!sel) return '';
-    if (sel.kind === 'node') { const n = M.node(h, [...sel.ids][0]); return M.isConn(n) ? railConnector(h, A, n) : railJunction(h, A, n); }
+    const P = selParts(sel), one = sel.ids.size === 1;
+    if (sel.kind === 'node' && one) { const n = M.node(h, [...sel.ids][0]); return M.isConn(n) ? railConnector(h, A, n) : railJunction(h, A, n); }
     if (sel.kind === 'wire') return sel.ids.size > 1 ? railSet(h, A, null, [...sel.ids].map(id => M.wire(h, id))) : railWire(h, A, M.wire(h, [...sel.ids][0]));
-    if (sel.kind === 'set') { const st = M.set(h, [...sel.ids][0]); return railSet(h, A, st, M.wiresIn(h, st).map(id => M.wire(h, id))); }
-    if (sel.kind === 'note') return railNote(h, M.note(h, [...sel.ids][0]));
-    return '';
+    if (sel.kind === 'set' && one) { const st = M.set(h, [...sel.ids][0]); return railSet(h, A, st, M.wiresIn(h, st).map(id => M.wire(h, id))); }
+    if (sel.kind === 'set') return railSets(h, A, P.set.map(id => M.set(h, id)).filter(Boolean));
+    if (sel.kind === 'note' && one) return railNote(h, M.note(h, [...sel.ids][0]));
+    return railMulti(h, A, P);
   }
   // The left rail is the harness. On a phone (narrow, or short when held sideways; styles.css) the
   // right pane is hidden and the rail is a sheet over the canvas showing the selection, else the
@@ -1277,10 +1410,11 @@
   // mark.
   // edit: the Parts tab's tree, where the selected set's row has an Edit button for its properties.
   function setTree(h, root, on, edit) {
-    const line = (st, d) => `<button class="st-row${st.id === on ? ' on' : ''}" data-pick="set:${st.id}" style="--d:${d}">` +
+    const isOn = id => (on instanceof Set ? on.has(id) : id === on);
+    const line = (st, d) => `<button class="st-row${isOn(st.id) ? ' on' : ''}" data-pick="set:${st.id}" style="--d:${d}">` +
       `<span class="g-chip g-${setKind(st)}">${esc(st.label)}</span><span class="st-name">${esc(M.setWord(st))}${M.setTraits(st) ? ', ' + esc(M.setTraits(st)) : ''}</span>` +
       `<span class="st-n">${M.wiresIn(h, st).length} wires</span>` +
-      (edit && st.id === on ? `<span class="st-edit" role="button" data-act="edit-set" title="Edit ${esc(st.label)} in Properties">Edit</span>` : '') + `</button>` +
+      (edit && isOn(st.id) && on.size === 1 ? `<span class="st-edit" role="button" data-act="edit-set" title="Edit ${esc(st.label)} in Properties">Edit</span>` : '') + `</button>` +
       st.sets.map(id => M.set(h, id)).filter(Boolean).map(c => line(c, d + 1)).join('');
     return `<div class="set-tree">${line(root, 0)}</div>`;
   }
@@ -1336,6 +1470,61 @@
       </div><div class="rail-actions"><span></span>${st
         ? `<button class="btn btn-danger" data-act="delete" title="Removes the set. Its wires and any sets inside it stay.">${ICON.trash}Delete ${esc(st.label)}</button>`
         : `<button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${ws.length} wires</button>`}</div></div>`;
+  }
+
+  // Several sets at once (a marquee over whole sets, or shift-clicks). Chris (2026-11-07): options
+  // scoped to the selection. Twist, Shield and Held as apply to each set (a tick is half on when
+  // only some have it), Set color to all their wires, and Together makes one bundle or cable of
+  // all of them (as selecting their wires and picking it would). One set's label, part number
+  // and lengths are edited on its own: click its chip.
+  function railSets(h, A, sts) {
+    const ids = [...new Set(sts.flatMap(st => M.wiresIn(h, st)))];
+    const ticks = ['twist', 'shield'].map(k => {
+      const have = sts.filter(st => st[k]).length, on = have === sts.length, part = have > 0 && !on;
+      return `<button class="tick${on ? ' on' : part ? ' part' : ''}" data-act="set-flag" data-flag="${k}" aria-pressed="${on ? 'true' : part ? 'mixed' : 'false'}" title="${esc(FLAG_TEXT[k][1])}, each set${part ? ' (some are)' : ''}"><span class="tick-box"></span>${FLAG_TEXT[k][0]}</button>`;
+    }).join('');
+    const helds = sts.map(st => M.holderOf(st) || 'none'), held = helds.every(x => x === helds[0]) ? helds[0] : null;
+    const holders = [['none', 'None', 'Neither a cable nor a bundle'], ['cable', 'Cable', FLAG_TEXT.cable[1]], ['bundle', 'Bundle', FLAG_TEXT.bundle[1]]].map(([k, t, tip]) =>
+      `<button class="hold${held === k ? ' on' : ''}" role="radio" aria-checked="${held === k}" data-act="set-holder" data-holder="${k}" title="${esc(tip)}, each set"><span class="hold-dot"></span>${t}</button>`).join('');
+    const why = M.whyNot(h, ids), m = why ? null : M.membersFor(h, ids), noCable = why ? '' : M.noCable(h, null, m);
+    const together = `<div class="hold-row"><span class="hold-label">Together</span><div class="hold-seg">` +
+      `<button class="hold" data-act="set-flag" data-flag="bundle" data-together="1" title="${esc(why || 'One bundle holding all of these sets')}"${why ? ' disabled' : ''}><span class="hold-dot"></span>Bundle</button>` +
+      `<button class="hold" data-act="set-flag" data-flag="cable" data-together="1" title="${esc(why || (noCable ? "Can't be a cable: " + noCable : 'One cable holding all of these sets'))}"${why || noCable ? ' disabled' : ''}><span class="hold-dot"></span>Cable</button></div></div>`;
+    return railHead('Wire sets', `${sts.length} sets selected`, `<div class="chips">${sts.map(st => `<button class="chip g-chip g-${setKind(st)}" data-pick="set:${st.id}" title="Just ${esc(st.label)}">${esc(st.label)}</button>`).join('')}</div>`) +
+      `<div class="rail-list"><div class="rail-sec">
+      <div class="f-label">Each set</div>
+      <div class="tick-row">${ticks}</div>
+      <div class="hold-row"><span class="hold-label">Held as</span><div class="hold-seg" role="radiogroup" aria-label="Held as">${holders}</div></div>
+      <p class="f-hint">Applies to each of the ${sts.length} sets. Click a chip above to edit one set's label, part number and lengths.</p>
+      ${together}
+      <p class="f-hint">${why ? esc(why) : 'One set holding all of them, with these sets inside it.'}</p>
+      ${fld('Set color', colorSelects('ws.color', ''))}
+      </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete" title="Removes the sets. Their wires and any sets inside them stay.">${ICON.trash}Delete ${sts.length} sets</button></div></div>`;
+  }
+  // Things of several kinds at once (a marquee, or shift-clicks across kinds), or several parts or
+  // notes: what's selected, by kind, with a chip each to narrow to it. Dragging any of them on the
+  // canvas moves them all, and Delete deletes them all. The wire set options need a selection of
+  // only wires or only sets, so where the mix has wires or sets they're shown off.
+  function railMulti(h, A, P) {
+    const groups = [
+      ['Connectors and splices', P.node.map(id => M.node(h, id)).filter(Boolean).map(n => `<button class="chip" data-pick="node:${n.id}" title="Just ${esc(n.ref)}">${esc(n.ref)}</button>`)],
+      ['Wires', P.wire.map(id => M.wire(h, id)).filter(Boolean).map(w => `<button class="chip" data-pick="wire:${w.id}" title="Just ${esc(M.wireName(w))}">${esc(M.wireName(w))}</button>`)],
+      ['Wire sets', P.set.map(id => M.set(h, id)).filter(Boolean).map(st => `<button class="chip g-chip g-${setKind(st)}" data-pick="set:${st.id}" title="Just ${esc(st.label)}">${esc(st.label)}</button>`)],
+      ['Notes', P.note.map(id => M.note(h, id)).filter(Boolean).map(c => `<button class="chip" data-pick="note:${c.id}" title="Just ${esc(c.ref)}">${esc(c.ref)}</button>`)],
+    ].filter(g => g[1].length);
+    const n = groups.reduce((a, g) => a + g[1].length, 0), wiry = P.wire.length || P.set.length;
+    const offTip = 'Select only wires, or only sets, to use this';
+    const off = ['twist', 'shield'].map(k => `<button class="tick" disabled title="${offTip}"><span class="tick-box"></span>${FLAG_TEXT[k][0]}</button>`).join('');
+    const held = ['None', 'Cable', 'Bundle'].map(t => `<button class="hold" role="radio" aria-checked="false" disabled title="${offTip}"><span class="hold-dot"></span>${t}</button>`).join('');
+    return railHead('Selection', `${n} items selected`) +
+      `<div class="rail-list"><div class="rail-sec">
+      ${groups.map(([t, chips]) => `<div class="f-label">${t}</div><div class="chips">${chips.join('')}</div>`).join('')}
+      <p class="f-hint">Drag any of them on the canvas to move them all. Click a chip to work on just that one.</p>
+      ${wiry ? `<div class="f-label">Wire set</div>
+      <div class="tick-row">${off}</div>
+      <div class="hold-row"><span class="hold-label">Held as</span><div class="hold-seg" role="radiogroup" aria-label="Held as">${held}</div></div>
+      <p class="f-hint">The wire set options need a selection of only wires, or only sets.</p>` : ''}
+      </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${n} items</button></div></div>`;
   }
 
   // Field edits from the rail (and the wire table, which uses w:<id>.<field>).
@@ -1551,12 +1740,19 @@
         break;
       }
       case 'straight': { const to = $('#straight-to').value; const k = change(x => M.wireStraight(x, el.dataset.node, to)); toast(k ? `Added ${k} wire${k > 1 ? 's' : ''}.` : 'No free pin pairs to wire.'); break; }
-      case 'set-flag': setFlag(el.dataset.flag, el.getAttribute('aria-pressed') !== 'true'); break;
+      case 'set-flag': setFlag(el.dataset.flag, el.getAttribute('aria-pressed') !== 'true', !!el.dataset.together); break;
       case 'set-holder': {
         // One of None, Cable, Bundle: picking one turns the other off (M.setFlag does); None turns
-        // off whichever is on.
-        const k = el.dataset.holder, st = S.sel && S.sel.kind === 'set' && M.set(h, [...S.sel.ids][0]), cur = st ? M.holderOf(st) : null;
-        if (k === 'none') { if (cur) setFlag(cur, false); } else if (k !== cur) setFlag(k, true);
+        // off whichever is on. With several sets selected, each set.
+        const k = el.dataset.holder, P = selParts(S.sel);
+        if (S.sel && S.sel.kind === 'set') {
+          const ids = selWireIds(h, S.sel);
+          change(x => {
+            P.set.forEach(id => { const st = M.set(x, id), cur = st && M.holderOf(st); if (!st) return; if (k === 'none') { if (cur) M.setFlag(x, id, cur, false); } else if (k !== cur) M.setFlag(x, id, k, true); });
+            const left = P.set.filter(id => M.set(x, id));
+            S.sel = left.length ? { kind: 'set', ids: new Set(left) } : wiresSel(x, ids);
+          });
+        } else if (k !== 'none') setFlag(k, true);
         break;
       }
       case 'export-svg': U.download(baseName(h) + '.svg', S.lastSheet.svg, 'image/svg+xml'); break;
@@ -1574,15 +1770,16 @@
       case 'paste': pasteWires($('#paste').value); break;
     }
   }
-  // Tick or untick a property of the selected set, or make the selected wires a set.
-  function setFlag(flag, on) {
+  // Tick or untick a property of the selected set (or each of several), or make the selected
+  // wires a set (together: one set of the selected sets, from the sets panel).
+  function setFlag(flag, on, together) {
     const sel = S.sel;
     if (!sel) return;
     change(h => {
       const ids = selWireIds(h, sel);
-      if (sel.kind === 'set') {
-        const st = M.setFlag(h, [...sel.ids][0], flag, on);
-        S.sel = st ? { kind: 'set', ids: new Set([st.id]) } : wiresSel(h, ids);
+      if (sel.kind === 'set' && !together) {
+        const left = selParts(sel).set.filter(id => M.setFlag(h, id, flag, on));
+        S.sel = left.length ? { kind: 'set', ids: new Set(left) } : wiresSel(h, ids);
       } else if (on) {
         const st = M.makeSet(h, ids, { [flag]: true });
         if (st) S.sel = { kind: 'set', ids: new Set([st.id]) };
@@ -1592,13 +1789,13 @@
   }
   function deleteSel() {
     if (!S.sel) return;
-    const ids = [...S.sel.ids], kind = S.sel.kind;
+    const P = selParts(S.sel);
     change(h => {
-      if (kind === 'node') ids.forEach(id => M.removeNode(h, id));
-      if (kind === 'seg') ids.forEach(id => M.removeSegment(h, id));
-      if (kind === 'wire') M.removeWires(h, ids);
-      if (kind === 'set') ids.forEach(id => M.dissolveSet(h, id));
-      if (kind === 'note') h.callouts = (h.callouts || []).filter(c => !ids.includes(c.id));
+      if (P.note.length) h.callouts = (h.callouts || []).filter(c => !P.note.includes(c.id));
+      P.set.forEach(id => M.dissolveSet(h, id));
+      if (P.wire.length) M.removeWires(h, P.wire);
+      P.node.forEach(id => M.removeNode(h, id));
+      P.seg.forEach(id => M.removeSegment(h, id));
       S.sel = null;
     });
   }
@@ -1687,6 +1884,7 @@
     if (S.view !== 'build') return;
     if (e.key === 'Escape' && $('#app').classList.contains('nav-open')) { $('#app').classList.remove('nav-open'); return; }
     if (e.key === 'Escape' && !S.sel && S.sheet) { S.sheet = false; $('#build-view').classList.remove('sheet-open'); return; }
+    if (e.key === 'Escape' && gesture && gesture.marquee) { gesture = null; svgEl().classList.remove('marquee'); renderCanvas(); return; }
     if (e.key === 'Escape') { S.placing ? (S.placing = null) : S.pending ? (S.pending = null, S.sel = null) : (S.sel = null); $('#ghost') && ($('#ghost').innerHTML = ''); renderAll(); }
     else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); }
     else if (e.key === 'f' || e.key === 'F') fitGlide();
