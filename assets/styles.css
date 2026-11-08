@@ -291,7 +291,9 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-lgrab { fill: transparent; stroke: transparent; }
 .lm-canvas .cv-wrow:hover .cv-lgrab, .lm-canvas .cv-wrow.slide .cv-lgrab { fill: var(--cv-sel); fill-opacity: 0.08; stroke: var(--cv-sel); stroke-opacity: 0.35; }
 .lm-canvas .cv-grab { fill: transparent; }
-.lm-canvas .w-hit { fill: none; stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: pointer; }
+/* At least 12 px on screen, however far out it's zoomed (--k, set with the view), so a wire is easy
+   to click or shift-click (Chris). */
+.lm-canvas .w-hit { fill: none; stroke: transparent; stroke-width: max(10px, calc(12px / var(--k, 1))); pointer-events: stroke; cursor: pointer; }
 .lm-canvas .w-edge { fill: none; stroke: var(--cv-edge); stroke-width: 4.4; stroke-linecap: round; pointer-events: none; }
 .lm-canvas .w-base, .lm-canvas .w-stripe { fill: none; stroke-width: 2.6; stroke-linecap: round; pointer-events: none; }
 .lm-canvas .w-stripe { stroke-dasharray: 6 6; stroke-linecap: butt; }

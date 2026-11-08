@@ -105,7 +105,11 @@ links to it so far. Before every commit:
   (`#lm-guide`) has Back/Next, a Contents list to jump anywhere, and drags by its top line. In a
   step's text, `{From a board}` names something on screen (drawn as a chip, `.lg-ui`) and `{k:Esc}` a
   key (`.lg-key`), so a button's name doesn't read as part of the sentence (Chris); the suite tour does
-  the same with `{…}` (`.t-ui`). The demo opens with Real proportions off. It sits at the
+  the same with `{…}` (`.t-ui`). The demo opens with Real proportions off. Steps ring Properties in
+  the parts pane, and the rail only on a phone (`props()`; on a wide screen the rail is the harness
+  panel). Shift-click (Chris: a missed one cleared the selection and the left panel glowed): a wire's
+  hit line is at least 12 px on screen (`--k`, the zoom, set in `setView`), a shift-click on empty
+  canvas keeps the selection, and a shift or Ctrl mousedown on the canvas doesn't select page text. It sits at the
   canvas's bottom left, or moves aside when it would cover the spot. It always runs on the demo harness:
   started outside `?demo`, it opens `?demo&guide` in the same tab and its last step offers Back to my
   harnesses. State is sessionStorage `loom.guide`. It opens from Guide in the menu, Take the guide on the

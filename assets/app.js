@@ -337,6 +337,8 @@
     const svg = svgEl(), wrap = $('#canvas-wrap');
     const w = wrap.clientWidth || 800, hh = wrap.clientHeight || 600;
     svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${w / S.cam.k} ${hh / S.cam.k}`);
+    // The zoom, for hit areas that keep a size on screen (styles.css .w-hit).
+    svg.style.setProperty('--k', S.cam.k);
     const z = $('#zoom-val');
     if (z) z.textContent = Math.round(S.cam.k * 100) + '%';
   }
@@ -878,7 +880,8 @@
         renderAll();
       } else select('wire', id);
     } else if (nodeEl) select('node', nodeEl.dataset.node);
-    else select(null);
+    // A shift-click that misses keeps what's selected: it was meant to add to it.
+    else if (!shift) select(null);
   }
   function finishWire(end) {
     const from = S.pending;
@@ -1680,6 +1683,8 @@
   });
   const svg = svgEl();
   svg.addEventListener('pointerdown', onDown);
+  // Shift-click on the canvas adds to the selection; it mustn't also select the page's text.
+  svg.addEventListener('mousedown', e => { if (e.shiftKey || e.ctrlKey || e.metaKey) { e.preventDefault(); const s = getSelection(); if (s && !s.isCollapsed) s.removeAllRanges(); } });
   svg.addEventListener('pointerover', e => {
     const b = e.target.closest && e.target.closest('.cv-badge');
     const id = b ? b.dataset.set : null;

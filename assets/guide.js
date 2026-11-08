@@ -27,7 +27,9 @@
   const clear = () => G().select(null);
   const build = () => { G().demo(); G().view('build'); G().panels(); G().help(false); };
   // Where Properties show on this screen: the parts pane, or the rail's sheet on a phone.
-  const PROPS = ['#parts-pane .pane-props', '#rail'];
+  // The rail holds Properties only on a phone; on a wide screen it's the harness panel, which a step
+  // about a selection must never ring (Chris: the left panel glowed when a shift-click missed).
+  const props = () => (G().narrow() ? ['#rail'] : ['#parts-pane .pane-props']);
 
   const CHAPTERS = [
     { title: 'Welcome', steps: [
@@ -68,7 +70,7 @@
         text: 'A connector is a table: its ref and a sketch of it in the header, its family and gender, then a row per pin with the pin’s label, usually the board’s net name. Selected, its Properties hold the family and pin count, the part it mates with, the face views the drawing prints and every pin’s label.',
         do: 'P1 is selected. In Properties, set {Views} to {Both} and watch the face drawing show the wire side too.',
         setup() { build(); const n = node('P1'); if (n) pick('node', n.id); },
-        spot: () => [...PROPS.map(s => s + ' .face-tile'), item('P1')] },
+        spot: () => [...props().map(s => s + ' .face-tile'), item('P1')] },
       { title: 'Adding parts',
         text: '{Add › Connector} puts a new end on the canvas (or press {k:C}). {Splice} adds a splice, and {Note} pins a note to a part (more on notes later). The {Parts} tab also lists the splices, notes and wire sets; click one to select it.',
         do: 'Click {Connector}. Its Properties open, ready to pick a family and pin count.',
@@ -90,7 +92,7 @@
         text: 'Select a wire by clicking its line. Properties show its ends, signal, color (with a stripe), gauge and length, and chips for the sets it’s in. The canvas, the drawing and the wire list all follow a change.',
         do: 'The 3V3 wire is selected. Change its color, then press {k:Ctrl+Z}.',
         setup() { build(); const w = wire('3V3'); if (w) pick('wire', w.id); },
-        spot: () => PROPS },
+        spot: () => props() },
       { title: 'Splices and wire ends',
         text: 'S1 joins the three ground wires. Every wire end has a dot to drag it by: drop it on a splice (in the slot under the pointer), on another pin, or on empty canvas to leave a loose end, which {Checks} flags. Dragging a splice’s port up or down reorders that side.',
         do: 'Drag the dot where a GND wire meets S1 onto a P2 pin row, then press {k:Ctrl+Z}.',
@@ -102,12 +104,12 @@
         text: '{k:Shift}-click two or more wires, then tick {Twist} or {Shield}, or pick {Cable} or {Bundle} under {Held as}, in Properties: the wires become a wire set. C1 is a two-wire cable, TP2 a twisted pair, and B1 a laced bundle.',
         do: 'C1 is selected. Its {Wire set} panel holds its label, part number, the cable note and its color. Try ticking {Shield}.',
         setup() { build(); const s = set('C1'); if (s) pick('set', s.id); },
-        spot: () => [...PROPS, box('C1')] },
+        spot: () => [...props(), box('C1')] },
       { title: 'Sets inside sets',
         text: 'Sets nest. TP1, the shielded I²C pair, runs inside B1. Select a set and more wires, then tick {Bundle}, and the set goes inside the new one. The {Hierarchy} in Properties shows the tree; click a row to select it. {k:Delete} on a set unmakes it and keeps its wires.',
         do: 'TP1 is selected. Click B1 in its {Hierarchy}.',
         setup() { build(); const s = set('TP1'); if (s) pick('set', s.id); },
-        spot: () => PROPS },
+        spot: () => props() },
       { title: 'Set lengths',
         text: 'A set needn’t run the wires’ whole length. A selected set has a grip at each end: drag one to shorten the set or run it past what holds it. It snaps to 5 mm, and Properties show each end’s overhang. B1 is laced over 150 mm of the 250 mm run, and TP1 runs past it to both ends.',
         do: 'Drag B1’s right grip to the right, then press {k:Ctrl+Z}.',
