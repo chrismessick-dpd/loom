@@ -136,6 +136,7 @@
       const k = P.part.k;
       const d = P.part.d.replace(/([ML])(-?[\d.]+) (-?[\d.]+)/g, (m, c, x, y) => c + f(X(+x * k)) + ' ' + f(Y(+y * k)));
       o += `<path class="fv-edge" d="${d}"/>`;
+      (P.part.c || []).forEach(c => { o += `<circle class="fv-edge" cx="${f(X(c[0] * k))}" cy="${f(Y(c[1] * k))}" r="${f(c[2] * k * s)}"/>`; });
     } else (P.part.shapes || []).forEach(sh => {
       const cls = sh.t === 'line' ? 'fv-edge' : sh.fill === false ? 'fv-outline' : 'fv-body';
       if (sh.t === 'line') o += `<line class="${cls}" x1="${f(X(sh.x))}" y1="${f(Y(sh.y))}" x2="${f(X(sh.x2))}" y2="${f(Y(sh.y2))}"/>`;

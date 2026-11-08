@@ -847,6 +847,13 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
 .cfg-svg.assigning .cfg-mark { cursor: crosshair; }
 .cfg-mark.redo circle { stroke: var(--accent); stroke-dasharray: 3 2; opacity: 0.6; }
 .cfg-ghost { fill: color-mix(in srgb, var(--accent) 30%, transparent); stroke: var(--accent); stroke-width: 1.2px; pointer-events: none; }
+.cfg-rot { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--text-2); }
+.cfg-rot .input { width: 58px; padding: 4px 6px; font-size: 12px; margin-left: 4px; }
+.cfg-tools .btn.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--accent); }
+.cfg-svg.pointing { cursor: crosshair; }
+.cfg-svg.pointing .cfg-mark { pointer-events: none; }
+.cfg-upline { stroke: var(--accent); stroke-width: 1.5px; stroke-dasharray: 5 4; pointer-events: none; }
+.cfg-upc { fill: var(--accent); pointer-events: none; }
 .cfg-ghost-t { fill: #fff; font-family: var(--mono); font-weight: 600; pointer-events: none; }
 .cfg-3d { position: absolute; inset: 0; }
 .cfg-3d canvas { display: block; cursor: grab; }

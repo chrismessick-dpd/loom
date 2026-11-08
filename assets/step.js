@@ -12,6 +12,9 @@
     wasm: JSD + 'occt-import-js@0.0.23/dist/occt-import-js.wasm', wasmSri: 'sha384-6BbVZ7iPDgcRszsoavxGz4TaYCwC2EkeYCy1aR9XFwqMZYXDQP+0vZSTP6Yw35iD',
   };
 
+  // Fine enough that a 1 mm contact is a smooth circle and a hole's front and back rims land on
+  // each other (coarser, they were polygons turned against each other: doubled, notched outlines).
+  const MESH = { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: 0.0004, angularDeflection: 0.1 };
   let worker = null, seq = 0;
   const pending = new Map();
   function cadWorker() {
@@ -28,7 +31,7 @@
       const id = ++seq;
       pending.set(id, { resolve, reject });
       const copy = bytes.slice();
-      cadWorker().postMessage({ id, lib: OCCT, kind: kind || 'step', bytes: copy, params: { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: 0.0015, angularDeflection: 0.25 } }, [copy.buffer]);
+      cadWorker().postMessage({ id, lib: OCCT, kind: kind || 'step', bytes: copy, params: MESH }, [copy.buffer]);
     });
   }
 
@@ -60,11 +63,24 @@
     const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
     for (let i = 0; i < pos.length; i += 3) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], pos[i + k]); hi[k] = Math.max(hi[k], pos[i + k]); }
     const diag = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1;
-    const q = diag * 1e-6, map = new Map(), wid = new Uint32Array(nv), wpos = [];
+    // Weld within q, looking in the neighboring cells too: two copies of a point (a seam's ends,
+    // computed at 0 and 2π) can round into different cells, and an unwelded seam reads as an open
+    // edge, drawn as a tick across the face.
+    const q = diag * 2e-6, map = new Map(), wid = new Uint32Array(nv), wpos = [];
     for (let v = 0; v < nv; v++) {
-      const k = Math.round(pos[v * 3] / q) + ',' + Math.round(pos[v * 3 + 1] / q) + ',' + Math.round(pos[v * 3 + 2] / q);
-      let w = map.get(k);
-      if (w === undefined) { w = wpos.length / 3; map.set(k, w); wpos.push(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]); }
+      const x = pos[v * 3], y = pos[v * 3 + 1], z = pos[v * 3 + 2];
+      const cx = Math.round(x / q), cy = Math.round(y / q), cz = Math.round(z / q);
+      let w;
+      for (let dx = -1; dx <= 1 && w === undefined; dx++) for (let dy = -1; dy <= 1 && w === undefined; dy++) for (let dz = -1; dz <= 1 && w === undefined; dz++) {
+        const l = map.get((cx + dx) + ',' + (cy + dy) + ',' + (cz + dz));
+        if (l) for (const o of l) if (Math.abs(wpos[o * 3] - x) <= q && Math.abs(wpos[o * 3 + 1] - y) <= q && Math.abs(wpos[o * 3 + 2] - z) <= q) { w = o; break; }
+      }
+      if (w === undefined) {
+        w = wpos.length / 3;
+        wpos.push(x, y, z);
+        const k = cx + ',' + cy + ',' + cz, l = map.get(k);
+        l ? l.push(w) : map.set(k, [w]);
+      }
       wid[v] = w;
     }
     const nrm = new Float32Array(nt * 3);
@@ -174,22 +190,46 @@
       const L = Math.hypot(X1 - X0, Y1 - Y0);
       if (L < 0.05) continue;
       const n = Math.max(1, Math.ceil(L / 0.7));
+      const vis = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n;
+        vis[i] = Z0 + (Z1 - Z0) * t >= zAt(X0 + (X1 - X0) * t, Y0 + (Y1 - Y0) * t) - eps ? 1 : 0;
+      }
+      despeckle(vis);
       let run = -1;
       for (let i = 0; i <= n; i++) {
-        let vis = false;
-        if (i < n) {
-          const t = (i + 0.5) / n;
-          vis = Z0 + (Z1 - Z0) * t >= zAt(X0 + (X1 - X0) * t, Y0 + (Y1 - Y0) * t) - eps;
-        }
-        if (vis && run < 0) run = i;
-        if (!vis && run >= 0) {
+        const v = i < n && vis[i];
+        if (v && run < 0) run = i;
+        if (!v && run >= 0) {
           const ta = run / n, tb = i / n;
           segs.push([X0 + (X1 - X0) * ta, Y0 + (Y1 - Y0) * ta, X0 + (X1 - X0) * tb, Y0 + (Y1 - Y0) * tb]);
           run = -1;
         }
       }
     }
-    const lines = chain(segs, 0.35);
+    // Rims that go all the way round become true circles, even with a slit's tick or a rib joined
+    // on (those stay lines); copies of one (a hole's back rim seen through it, a run lying on a
+    // circle) go. Arcs of one circle adding up to half of it or more are round cavities too: not
+    // drawn as circles, but marks snap to their centers. The rest are polylines.
+    const tolPx = 0.7, circles = [], polys = [], arcs = [];
+    const sameC = (a, b, t) => Math.hypot(a.x - b.x, a.y - b.y) < t && Math.abs(a.r - b.r) < t;
+    chain(segs).forEach(l => {
+      const o = l.length >= 8 ? roundPart(l, tolPx) : null;
+      if (o && o.gap < 0.2) {
+        if (!circles.some(c => sameC(c, o, tolPx))) circles.push(o);
+        outlierRuns(l, o.inl).forEach(r => polys.push(r));
+        return;
+      }
+      polys.push(l);
+      if (o && o.sweep >= Math.PI / 6) {
+        const g = arcs.find(a => sameC(a, o, tolPx * 2));
+        if (g) g.sweep += o.sweep; else arcs.push({ x: o.x, y: o.y, r: o.r, sweep: o.sweep });
+      }
+    });
+    const onCircle = l => circles.some(c => l.every(p => Math.abs(Math.hypot(p[0] - c.x, p[1] - c.y) - c.r) < tolPx));
+    const kept = polys.filter(l => !onCircle(l) && length(l) > 1.5);
+    const lines = kept.map(l => simplify(l, 0.35));
+    const holes = arcs.filter(a => a.sweep >= Math.PI && !circles.some(c => sameC(c, a, tolPx)));
     // Grid pixels → sketch units (longer side 1000), then the in-plane turn.
     const k = 1000 / Math.max(w, h) / s;
     let W = w / Math.max(w, h) * 1000, H = h / Math.max(w, h) * 1000;
@@ -202,19 +242,92 @@
       return [x, y];
     };
     let d = '';
+    const r1 = v => Math.round(v * 10) / 10;
     lines.forEach(l => {
-      l.forEach((p, i) => { const [x, y] = tf(p[0], p[1]); d += (i ? 'L' : 'M') + (Math.round(x * 10) / 10) + ' ' + (Math.round(y * 10) / 10); });
+      l.forEach((p, i) => { const [x, y] = tf(p[0], p[1]); d += (i ? 'L' : 'M') + r1(x) + ' ' + r1(y); });
     });
+    const c = circles.map(o => { const [x, y] = tf(o.x, o.y); return [r1(x), r1(y), r1(o.r * k)]; });
     if (turn === 90 || turn === 270) [W, H] = [H, W];
-    return { view: viewKey, rot: turn, w: Math.round(W * 10) / 10, h: Math.round(H * 10) / 10, mm: Math.max(w, h), d, lines: lines.length };
+    const f = holes.map(o => { const [x, y] = tf(o.x, o.y); return [r1(x), r1(y), r1(o.r * k)]; });
+    return { view: viewKey, rot: turn, w: r1(W), h: r1(H), mm: Math.max(w, h), d, c, f, lines: lines.length + c.length };
   }
 
-  // Join segments that share ends into polylines, then drop points that don't bend the line.
-  function chain(segs, tol) {
+  // Visibility samples along an edge, cleaned: hidden gaps of up to two samples (0.7 px each) are
+  // filled and visible runs shorter than three dropped, so an edge lying on a surface doesn't
+  // flicker into dashes.
+  function despeckle(v) {
+    const n = v.length;
+    for (let i = 1; i < n - 1; i++) if (!v[i]) { let j = i; while (j < n && !v[j]) j++; if (j < n && v[i - 1] && j - i <= 2) v.fill(1, i, j); i = j; }
+    if (n < 3) return;
+    for (let i = 0; i < n; i++) if (v[i]) { let j = i; while (j < n && v[j]) j++; if (j - i < 3 && !(i === 0 && j === n)) v.fill(0, i, j); i = j; }
+  }
+  // The circle most of a polyline lies on: fitted, outliers set aside (more than tol off), fitted
+  // again. inl marks the points on it, gap is the widest angle they leave open, sweep the rest.
+  function roundPart(l, tol) {
+    let o = fitCircle(l);
+    if (!o || o.r < 1.5) return null;
+    const on = c => l.map(p => Math.abs(Math.hypot(p[0] - c.x, p[1] - c.y) - c.r) <= Math.max(tol, c.r * 0.006));
+    let inl = on(o);
+    if (inl.filter(Boolean).length < Math.max(8, l.length * 0.6)) return null;
+    o = fitCircle(l.filter((_, i) => inl[i]));
+    if (!o || o.r < 1.5) return null;
+    inl = on(o);
+    const angs = l.filter((_, i) => inl[i]).map(p => Math.atan2(p[1] - o.y, p[0] - o.x)).sort((a, b) => a - b);
+    if (angs.length < 8) return null;
+    let gap = angs[0] + 2 * Math.PI - angs[angs.length - 1];
+    for (let i = 1; i < angs.length; i++) gap = Math.max(gap, angs[i] - angs[i - 1]);
+    return { x: o.x, y: o.y, r: o.r, inl, gap, sweep: 2 * Math.PI - gap };
+  }
+  // The stretches of a polyline off its circle, each with the point it leaves the circle from.
+  function outlierRuns(l, inl) {
+    const out = [];
+    for (let i = 0; i < l.length; i++) {
+      if (inl[i]) continue;
+      let j = i;
+      while (j < l.length && !inl[j]) j++;
+      const run = l.slice(Math.max(0, i - 1), Math.min(l.length, j + 1));
+      if (run.length >= 2) out.push(run);
+      i = j;
+    }
+    return out;
+  }
+  const length = l => { let s = 0; for (let i = 1; i < l.length; i++) s += Math.hypot(l[i][0] - l[i - 1][0], l[i][1] - l[i - 1][1]); return s; };
+  // A least-squares circle through points (Kåsa), with its worst radial error.
+  function fitCircle(pts) {
+    let mx = 0, my = 0;
+    pts.forEach(p => { mx += p[0]; my += p[1]; });
+    mx /= pts.length; my /= pts.length;
+    let suu = 0, svv = 0, suv = 0, suuu = 0, svvv = 0, suvv = 0, svuu = 0;
+    pts.forEach(p => { const u = p[0] - mx, v = p[1] - my; suu += u * u; svv += v * v; suv += u * v; suuu += u * u * u; svvv += v * v * v; suvv += u * v * v; svuu += v * u * u; });
+    const det = suu * svv - suv * suv;
+    if (Math.abs(det) < 1e-9) return null;
+    const a = (suuu + suvv) / 2, b = (svvv + svuu) / 2;
+    const uc = (a * svv - b * suv) / det, vc = (b * suu - a * suv) / det;
+    const x = uc + mx, y = vc + my, r = Math.sqrt(uc * uc + vc * vc + (suu + svv) / pts.length);
+    let err = 0;
+    pts.forEach(p => { err = Math.max(err, Math.abs(Math.hypot(p[0] - x, p[1] - y) - r)); });
+    return { x, y, r, err };
+  }
+
+  // Join segments that share ends into polylines.
+  function chain(segs) {
     const key = (x, y) => Math.round(x * 4) + ',' + Math.round(y * 4);
     const ends = new Map(), used = new Uint8Array(segs.length);
     segs.forEach((s, i) => { [key(s[0], s[1]), key(s[2], s[3])].forEach(k => { const l = ends.get(k); l ? l.push(i) : ends.set(k, [i]); }); });
-    const next = (x, y) => { const l = ends.get(key(x, y)) || []; for (const i of l) if (!used[i]) return i; return -1; };
+    // At a junction, go on along the segment that turns least, so a rim stays one loop and a
+    // slit or rib meeting it breaks off as its own line.
+    const next = (x, y, dx, dy) => {
+      const l = ends.get(key(x, y)) || [], k0 = key(x, y);
+      let best = -1, bd = -Infinity;
+      for (const i of l) {
+        if (used[i]) continue;
+        const s = segs[i], from0 = key(s[0], s[1]) === k0;
+        const ex = (from0 ? s[2] : s[0]) - x, ey = (from0 ? s[3] : s[1]) - y, L = Math.hypot(ex, ey) || 1;
+        const d = (ex * dx + ey * dy) / L;
+        if (d > bd) { bd = d; best = i; }
+      }
+      return best;
+    };
     const out = [];
     for (let i = 0; i < segs.length; i++) {
       if (used[i]) continue;
@@ -222,8 +335,9 @@
       const line = [[segs[i][0], segs[i][1]], [segs[i][2], segs[i][3]]];
       for (const fwd of [true, false]) {
         for (;;) {
-          const p = fwd ? line[line.length - 1] : line[0];
-          const j = next(p[0], p[1]);
+          const p = fwd ? line[line.length - 1] : line[0], o = fwd ? line[line.length - 2] : line[1];
+          const L = Math.hypot(p[0] - o[0], p[1] - o[1]) || 1;
+          const j = next(p[0], p[1], (p[0] - o[0]) / L, (p[1] - o[1]) / L);
           if (j < 0) break;
           used[j] = 1;
           const s = segs[j], same = key(s[0], s[1]) === key(p[0], p[1]);
@@ -231,7 +345,7 @@
           fwd ? line.push(q) : line.unshift(q);
         }
       }
-      out.push(simplify(line, tol));
+      out.push(line);
     }
     return out;
   }

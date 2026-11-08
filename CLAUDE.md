@@ -93,6 +93,24 @@ links to it so far. Before every commit:
     sketched circle or box), else the grid. Chips re-place one position, right-click removes a mark,
     marks drag. Make part stays disabled until every position has a mark. Mark size is auto (70% of the
     closest spacing) or set.
+  - **Face quality (2026-11-07, Chris: rough edges on a real M12 STEP).** Coarse tessellation was the
+    cause: 1 mm contacts came out near-octagons, a hole's front and back rims were polygons turned against
+    each other (doubled, notched outlines). Now `step.js` reads finer (`MESH`: bounding-box ratio 0.0004,
+    0.1 rad), welds across neighboring cells, despeckles visibility (`despeckle`), chains along the
+    straightest continuation at junctions, and turns rims that go all the way round into true circles
+    (`roundPart`, outliers such as a slit's tick set aside; `model.c`, drawn as `<circle>`). Arcs of one
+    circle adding up to half of it or more are round cavities (`model.f`, not drawn). Short ticks across
+    rings are real model edges (contact slits) and the 3D view shows them too. On that connector: 85k
+    triangles, 3.7 s to read, 0.7 s per face view, 23 KB stored.
+  - **Turning the face (Chris: the key at 4 o'clock had to go to 12).** In the face view: ±90° buttons, a
+    degrees field (`model.rot`), `[` and `]` (1°, Shift 15°), and **Point up**: click a feature and it turns
+    to 12 o'clock about the connector's axis (the center of the biggest circle at least 30% of the face,
+    else the frame's middle; `rotCenter`). It turns the stored drawing, circles, cavities and marks exactly
+    and turns `model.view` to match, so no model is needed (`rotate`). In 3D, Shift-drag rolls about the
+    view axis. Marks snap to fitted circles first (`snapMark`), other closed loops only where none is.
+  - Positions edits apply as typed, and the window swaps its Assign block and toolbar only when they
+    change: typing 8 then clicking Assign used to lose that click to the re-render (Chris: locked out
+    after going from 4 to 8). Enter makes the part only from Ref, Name or Description.
   - The CSP now allows `cdn.jsdelivr.net` for scripts and fetches, and `blob:` workers (three.js and
     OpenCascade, as Partcheck).
   - Not done: pinch zoom on the stage, the guide has no step for it, no tests.

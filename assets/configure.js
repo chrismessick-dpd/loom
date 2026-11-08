@@ -146,10 +146,12 @@
     if (t) t.innerHTML = `<span class="mono-ref">${esc(D.ref)}</span> ${esc(D.name || L.kindName(draftNode()))}`;
     const pv = $('#cfg-preview');
     if (pv) pv.innerHTML = Sh.faceSvg(api.h(), draftNode(), 520, 260);
-    const as = $('#cfg-assign');
-    if (as) as.outerHTML = assignHtml();
-    const tl = $('#cfg-tools');
-    if (tl) tl.innerHTML = toolsHtml();
+    // Swapped only when they change: a field committed on blur re-renders, and a swap under the
+    // pointer would eat the click that blurred it (typing 8 in Positions, then clicking Assign).
+    const as = $('#cfg-assign'), ah = assignHtml();
+    if (as && as.dataset.html !== ah) { as.outerHTML = ah; $('#cfg-assign').dataset.html = ah; }
+    const tl = $('#cfg-tools'), th = toolsHtml();
+    if (tl && tl.dataset.html !== th) { tl.innerHTML = th; tl.dataset.html = th; }
     draw2d();
   }
 
@@ -238,8 +240,10 @@
         `<span class="cfg-spacer"></span>${D.custom.model ? '<button class="btn" data-cfg="face-back">Cancel</button>' : ''}<button class="btn btn-primary" data-cfg="make-face">Make face view</button>`;
     }
     if (D.custom.model) {
+      const rot = `<span class="cfg-rot" title="Turn the face about the axis you're looking down ([ and ] turn 1°, with Shift 15°)"><button class="icon-btn" data-cfg="rot" data-v="-90" title="Turn left 90°" aria-label="Turn left 90°">${ico('left')}</button><button class="icon-btn" data-cfg="rot" data-v="90" title="Turn right 90°" aria-label="Turn right 90°">${ico('right')}</button><input class="input" type="number" step="1" data-cf="rot" value="${r2(D.custom.model.rot || 0)}" aria-label="Rotation in degrees">°</span>` +
+        `<button class="btn${D.pointUp ? ' on' : ''}" data-cfg="point-up" title="Click a feature, like the key, to turn it to 12 o'clock">Point up</button>`;
       return `<span class="cfg-file" title="${esc(D.custom.model.name || '')}">${ico('cube')}${esc(D.custom.model.name || 'Model')}</span>` +
-        (mesh ? '<button class="btn" data-cfg="change-view">Change view</button>' : '') + `<button class="btn" data-cfg="import">${mesh ? 'Another model…' : 'Import again…'}</button><span class="cfg-spacer"></span>${gridSel}${fit}`;
+        (mesh ? '<button class="btn" data-cfg="change-view">Change view</button>' : '') + `<button class="btn" data-cfg="import">${mesh ? 'Another model…' : 'Import again…'}</button>${rot}<span class="cfg-spacer"></span>${gridSel}${fit}`;
     }
     return mesh ? '' : '<span class="cfg-spacer"></span><button class="btn" data-cfg="import">Import a model…</button>';
   }
@@ -249,7 +253,7 @@
     const st = $('#cfg-stage');
     if (!st) return;
     if (D.tab === 'model' && D.busy) { st.innerHTML = `<div class="cfg-empty"><span class="spinner"></span>${esc(D.busy)}</div>`; return; }
-    if (D.tab === 'model' && D.mode3d && mesh) { st.innerHTML = '<div class="cfg-3d" id="cfg-3d"></div><div class="cfg-tip glass" id="cfg-tip">Drag to turn · scroll to zoom · click a face to look straight at it</div>'; mount3d($('#cfg-3d')); return; }
+    if (D.tab === 'model' && D.mode3d && mesh) { st.innerHTML = '<div class="cfg-3d" id="cfg-3d"></div><div class="cfg-tip glass" id="cfg-tip">Drag to turn · Shift-drag to roll · scroll to zoom · click a face to look straight at it</div>'; mount3d($('#cfg-3d')); return; }
     if (D.tab === 'model' && !D.custom.model) {
       st.innerHTML = `<div class="cfg-empty cfg-drop" id="cfg-drop">${ico('cube', 'big')}<b>Drop a STEP, IGES or STL file here</b><span>or</span><button class="btn btn-primary" data-cfg="import">Import a model…</button>
         <p class="f-hint">Turn it, or click a face to look straight at it, then make the face view. Loom keeps that drawing; the model itself stays in this tab only. Vendors’ sites and 3D ContentCentral usually have connector models.</p></div>`;
@@ -316,6 +320,7 @@
     svg.innerHTML = o;
     svg.classList.toggle('assigning', D.assign >= 0);
     svg.classList.toggle('drawing', D.tab === 'sketch' && D.tool !== 'select');
+    svg.classList.toggle('pointing', !!D.pointUp);
   }
   function ink(hex) {
     const v = parseInt(String(hex).slice(1), 16), r = v >> 16, g = (v >> 8) & 255, b = v & 255;
@@ -357,8 +362,9 @@
     const p = part();
     if (D.tab === 'model') {
       if (!p) return [];
-      if (loopCache && loopCache.d === p.d) return loopCache.list;
+      if (loopCache && loopCache.d === p.d && loopCache.c === p.c && loopCache.f === p.f) return loopCache.list;
       const list = [], big = Math.max(p.w, p.h) * 0.3;
+      (p.c || []).concat(p.f || []).forEach(c => { if (c[2] * 2 <= big) list.push({ x: c[0] * p.k, y: c[1] * p.k, rx: c[2] * p.k, ry: c[2] * p.k, round: true }); });
       p.d.split('M').filter(Boolean).forEach(s => {
         const pts = s.split('L').map(q => q.trim().split(' ').map(Number));
         if (pts.length < 4) return;
@@ -367,7 +373,7 @@
         if (Math.hypot(a[0] - b[0], a[1] - b[1]) > Math.max(w, h) * 0.05 || Math.max(w, h) > big) return;
         list.push({ x: (Math.max(...xs) + Math.min(...xs)) / 2 * p.k, y: (Math.max(...ys) + Math.min(...ys)) / 2 * p.k, rx: w / 2 * p.k, ry: h / 2 * p.k });
       });
-      loopCache = { d: p.d, list };
+      loopCache = { d: p.d, c: p.c, f: p.f, list };
       return list;
     }
     return p.shapes.filter(s => s.t !== 'line').map(s => ({ x: s.x + s.w / 2, y: s.y + s.h / 2, rx: s.w / 2, ry: s.h / 2 }));
@@ -375,7 +381,10 @@
   function snapMark(p, e) {
     if (e && e.altKey) return { x: r2(p.x), y: r2(p.y) };
     let best = null;
-    features().forEach(c => { if (Math.abs(p.x - c.x) <= c.rx * 1.15 && Math.abs(p.y - c.y) <= c.ry * 1.15 && (!best || c.rx * c.ry < best.rx * best.ry)) best = c; });
+    // Round ones (fitted circles) first; other closed loops only where no circle is under the pointer.
+    const inside = c => Math.hypot((p.x - c.x) / (c.rx * 1.15), (p.y - c.y) / (c.ry * 1.15)) <= 1;
+    const fs = features(), round = fs.filter(c => c.round && inside(c));
+    (round.length ? round : fs.filter(c => !c.round && inside(c))).forEach(c => { if (!best || c.rx * c.ry < best.rx * best.ry) best = c; });
     // Sketched boxes much bigger than a mark are housings, not cavities.
     if (best && D.tab === 'sketch' && Math.max(best.rx, best.ry) * 2 > Sh.markSize(D.custom, part().pins) * 4) best = null;
     return best ? { x: r2(best.x), y: r2(best.y) } : snapP(p, e);
@@ -389,6 +398,7 @@
     if (e.button === 2) return;
     const mk = t.closest('[data-mark]');
     if (mk && D.assign < 0) { const i = +mk.dataset.mark, q = part().pins[i]; pushUndo(); drag = { kind: 'mark', i, dx: p.x - q[0], dy: p.y - q[1], moved: false }; capture(e); return; }
+    if (D.pointUp) { pointUp(p); return; }
     if (D.assign >= 0) { placeMark(snapMark(p, e)); return; }
     if (D.tab === 'sketch') {
       const sk = D.custom.sketch, hd = t.closest('[data-handle]');
@@ -446,7 +456,7 @@
     } else if (drag.kind === 'resize') resize(s, drag.orig, drag.hd, snapP(p, e), e.shiftKey);
     draw2d();
     const tl = $('#cfg-tools'); // the selected shape's X, Y, W, H follow the drag
-    if (tl && !tl.contains(document.activeElement)) tl.innerHTML = toolsHtml();
+    if (tl && !tl.contains(document.activeElement)) { const th = toolsHtml(); if (tl.dataset.html !== th) { tl.innerHTML = th; tl.dataset.html = th; } }
   }
   function resize(s, o, hd, q, keep) {
     if (hd === 'p1') { s.x = q.x; s.y = q.y; return; }
@@ -496,6 +506,11 @@
   function ghost(e) {
     const g = $('#cfg-ghost');
     if (!g) return;
+    if (D.pointUp && e) {
+      const p = pt(e), c = rotCenter(), cx = c[0] * part().k, cy = c[1] * part().k;
+      g.innerHTML = `<line class="cfg-upline" x1="${cx}" y1="${cy}" x2="${p.x}" y2="${p.y}" vector-effect="non-scaling-stroke"/><circle class="cfg-upc" cx="${cx}" cy="${cy}" r="${4 / D.cam.model.z}"/>`;
+      return;
+    }
     if (D.assign < 0 || !e) { g.innerHTML = ''; return; }
     const q = snapMark(pt(e), e), r = Sh.markSize(D.custom, part() ? part().pins : []) / 2, nm = names()[D.assign];
     g.innerHTML = `<circle class="cfg-ghost" cx="${q.x}" cy="${q.y}" r="${r}" vector-effect="non-scaling-stroke"/><text class="cfg-ghost-t" x="${q.x}" y="${q.y}" dy="0.36em" text-anchor="middle" font-size="${r2(r * (nm.length > 2 ? 0.75 : 1))}">${esc(nm)}</text>`;
@@ -513,6 +528,7 @@
     if (!p) return;
     if (i != null) { D.assign = D.assign === i ? -1 : i; refresh(); return; }
     if (D.assign >= 0) { D.assign = -1; refresh(); return; }
+    D.pointUp = false;
     let nxt = p.pins.findIndex(v => !v);
     if (nxt < 0) {
       if (!confirm(`Place all ${count()} marks again? The ones there now are cleared.`)) return;
@@ -523,6 +539,57 @@
     D.assign = nxt;
     if (D.tab === 'sketch') D.tool = 'select';
     refresh();
+  }
+
+  // ── Turning the face view ──
+  // Turning about the axis we look down is exact on the drawing itself, so it works without the
+  // model in memory: points, circles and marks turn about the center (the connector's axis when a
+  // big circle shows it), the frame is fitted again, and the stored view turns to match.
+  function rotCenter() {
+    const p = part(), big = (p.c || []).concat(p.f || []).filter(c => c[2] * 2 >= Math.max(p.w, p.h) * 0.3).sort((a, b) => b[2] - a[2])[0];
+    return big ? [big[0], big[1]] : [p.w / 2, p.h / 2];
+  }
+  function rotate(deg) {
+    const p = part();
+    if (!p || D.tab !== 'model' || !deg) return;
+    pushUndo();
+    const th = deg * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th), [cx, cy] = rotCenter();
+    const turn = (x, y) => [cx + (x - cx) * cs - (y - cy) * sn, cy + (x - cx) * sn + (y - cy) * cs];
+    const pts = [];
+    p.d.replace(/[ML](-?[\d.]+) (-?[\d.]+)/g, (m, x, y) => { pts.push(turn(+x, +y)); return m; });
+    const circ = (p.c || []).map(c => { const [x, y] = turn(c[0], c[1]); return [x, y, c[2]]; });
+    const feat = (p.f || []).map(c => { const [x, y] = turn(c[0], c[1]); return [x, y, c[2]]; });
+    const pins = p.pins.map(q => (q ? turn(q[0] / p.k, q[1] / p.k) : null));
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const grow = (x, y, r) => { x0 = Math.min(x0, x - r); y0 = Math.min(y0, y - r); x1 = Math.max(x1, x + r); y1 = Math.max(y1, y + r); };
+    pts.forEach(q => grow(q[0], q[1], 0));
+    circ.forEach(c => grow(c[0], c[1], c[2]));
+    const r1 = v => Math.round(v * 10) / 10;
+    let i = 0;
+    p.d = p.d.replace(/([ML])(-?[\d.]+) (-?[\d.]+)/g, (m, c) => { const q = pts[i++]; return c + r1(q[0] - x0) + ' ' + r1(q[1] - y0); });
+    p.c = circ.map(c => [r1(c[0] - x0), r1(c[1] - y0), c[2]]);
+    p.f = feat.map(c => [r1(c[0] - x0), r1(c[1] - y0), c[2]]);
+    p.pins = pins.map(q => (q ? [r2((q[0] - x0) * p.k), r2((q[1] - y0) * p.k)] : null));
+    p.w = r1(x1 - x0); p.h = r1(y1 - y0);
+    // The drawing stays put on screen.
+    const cam = D.cam.model;
+    if (cam) { cam.cx -= x0 * p.k; cam.cy -= y0 * p.k; }
+    if (p.view) {
+      const r = p.view.right, u = p.view.up, cl = v => Math.round(v * 1e6) / 1e6;
+      p.view = { look: p.view.look, right: r.map((v, j) => cl(cs * v + sn * u[j])), up: u.map((v, j) => cl(cs * v - sn * r[j])) };
+    }
+    p.rot = r2((((p.rot || 0) + deg) % 360 + 540) % 360 - 180);
+    loopCache = null;
+    refresh();
+    const ri = $('#cfg-tools [data-cf="rot"]');
+    if (ri && document.activeElement !== ri) ri.value = p.rot;
+  }
+  // Turn so the clicked point is straight above the center.
+  function pointUp(q) {
+    const p = part(), [cx, cy] = rotCenter();
+    const a = Math.atan2(q.y / p.k - cy, q.x / p.k - cx) * 180 / Math.PI;
+    D.pointUp = false;
+    rotate(r2(-90 - a));
   }
 
   // ── 3D ──
@@ -668,6 +735,14 @@
     if (!d3.moved && Math.hypot(dx, dy) < 4) return;
     d3.moved = true;
     const T = window.THREE;
+    if (e.shiftKey) {
+      // Shift: roll about the axis we look down, by the pointer's turn about the view's center.
+      const r = V3.renderer.domElement.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const a = Math.atan2(e.clientY - cy, e.clientX - cx) - Math.atan2(d3.y - cy, d3.x - cx);
+      V3.q.copy(d3.q.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), -a)));
+      draw3d();
+      return;
+    }
     const q = d3.q.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 1, 0), -dx * 0.01)).multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), -dy * 0.01));
     V3.q.copy(q);
     draw3d();
@@ -760,7 +835,7 @@
     const old = D.custom.model;
     const same = old && old.view && JSON.stringify(old.view) === JSON.stringify({ look, right, up }) && old.name === D.fileName;
     pushUndo();
-    D.custom.model = { name: D.fileName, d: sk.d, w: sk.w, h: sk.h, k: sk.mm / 1000, view: { look, right, up }, pins: same ? old.pins : [] };
+    D.custom.model = { name: D.fileName, d: sk.d, c: sk.c, f: sk.f, w: sk.w, h: sk.h, k: sk.mm / 1000, view: { look, right, up }, rot: 0, pins: same ? old.pins : [] };
     syncPins();
     D.mode3d = false;
     D.err = '';
@@ -802,6 +877,8 @@
       case 'make-face': makeFace(); break;
       case 'change-view': D.mode3d = true; D.assign = -1; V3q(null); render(); break;
       case 'face-back': D.mode3d = false; render(); break;
+      case 'rot': rotate(+v); break;
+      case 'point-up': D.pointUp = !D.pointUp; D.assign = -1; refresh(); break;
     }
   }
   function delShape() {
@@ -812,9 +889,23 @@
     D.sel = null;
     refresh();
   }
+  // The position count, as it's typed (a whole number in range) and again when committed.
+  function setPositions(el, commit) {
+    const raw = +el.value;
+    if (!commit && !(Number.isInteger(raw) && raw >= 1 && raw <= MAX_POS)) return;
+    const v = Math.max(1, Math.min(MAX_POS, Math.round(raw || 1)));
+    if (commit && String(v) !== el.value) el.value = v;
+    if (v === D.pins) return;
+    if (D.undoField !== el) { pushUndo(); D.undoField = el; }
+    D.pins = v;
+    syncPins();
+    if (D.assign >= count()) D.assign = -1;
+    refresh();
+  }
   function onInput(e) {
     const el = e.target, k = el.dataset && el.dataset.cf;
     if (!k || !D) return;
+    if (k === 'pins' && el.type === 'number') { setPositions(el, false); return; }
     if (k === 'ref' || k === 'name') { D[k] = el.value; refresh(); return; }
     if (k === 'kind') { D.custom.kind = el.value; refresh(); return; }
     if (k === 'mark') { D.custom.mark = +el.value || 0; const lab = el.closest('.field').querySelector('label .pc-muted'); if (lab) lab.textContent = D.custom.mark ? D.custom.mark.toFixed(1) + ' mm' : 'auto, ' + r2(Sh.markSize({}, part() ? part().pins : [])).toFixed(1) + ' mm'; draw2d(); const pv = $('#cfg-preview'); if (pv) pv.innerHTML = Sh.faceSvg(api.h(), draftNode(), 520, 260); return; }
@@ -832,18 +923,9 @@
     if (el.id === 'cfg-file') { importFile(el.files[0]); el.value = ''; return; }
     if (!k || !D) return;
     if (k === 'series') { if (el.value) { D.family = el.value; const tmp = { family: el.value, pins: D.pins, rows: D.rows }; L.conform(tmp); D.pins = tmp.pins; D.rows = tmp.rows; D.assign = -1; render(); } return; }
-    if (k === 'pins') {
-      const v = Math.max(1, Math.min(MAX_POS, Math.round(+el.value || 1)));
-      el.value = v;
-      if (v === D.pins) return;
-      pushUndo();
-      D.pins = v;
-      syncPins();
-      if (D.assign >= count()) D.assign = -1;
-      refresh();
-      return;
-    }
+    if (k === 'pins') { setPositions(el, true); return; }
     if (k === 'grid') { D.grid = +el.value; draw2d(); return; }
+    if (k === 'rot') { const p = part(); if (p && isFinite(+el.value)) rotate(r2(+el.value - (p.rot || 0))); return; }
     if (k === 'trace') { D.trace = el.checked; draw2d(); return; }
     if (k === 'shape.fill') { const s = selShape(); if (s) { pushUndo(); s.fill = el.checked ? undefined : false; if (s.fill === undefined) delete s.fill; draw2d(); } }
   }
@@ -854,13 +936,15 @@
       e.preventDefault();
       if (typing) { document.activeElement.blur(); return true; }
       if (drag) return true;
+      if (D.pointUp) { D.pointUp = false; refresh(); ghost(null); return true; }
       if (D.assign >= 0) { D.assign = -1; refresh(); return true; }
       if (D.tab === 'sketch' && D.tool !== 'select') { D.tool = 'select'; refresh(); return true; }
       if (D.sel) { D.sel = null; refresh(); return true; }
       close();
       return true;
     }
-    if (typing) { if (e.key === 'Enter' && e.target.dataset.cf && !e.target.dataset.cf.startsWith('shape.')) { e.preventDefault(); apply(); } return true; }
+    // Enter in Ref, Name or Description makes the part; in a number field it only commits it.
+    if (typing) { if (e.key === 'Enter') { const k = e.target.dataset.cf; if (k === 'ref' || k === 'name' || k === 'kind') { e.preventDefault(); apply(); } else if (k) { e.preventDefault(); e.target.blur(); } } return true; }
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return true; }
     if (mod) return true;
@@ -869,6 +953,7 @@
     const key = e.key.toLowerCase();
     if (key === 'f') { fitView(); draw2d(); return true; }
     if (key === 'a') { startAssign(); return true; }
+    if ((e.key === '[' || e.key === ']' || e.key === '{' || e.key === '}') && D.tab === 'model' && !D.mode3d && part()) { rotate((e.key === '[' || e.key === '{' ? -1 : 1) * (e.shiftKey ? 15 : 1)); return true; }
     if (D.tab === 'sketch') { const t = TOOLS.find(x => x[2].toLowerCase() === key); if (t) { D.tool = t[0]; D.assign = -1; refresh(); } }
     return true;
   }
