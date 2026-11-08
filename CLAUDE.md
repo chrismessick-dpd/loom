@@ -20,7 +20,7 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
-- **Storage and Signoff PL (2026-11-07, Chris; branch `store`, with `signoff_pl` branch `loom`):** harnesses
+- **Storage and Signoff PL (2026-11-07, Chris; branch `store`, merged to `main` with Configure and pushed, as was `signoff_pl` branch `loom`):** harnesses
   sync with one private repo for all of them, `loom_data` (`assets/store.js`, `LM.store`), through the
   Signoff engine's `GitHubStore`, vendored from EE into `assets/vendor/model.js` and `github.js`
   (`tools/sync_vendor.py`). `chrismessick-dpd/loom_data` was created 2026-11-07 (private, `main` with only a
@@ -58,8 +58,44 @@ links to it so far. Before every commit:
     `slimPl`, and sync against `tests/fake-hub.js` (copied from PL), in storage `loom.test.*`
     (`LM.store.setNamespace`).
   - **Not done:** the live sync with a real token; PL's demo has no harness Part yet (its snapshot
-    generator would need Loom's demo summary, and `../loom` on `main` has no `store.js` until this merges).
+    generator would need Loom's demo summary).
     Demo `VERSION` 15 (the demo harness's client project).
+- **Configure a connector (2026-11-07, Chris; merged to `main` from branch `connector-config` in `b7aa21d`, pushed):** a Configure button
+  in a connector's Properties header (`.cfg-open`; the face tile and a custom part's Positions field open it
+  too) opens `assets/configure.js` (`LM.configure`), a window over the app (`#cfg-modal`). It sets the ref,
+  name and type: the Generic families as tiles with their faces, any series from a list, or **Custom**. The
+  existing Properties fields still edit the same node. The window edits a draft, and Make part (Apply for a
+  family) writes it as one change, so one undo reverts it; Esc steps back (assigning, tool, selection) and
+  then closes, and Ctrl+Z inside undoes the draft only.
+  - **Custom** is family `custom` (`style: 'custom'`) with its drawing in `n.custom`, all in mm:
+    `{ kind, mark, src, sketch: { shapes, pins }, model: { name, d, w, h, k, view, pins } }`. `kind` is the
+    description shown in place of a family name (`library.kindName`: the info row, the sheet, the BOM).
+    `pins[i]` is the mark for `M.pinList(n)[i]` (so board pin names like A1 work; a board's count is locked).
+    `shapes.js` `custom` draws the face from it: the sketch or the model's edges, and a cavity per mark
+    filled with its wire's color, on the canvas header, the Properties tile and the sheet. The back view
+    mirrors it left to right; gender doesn't flip a drawing made by hand. Switching to a family keeps
+    `n.custom`, and the Family list offers Custom again once one exists.
+  - **3D model tab:** import (or drop) STEP, IGES or STL. OpenCascade reads it in `occt-worker.js` and
+    `step.js` makes the mesh (STL parsed in `step.js`); three.js r149 (Partcheck's pinned build, loaded
+    on first use) shows it orthographic, turned like a trackball (one quaternion, `V3.q`). Clicking a face
+    looks straight at it (area-weighted normal of its b-rep face; up the nearest world axis), with the
+    face under the pointer lit; ±X/Y/Z buttons and 90° turns too. Make face view runs `step.sketch` with
+    that view basis (it now takes any `{ look, right, up }`), and only that hidden-line path is kept: the
+    model stays in memory for the session (`meshes`), so changing the view after a reload means importing
+    again. Fixed in `step.js` on the way: closed loops collapsed to dots in `simplify`, and inside-out
+    meshes (negative volume) now flip their normals.
+  - **Sketch tab:** Select, Rectangle, Rounded rectangle, Circle or ellipse and Line (V R U C L), drag to
+    draw (a click places a typical size; Shift squares), move and resize by eight handles, X/Y/W/H/R
+    fields and Fill for the selection, a snap grid (0.1 to 2.54 mm; Alt places freely), wheel zoom, pan by
+    right drag or empty space, Trace model to sketch over the model's face view.
+  - **Assign Y/N:** the Positions count, then Assign (A): each click drops the next mark in pin order, onto
+    the center of the smallest cavity under the pointer (a closed loop of the model's face, or a small
+    sketched circle or box), else the grid. Chips re-place one position, right-click removes a mark,
+    marks drag. Make part stays disabled until every position has a mark. Mark size is auto (70% of the
+    closest spacing) or set.
+  - The CSP now allows `cdn.jsdelivr.net` for scripts and fetches, and `blob:` workers (three.js and
+    OpenCascade, as Partcheck).
+  - Not done: pinch zoom on the stage, the guide has no step for it, no tests.
 
 - **The guide (2026-11-07, Chris: an interactive getting started for new users):** `assets/guide.js`,
   `window.LoomGuide` (also `LM.guide`). 25 steps in seven chapters (Welcome, The canvas, Ends and wires,
@@ -434,9 +470,8 @@ links to it so far. Before every commit:
   - the rest of the integration (Fabcheck connectors → EE summary → PL *Connectors & harnesses*;
     see the direction doc);
   - a revision table on the sheet;
-  - connector sketches from STEP (paused; `step.js` and `occt-worker.js` are unused);
   - WireViz import and export;
-  - tests.
+  - tests beyond sync (`tests/test.html` covers `store.js` only).
 - A client's in-house harness tool inspired the twist, shield and merged-leg ideas. Don't name it
   here (this repo is public), and no code or data from it goes in.
 
@@ -459,8 +494,9 @@ links to it so far. Before every commit:
 ## Layout
 
 All files are classic scripts sharing `window.LM`, with no build step. JSZip and SheetJS load from
-CDNs with the same pinned integrity hashes as Fabcheck. GitHub (`loom_data` read and write; Signoff EE's and PL's repos read only) is the only other network
-use, and the CSP in `index.html` allows just those.
+CDNs with the same pinned integrity hashes as Fabcheck; three.js and OpenCascade (Configure's 3D tab)
+from jsDelivr with Partcheck's. GitHub (`loom_data` read and write; Signoff EE's and PL's repos read
+only) is the only other network use, and the CSP in `index.html` allows just those.
 
 | File | What |
 | --- | --- |
@@ -471,7 +507,9 @@ use, and the CSP in `index.html` allows just those.
 | `assets/vendor/` | Fabcheck's `ipc356.js` and `assembly.js`, and the Signoff engine's `model.js` and `github.js` (from EE). Don't edit; run `tools/sync_vendor.py`. |
 | `tests/` | `test.html` (open over http) and `fake-hub.js`. |
 | `assets/library.js` | Parametric connector families. Housing part numbers are suggested only where the series names them by pin count. |
-| `assets/shapes.js` | Face views, labeled with the side shown, with a pin-1 mark. |
+| `assets/shapes.js` | Face views, labeled with the side shown, with a pin-1 mark; custom faces from `n.custom`. |
+| `assets/configure.js` | The Configure window: ref, name, type, and a custom face from a 3D model or a sketch with assigned positions. |
+| `assets/step.js`, `occt-worker.js` | STEP, IGES and STL to a mesh, and a view's visible edges as one path. |
 | `assets/sheet.js` | The paper sheet, a self-contained SVG with its own `.lm-sheet` styles. |
 | `assets/app.js` | The UI. |
 | `assets/demo.js` | The Smart Thermostat demo harness. |

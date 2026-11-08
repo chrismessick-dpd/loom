@@ -94,7 +94,8 @@
       if (!remote) return local;
       if (!isDirty(local.id)) return remote;
       if (stable(local.harness) === stable(remote.harness)) return remote;
-      const lt = local.meta.updatedAt || '', rt = remote.meta.updatedAt || '';
+      // By the harness's own clock, not the derived meta, which a file could carry stale.
+      const lt = Number(local.harness && local.harness.updated) || 0, rt = Number(remote.harness && remote.harness.updated) || 0;
       const win = lt > rt ? local : remote;
       onConflict(win === local ? remote : local, win);
       return win;

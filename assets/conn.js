@@ -128,7 +128,7 @@
   // ("JST GH receptacle") over the labels, and the count ("8-pins") over the pin numbers.
   function connInfo(n) {
     const fam = LM.library.family(n.family);
-    const kind = [fam.short || fam.name, LM.library.hasHousing(fam) ? (n.gender === 'plug' ? 'plug' : 'receptacle') : ''].filter(Boolean).join(' ');
+    const kind = [LM.library.kindName(n), LM.library.hasHousing(fam) ? (n.gender === 'plug' ? 'plug' : 'receptacle') : ''].filter(Boolean).join(' ');
     const count = n.pins + (fam.style === 'flying' ? '-lead' : '-pin') + (n.pins === 1 ? '' : 's');
     return { kind, count };
   }
@@ -143,7 +143,8 @@
   // height it was a dot beside the wide rectangular ones), and the header grows to hold it.
   function sketchOf(h, n, H) {
     const v = LM.shapes.face(h, n, LM.shapes.views(n)[0]);
-    if (LM.library.family(n.family).style === 'circular') H *= 2;
+    const st = LM.library.family(n.family).style;
+    if (st === 'circular' || (st === 'custom' && v.h > v.w * 0.55)) H *= 2;
     const k = Math.min(H / v.h, 64 / v.w);
     return { v, k, w: v.w * k, h: v.h * k };
   }

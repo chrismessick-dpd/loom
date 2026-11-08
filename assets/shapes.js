@@ -106,8 +106,58 @@
     return { svg: o, w: 124, h: 60, ox: 0 };
   }
 
-  const VIEW_NOTE = { rect: 'Mating face, latch up', dsub: 'Mating face', circular: 'Mating face, key up', flying: 'Lead ends', ring: 'Side view', ferrule: 'Side view' };
-  const BACK_NOTE = { rect: 'Wire side, latch up', dsub: 'Wire side', circular: 'Wire side, key up' };
+  // A custom connector (Configure): the outline sketched, or a 3D model's face edges, with a mark at
+  // each assigned position, all in mm (n.custom). Drawn as it was configured: the mating face, as
+  // seen. The back mirrors it left to right; gender doesn't flip a drawing made by hand.
+  function customParts(n) {
+    const c = n.custom || {}, src = c.src === 'model' ? 'model' : 'sketch', part = c[src] || {};
+    const pins = part.pins || [];
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const grow = (x, y) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); };
+    if (src === 'model' && part.d) { grow(0, 0); grow(part.w * part.k, part.h * part.k); }
+    else (part.shapes || []).forEach(s => { if (s.t === 'line') { grow(s.x, s.y); grow(s.x2, s.y2); } else { grow(s.x, s.y); grow(s.x + s.w, s.y + s.h); } });
+    const r = markSize(c, pins) / 2;
+    pins.forEach(p => { if (p) { grow(p[0] - r, p[1] - r); grow(p[0] + r, p[1] + r); } });
+    if (!isFinite(x0)) { x0 = 0; y0 = 0; x1 = 10; y1 = 6; }
+    return { c, src, part, pins, r, x0, y0, x1, y1 };
+  }
+  // A mark's diameter in mm: as set, else most of the closest spacing between marks.
+  function markSize(c, pins) {
+    if (c.mark > 0) return c.mark;
+    const ps = (pins || []).filter(Boolean);
+    let best = Infinity;
+    for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) best = Math.min(best, Math.hypot(ps[i][0] - ps[j][0], ps[i][1] - ps[j][1]));
+    return isFinite(best) ? Math.max(0.4, Math.min(4, best * 0.7)) : 1.5;
+  }
+  // Sketch shapes and model edges in px, through X(x) and Y(y); cls picks the stroke look.
+  function customSvg(P, X, Y, s) {
+    let o = '';
+    if (P.src === 'model' && P.part.d) {
+      const k = P.part.k;
+      const d = P.part.d.replace(/([ML])(-?[\d.]+) (-?[\d.]+)/g, (m, c, x, y) => c + f(X(+x * k)) + ' ' + f(Y(+y * k)));
+      o += `<path class="fv-edge" d="${d}"/>`;
+    } else (P.part.shapes || []).forEach(sh => {
+      const cls = sh.t === 'line' ? 'fv-edge' : sh.fill === false ? 'fv-outline' : 'fv-body';
+      if (sh.t === 'line') o += `<line class="${cls}" x1="${f(X(sh.x))}" y1="${f(Y(sh.y))}" x2="${f(X(sh.x2))}" y2="${f(Y(sh.y2))}"/>`;
+      else if (sh.t === 'ellipse') o += `<ellipse class="${cls}" cx="${f(X(sh.x + sh.w / 2))}" cy="${f(Y(sh.y + sh.h / 2))}" rx="${f(sh.w * s / 2)}" ry="${f(sh.h * s / 2)}"/>`;
+      else {
+        const xa = Math.min(X(sh.x), X(sh.x + sh.w));
+        o += `<rect class="${cls}" x="${f(xa)}" y="${f(Y(sh.y))}" width="${f(sh.w * s)}" height="${f(sh.h * s)}" rx="${f(Math.min(sh.r || 0, sh.w / 2, sh.h / 2) * s)}"/>`;
+      }
+    });
+    return o;
+  }
+  function custom(n, cols, back) {
+    const P = customParts(n), names = LM.model.pinList(n);
+    const W = P.x1 - P.x0, Hm = P.y1 - P.y0, s = 150 / Math.max(W, Hm, 1e-6), m = 6;
+    const X = back ? x => m + (P.x1 - x) * s : x => m + (x - P.x0) * s, Y = y => m + (y - P.y0) * s;
+    let o = customSvg(P, X, Y, s);
+    P.pins.forEach((p, i) => { if (p && names[i] != null) o += cavity(X(p[0]), Y(p[1]), P.r * 2 * s, true, names[i], cols.get(names[i])); });
+    return { svg: o, w: W * s + m * 2, h: Hm * s + m * 2, ox: 0 };
+  }
+
+  const VIEW_NOTE = { rect: 'Mating face, latch up', dsub: 'Mating face', circular: 'Mating face, key up', flying: 'Lead ends', ring: 'Side view', ferrule: 'Side view', custom: 'Mating face, as configured' };
+  const BACK_NOTE = { rect: 'Wire side, latch up', dsub: 'Wire side', circular: 'Wire side, key up', custom: 'Wire side, mirrored' };
 
   // Housings have a wire side worth drawing; leads, rings and ferrules are side views only.
   const hasBack = n => !!BACK_NOTE[L.family(n.family).style];
@@ -121,7 +171,7 @@
   // A face view as an SVG fragment drawn from (0, 0), with its size and the side it shows.
   function face(h, n, view) {
     const fam = L.family(n.family), cols = pinColors(h, n);
-    const fn = { rect, dsub, circular, flying, ring, ferrule }[fam.style] || rect;
+    const fn = { rect, dsub, circular, flying, ring, ferrule, custom }[fam.style] || rect;
     const back = view === 'back' && hasBack(n);
     const v = fn(n, cols, back);
     return Object.assign(v, { view: back ? 'back' : 'front', note: (back ? BACK_NOTE : VIEW_NOTE)[fam.style] || 'Mating face' });
@@ -149,5 +199,5 @@
     return `<svg class="lm-face" viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${r.svg}</svg>`;
   }
 
-  LM.shapes = { face, faceSvg, fitViews, views, hasBack, VIEW_NOTE, BACK_NOTE };
+  LM.shapes = { face, faceSvg, fitViews, views, hasBack, VIEW_NOTE, BACK_NOTE, customParts, customSvg, markSize, pinColors, cavity };
 })(window.LM = window.LM || {});
