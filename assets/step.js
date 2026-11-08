@@ -119,6 +119,42 @@
     return mesh;
   }
 
+  // The model's axes: the normals of its planar b-rep faces (unit vectors, one per direction, the
+  // biggest faces first), then the world axes. A view a hair off one of these doubles every rim,
+  // since a hole's front and back rims no longer coincide, so views snap to them (configure.js).
+  function axes(mesh) {
+    if (mesh.axes) return mesh.axes;
+    const { idx, pos, face } = mesh, nt = idx.length / 3, F = new Map();
+    for (let t = 0; t < nt; t++) {
+      const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, ar = Math.hypot(x, y, z) / 2;
+      if (!ar) continue;
+      let f = F.get(face[t]);
+      if (!f) F.set(face[t], f = { area: 0, n: [0, 0, 0] });
+      f.area += ar; f.n[0] += x / 2; f.n[1] += y / 2; f.n[2] += z / 2;
+    }
+    const COS_SAME = Math.cos(0.5 * Math.PI / 180), out = [];
+    const add = (n, area) => {
+      // One entry per direction, either sign: point it along its first nonzero component.
+      const k = [0, 1, 2].find(i => Math.abs(n[i]) > 1e-9);
+      if (k !== undefined && n[k] < 0) n = n.map(v => -v);
+      const o = out.find(e => Math.abs(e.n[0] * n[0] + e.n[1] * n[1] + e.n[2] * n[2]) >= COS_SAME);
+      if (o) o.area += area; else out.push({ n, area });
+    };
+    F.forEach(f => {
+      const L = Math.hypot(f.n[0], f.n[1], f.n[2]);
+      if (f.area > 0 && L > f.area * 0.999) add(f.n.map(v => v / L), f.area);
+    });
+    out.sort((a, b) => b.area - a.area);
+    const top = out.length ? out[0].area : 0;
+    const list = out.filter(e => e.area >= top * 0.01).map(e => e.n.map(v => (Math.abs(v) < 1e-9 ? 0 : v)));
+    [[1, 0, 0], [0, 1, 0], [0, 0, 1]].forEach(w => { if (!list.some(n => Math.abs(n[0] * w[0] + n[1] * w[1] + n[2] * w[2]) >= COS_SAME)) list.push(w); });
+    mesh.axes = list;
+    return list;
+  }
+
   // Six views, each looking at the model from one side: the direction we look, then screen right and up.
   const VIEWS = {
     '+Z': { look: [0, 0, -1], right: [1, 0, 0], up: [0, 1, 0], label: 'From +Z' },
@@ -407,5 +443,5 @@
     return prepare(toMesh(res));
   }
 
-  LM.step = { load, sketch, prepare, kindOf, VIEWS, OCCT };
+  LM.step = { load, sketch, prepare, axes, kindOf, VIEWS, OCCT };
 })(window.LM = window.LM || {});

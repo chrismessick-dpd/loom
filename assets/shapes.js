@@ -129,21 +129,25 @@
     for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) best = Math.min(best, Math.hypot(ps[i][0] - ps[j][0], ps[i][1] - ps[j][1]));
     return isFinite(best) ? Math.max(0.4, Math.min(4, best * 0.7)) : 1.5;
   }
-  // Sketch shapes and model edges in px, through X(x) and Y(y); cls picks the stroke look.
+  // Sketch shapes and model edges through X(x) and Y(y) at s output units per mm; cls picks the
+  // stroke look. Rounded to a tenth in px (the tile and the sheet); the Configure stage draws in mm
+  // at s = 1 and zooms with its viewBox, so there a tenth of a mm turned 1 mm contacts into
+  // wobbly loops: round to a thousandth instead.
   function customSvg(P, X, Y, s) {
+    const g = s < 10 ? v => Math.round(v * 1000) / 1000 : f;
     let o = '';
     if (P.src === 'model' && P.part.d) {
       const k = P.part.k;
-      const d = P.part.d.replace(/([ML])(-?[\d.]+) (-?[\d.]+)/g, (m, c, x, y) => c + f(X(+x * k)) + ' ' + f(Y(+y * k)));
+      const d = P.part.d.replace(/([ML])(-?[\d.]+) (-?[\d.]+)/g, (m, c, x, y) => c + g(X(+x * k)) + ' ' + g(Y(+y * k)));
       o += `<path class="fv-edge" d="${d}"/>`;
-      (P.part.c || []).forEach(c => { o += `<circle class="fv-edge" cx="${f(X(c[0] * k))}" cy="${f(Y(c[1] * k))}" r="${f(c[2] * k * s)}"/>`; });
+      (P.part.c || []).forEach(c => { o += `<circle class="fv-edge" cx="${g(X(c[0] * k))}" cy="${g(Y(c[1] * k))}" r="${g(c[2] * k * s)}"/>`; });
     } else (P.part.shapes || []).forEach(sh => {
       const cls = sh.t === 'line' ? 'fv-edge' : sh.fill === false ? 'fv-outline' : 'fv-body';
-      if (sh.t === 'line') o += `<line class="${cls}" x1="${f(X(sh.x))}" y1="${f(Y(sh.y))}" x2="${f(X(sh.x2))}" y2="${f(Y(sh.y2))}"/>`;
-      else if (sh.t === 'ellipse') o += `<ellipse class="${cls}" cx="${f(X(sh.x + sh.w / 2))}" cy="${f(Y(sh.y + sh.h / 2))}" rx="${f(sh.w * s / 2)}" ry="${f(sh.h * s / 2)}"/>`;
+      if (sh.t === 'line') o += `<line class="${cls}" x1="${g(X(sh.x))}" y1="${g(Y(sh.y))}" x2="${g(X(sh.x2))}" y2="${g(Y(sh.y2))}"/>`;
+      else if (sh.t === 'ellipse') o += `<ellipse class="${cls}" cx="${g(X(sh.x + sh.w / 2))}" cy="${g(Y(sh.y + sh.h / 2))}" rx="${g(sh.w * s / 2)}" ry="${g(sh.h * s / 2)}"/>`;
       else {
         const xa = Math.min(X(sh.x), X(sh.x + sh.w));
-        o += `<rect class="${cls}" x="${f(xa)}" y="${f(Y(sh.y))}" width="${f(sh.w * s)}" height="${f(sh.h * s)}" rx="${f(Math.min(sh.r || 0, sh.w / 2, sh.h / 2) * s)}"/>`;
+        o += `<rect class="${cls}" x="${g(xa)}" y="${g(Y(sh.y))}" width="${g(sh.w * s)}" height="${g(sh.h * s)}" rx="${g(Math.min(sh.r || 0, sh.w / 2, sh.h / 2) * s)}"/>`;
       }
     });
     return o;

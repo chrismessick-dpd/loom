@@ -891,6 +891,7 @@
     // Face the camera: a normal pointing away means the inside of a shell was hit.
     const toCam = new T.Vector3(0, 0, 1).applyQuaternion(V3.q);
     if (n.dot(toCam) < 0) n = n.negate();
+    n = new T.Vector3(...snapLook(n.toArray()));
     const curUp = new T.Vector3(0, 1, 0).applyQuaternion(V3.q);
     let best = null, bd = -2;
     [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].forEach(a => {
@@ -923,6 +924,20 @@
     requestAnimationFrame(step);
   }
   function view3d(key) { const v = LM.step.VIEWS[key]; if (v) { V3.faced = true; V3.roll = 0; V3.faceLook = v.look; fitFace(); glide(quatOf(v.look, v.up)); } }
+  // A direction within SNAP_DEG of one of the model's axes (a planar face's normal, or a world
+  // axis) becomes exactly that axis. A view a hair off axis doubles every rim in the face view,
+  // since a hole's front and back rims no longer coincide, and a trackball turn or a curved face's
+  // mean normal is never exact.
+  const SNAP_DEG = 3;
+  function snapLook(look) {
+    if (!mesh) return look;
+    let best = null, bd = Math.cos(SNAP_DEG * Math.PI / 180);
+    LM.step.axes(mesh).forEach(a => {
+      const d = look[0] * a[0] + look[1] * a[1] + look[2] * a[2];
+      if (Math.abs(d) > bd) { bd = Math.abs(d); best = d < 0 ? a.map(v => -v) : a; }
+    });
+    return best || look;
+  }
   // Looking straight at a face, zoom so it (and its ring) fill most of the view.
   function fitFace() {
     if (!mesh || !V3.center) return;
@@ -936,6 +951,12 @@
   function makeFace() {
     if (V3.goal) { V3.q.copy(V3.goal); V3.goal = null; }
     const T = window.THREE, clean = v => v.toArray().map(x => (Math.abs(x) < 1e-6 ? 0 : Math.round(x * 1e6) / 1e6));
+    // Nearly along one of the model's axes: exactly along it, and the 3D view follows.
+    const look0 = new T.Vector3(0, 0, -1).applyQuaternion(V3.q), snapped = snapLook(look0.toArray());
+    if (new T.Vector3(...snapped).distanceTo(look0) > 1e-9) {
+      V3.q.copy(quatOf(snapped, new T.Vector3(0, 1, 0).applyQuaternion(V3.q).toArray()));
+      V3.faced = true; V3.roll = 0; V3.faceLook = snapped;
+    }
     const look = clean(new T.Vector3(0, 0, -1).applyQuaternion(V3.q)), right = clean(new T.Vector3(1, 0, 0).applyQuaternion(V3.q)), up = clean(new T.Vector3(0, 1, 0).applyQuaternion(V3.q));
     const sk = LM.step.sketch(mesh, { look, right, up });
     if (!sk.d) { D.err = 'No edges show from this side. Turn the model and try again.'; refresh(); return; }

@@ -102,6 +102,17 @@ links to it so far. Before every commit:
     circle adding up to half of it or more are round cavities (`model.f`, not drawn). Short ticks across
     rings are real model edges (contact slits) and the 3D view shows them too. On that connector: 85k
     triangles, 3.7 s to read, 0.7 s per face view, 23 KB stored.
+    **Wobbly loops in the stage (2026-11-07, Chris: a clean 3D view, a messy face view, better off-axis)**
+    were not the projection: `shapes.js` `customSvg` rounds coordinates to a tenth (right in px on the tile
+    and the sheet), and the stage calls it at s = 1, in mm, so every vertex snapped to a 0.1 mm grid. It
+    now rounds to a thousandth below s = 10. Checked on an 8-position circular STEP: the app's view was an
+    exact `[-1, 0, 0]` and `sketch` gave the same path as a lab run that looked clean. Views a fraction of a
+    degree off axis genuinely double every rim (front and back rims no longer coincide) in any renderer,
+    so looks snap to the model's axes: `step.axes` lists the normals of the planar b-rep faces (one per
+    direction, biggest first, 1% of the biggest or more) and the world axes, and `snapLook` in
+    `configure.js` turns a look within `SNAP_DEG` (3°) of one into exactly that axis, on a face click (a
+    curved face's mean normal is never exact) and in Make face view (a trackball turn), where the 3D
+    view follows. Checked: a 2.3° tilt gives the same path as the exact view; 6.9° is left alone.
   - **The ring (2026-11-07, Chris).** While looking straight at a face (after clicking one or a ±X/Y/Z
     button, and in the face view) a ring sits just outside the face, with a dot at its turn (12 o'clock
     unturned). Dragging the dot turns the model about the axis into the screen and shows the angle: 1°
