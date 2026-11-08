@@ -2097,7 +2097,15 @@
       // Select by kind and id (or clear, with no kind), in Build; Properties shows it.
       select(kind, ids) { if (!H()) return; S.view = 'build'; S.pending = null; S.placing = null; select(kind, ids); },
       // Both panels shown off phones, so the guide can point into them.
-      panels() { if (narrow() || !(fold.rail || fold.parts)) return; fold.rail = false; fold.parts = false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } if (S.view === 'build') { applyFold(); renderHud(); renderCanvas(); } },
+      // rail false: the harness panel is folded instead (Loom's guide keeps it out of the way; Chris,
+      // 2026-11-08), and the diagram refits once the fold has played.
+      panels(rail) {
+        const want = rail === false;
+        if (narrow() || (fold.rail === want && !fold.parts)) return;
+        const refit = fold.rail !== want;
+        fold.rail = want; fold.parts = false; saveFold();
+        if (S.view === 'build') { applyFold(); renderHud(); renderCanvas(); if (refit) setTimeout(() => { if (H() && S.view === 'build') fitGlide(); }, 350); }
+      },
       menu() { if (narrow() || !fold.side) return; toggleSidebar(); },
       // The harness panel folded away (Running a wire: it covered P1), then the diagram fits the wider
       // canvas once the fold has played. The next step's build() brings it back.

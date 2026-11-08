@@ -29,7 +29,8 @@
   const box = label => { const s = set(label); return s ? `.cv-setarea[data-set="${s.id}"]` : null; };
   const pick = (kind, id) => G().select(kind, id ? [id] : []);
   const clear = () => G().select(null);
-  const build = () => { G().demo(); G().view('build'); G().panels(); G().help(false); };
+  // The harness panel stays folded through the guide (Chris, 2026-11-08); The harness panel step opens it.
+  const build = () => { G().demo(); G().view('build'); G().panels(false); G().help(false); };
   // Where Properties show on this screen: the parts pane, or the rail's sheet on a phone.
   // The rail holds Properties only on a phone; on a wide screen it's the harness panel, which a step
   // about a selection must never ring (Chris: the left panel glowed when a shift-click missed).
@@ -105,7 +106,7 @@
       { title: 'Running a wire',
         text: 'Click a pin, then a pin on another end or a splice: that’s a wire. While you’re wiring, the pins you can land on glow, the wire follows the pointer and {k:Esc} cancels. New wires take the gauge and color set in the harness panel.',
         do: 'Run a few wires from the board connector you added (or P1’s free pin 6) to your custom connector. Then {k:Shift}-click them and try {Twist}, {Shield}, {Cable} and {Bundle} in Properties.',
-        setup() { build(); clear(); G().rail(false); G().fit(); },
+        setup() { build(); clear(); G().fit(); },
         spot: () => [custom(), item('P1')] },
       { title: 'A wire’s properties',
         text: 'Select a wire by clicking its line. Properties show its ends, signal, color (with a stripe), gauge and length, and chips for the sets it’s in. The canvas, the drawing and the wire list all follow a change.',
@@ -157,7 +158,7 @@
       { title: 'The harness panel',
         text: 'With nothing selected, the left panel is the harness: its title, part number, rev, drawn by and date for the title block, the gauge and color new wires get, the allowance added to every BOM length, and numbered notes for the drawing. Its checks are listed under them.',
         do: 'Type a note in {Notes}, one per line. The drawing numbers them.',
-        setup() { build(); clear(); },
+        setup() { G().demo(); G().view('build'); G().panels(); G().help(false); clear(); },
         spot: () => ['#rail'] },
       { title: 'Checks',
         text: 'Checks look at the harness as drawn: pins with no wire, two wires on one pin, wires with no path, color or gauge, loose ends, runs with no length, gauges a terminal won’t take, and sets that run past their wires.',

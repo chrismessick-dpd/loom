@@ -201,7 +201,7 @@ links to it so far. Before every commit:
   *Its face and positions* (Make face view, then Positions and Assign as one ring, then Make part; the
   card sits at the window's right middle, `at: 'right'`, or the bottom right where that would cover the
   Configure stage, below about 1950 px wide); *Running a wire* then wires to the custom connector and
-  tries the sets. *How it works* is always the second to last step. *Adding parts* has no Try it (a
+  tries the sets. *How it works* is always the second to last step. The harness panel stays folded through the guide (`panels(false)`; Chris, 2026-11-08) except on *The harness panel*. *Adding parts* has no Try it (a
   step's `do` is optional), since the custom connector steps add the connector. The card takes the
   canvas corner (bottom left, bottom right, top right, top left) covering least: never the ring if it
   can help it, then the fewest connectors and splices, the newest weighted most (a new connector lands
