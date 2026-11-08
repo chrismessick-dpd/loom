@@ -144,14 +144,23 @@
       o += section('CONNECTORS', y);
       y += 12;
       const cw = 262, chh = 250, gap = 12, per = Math.floor((inner - 32 + gap) / (cw + gap));
-      let col = 0, row = 0;
+      // Rows first, then each row centered across the sheet (Chris).
+      const rows = [[]];
+      let col = 0;
       conns.forEach(n => {
         const span = S.views(n).length;
-        if (col && col + span > per) { col = 0; row++; }
-        o += detailCell(h, n, MG + 16 + col * (cw + gap), y + row * (chh + gap), cw * span + gap * (span - 1), chh);
+        if (col && col + span > per) { col = 0; rows.push([]); }
+        rows[rows.length - 1].push({ n, col, span });
         col += span;
       });
-      y += (row + 1) * (chh + gap) + 22;
+      rows.forEach((cells, row) => {
+        const used = cells.reduce((s, c) => s + c.span, 0);
+        const x0 = MG + 16 + (inner - 32 - (used * (cw + gap) - gap)) / 2;
+        cells.forEach(c => {
+          o += detailCell(h, c.n, x0 + c.col * (cw + gap), y + row * (chh + gap), cw * c.span + gap * (c.span - 1), chh);
+        });
+      });
+      y += rows.length * (chh + gap) + 22;
     }
 
     // Wire list and BOM side by side
