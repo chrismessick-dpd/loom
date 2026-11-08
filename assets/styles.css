@@ -14,8 +14,8 @@
 /* Sidebar (Fabcheck's package rows) */
 .pkg-sev { display: flex; gap: 4px; flex: none; font-size: 11px; font-variant-numeric: tabular-nums; }
 .pkg-sev span { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: inline-grid; place-items: center; font-weight: 600; }
-.pkg-sev .e { background: var(--issue-soft); color: var(--issue); }
-.pkg-sev .w { background: var(--warn-soft); color: var(--warn); }
+.pkg-sev .e { background: var(--issue-hatch), var(--issue-soft); color: var(--issue); }
+.pkg-sev .w { background: var(--warn-hatch), var(--warn-soft); color: var(--warn); }
 .proj.active .pkg-sev span { background: rgba(255, 255, 255, 0.22); color: #fff; }
 .pkg-icon { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
 .proj.active .pkg-icon { background: rgba(255, 255, 255, 0.2); color: #fff; }
