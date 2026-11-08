@@ -103,11 +103,13 @@
       if (!S.cur || !S.store[S.cur] || R.hash(S.store[S.cur]) !== curWas) { S.past = []; S.future = []; S.sel = null; S.pending = null; }
       persist();
       renderAll();
+      res.dropped.forEach(id => { if (S.store[id] && R.hash(S.store[id]) === res.before[id]) delete S.store[id]; });
       if (res.conflicts.length) toast(`${res.conflicts.length} harness${res.conflicts.length > 1 ? 'es were' : ' was'} changed here and elsewhere. The newer one won; the other is kept as a "(conflict copy)".`, 'error');
+      else if (res.errors.length) toast(res.errors[0].message + (res.errors.length > 1 ? ` (+${res.errors.length - 1} more)` : ''), 'error');
       else if (res.adopted.length) toast(`Name or part number taken from Signoff PL for ${res.adopted.length} harness${res.adopted.length > 1 ? 'es' : ''}.`);
       else if (!quiet) toast(res.pushed ? 'Synced.' : 'Up to date.');
     } catch (e) {
-      remote.error = e.status === 404 ? `Can't reach ${R.config().owner}/${R.config().dataRepo}. Ask for access, or create the repo.`
+      remote.error = e.status === 404 ? `Can't reach ${R.config().owner}/${R.config().dataRepo}, and no harness is shared with you. Ask for access, or create the repo.`
         : e.status === 401 ? 'GitHub refused the token. Sign in to Signoff EE again.' : (e.message || String(e));
       if (!quiet || e.status !== 404) toast("Couldn't sync: " + remote.error, 'error');
     } finally {
@@ -225,7 +227,12 @@
     else if (remote.busy) { tone = 'busy'; title = 'Syncing…'; sub = R.config().owner; tip = ''; }
     else if (remote.error) { tone = 'error'; title = 'Sync failed'; sub = remote.error; tip = remote.error; }
     else if (dirty.size) { tone = 'warn'; title = `${dirty.size} unsynced change${dirty.size === 1 ? '' : 's'}`; sub = 'Click to sync'; tip = 'Changed since the last sync.'; }
-    else { tone = 'ok'; title = 'Synced'; sub = (last ? ago(last.at) : 'Ready') + (login ? ' · ' + login : ''); tip = `Kept in ${R.config().owner}/${R.config().dataRepo}`; }
+    else if (last && last.errors && last.errors.length) { tone = 'warn'; title = 'Synced with problems'; sub = last.errors[0].message; tip = last.errors.map(e => e.message).join('\n'); }
+    else {
+      const shared = live().filter(h => R.isShared(h.id)).length;
+      tone = 'ok'; title = 'Synced'; sub = (last ? ago(last.at) : 'Ready') + (login ? ' · ' + login : '');
+      tip = R.access() === 'contractor' ? `Harnesses shared with you, each in its own private repo` : `Kept in ${R.config().owner}/${R.config().dataRepo}` + (shared ? `; ${shared} shared in ${shared === 1 ? 'its own private repo' : 'their own private repos'}` : '');
+    }
     $('#sync-dot').dataset.tone = tone;
     $('#sync-title').textContent = title;
     $('#sync-sub').textContent = sub;
@@ -1161,13 +1168,15 @@
     h.nodes.forEach(n => { if (n.board && n.board.client) names.add(n.board.client); });
     const parts = (pl && pl.links[h.id]) || [];
     const placed = parts.length ? `<div class="pl-links">${parts.map(p => `<div class="pl-link"><span class="lay-ico">${ICON.harness}</span><div><b>${esc(p.projectName)}</b><div class="f-hint">${esc(p.path.concat(p.name).join(' › '))}</div></div></div>`).join('')}</div>` : '';
+    // A harness shared from Signoff PL lives in its own private repo (signoff_pl/docs/sharing.md).
+    const shared = !DEMO && R && R.isShared(h.id) ? `<div class="f-hint">Shared: kept in ${esc(R.homeOf(h.id))}, with the people the product is shared with.</div>` : '';
     // Chris: say what the field does, not how PL matches it.
     const what = 'The client project this harness is for. Once it’s set, the harness shows up in that project in Signoff PL, ready to add to the product.';
     const hint = DEMO ? what
       : !pl ? what + ' Sync to load Signoff PL’s projects.'
       : parts.length ? 'In Signoff PL as a Part of:' : h.project ? 'Waiting in that project in Signoff PL: add it there to place it in the product.' : what;
     return fld('Project', `<input class="input" data-f="h.project" list="lm-projects" value="${esc(h.project || '')}" placeholder="Client project">` +
-      `<datalist id="lm-projects">${[...names].sort().map(n => `<option value="${esc(n)}">`).join('')}</datalist>`, hint) + placed;
+      `<datalist id="lm-projects">${[...names].sort().map(n => `<option value="${esc(n)}">`).join('')}</datalist>`, hint) + placed + shared;
   }
   function railHarness(h, A) {
     const c = M.checks(h, A);

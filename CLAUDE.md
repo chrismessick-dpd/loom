@@ -62,6 +62,15 @@ links to it so far. Before every commit:
   - **Not done:** the live sync with a real token; PL's demo has no harness Part yet (its snapshot
     generator would need Loom's demo summary).
     Demo `VERSION` 15 (the demo harness's client project).
+  - **Shared harnesses (2026-11-07, branch `sharing`, with `signoff_pl`'s):** Signoff PL shares a
+    product's harnesses when it shares the product (`signoff_pl/docs/sharing.md`): each moves into its
+    own private `review-loom-<slug>` repo and `loom_data/users.json` (the engine's roster) records it in
+    `shared`. `sync` now runs like EE's workspace: the data repo with the roster (`loom.v1.roster`,
+    `homes`, `caches` per repo), then the repos in the shared map (an FTE) or the `review-loom-*` repos
+    the token lists (a contractor, `who.access`); a shared harness is never pushed back to `loom_data`,
+    a file in a shared repo counts only for the harness the map puts there, and a contractor's copy
+    whose repo they lost is dropped unless edited. The pill's tooltip and the rail's Project field say
+    where a harness is kept (`R.isShared`, `R.homeOf`). Loom writes no roster itself. Tests: 19.
 - **Configure a connector (2026-11-07, Chris; merged to `main` from branch `connector-config` in `b7aa21d`, pushed):** a Configure button
   in a connector's Properties header (`.cfg-open`; the face tile and a custom part's Positions field open it
   too) opens `assets/configure.js` (`LM.configure`), a window over the app (`#cfg-modal`). It sets the ref,

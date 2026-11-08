@@ -86,7 +86,8 @@ function FakeHub() {
         if (repo.commits[body.sha].parent !== repo.head) return res(422, { message: 'Update is not a fast forward' });
         repo.head = body.sha; return res(200, {});
       }
-      if (!admin && /^\/(collaborators|invitations)/.test(path)) return res(403, { message: 'Must have admin rights' });
+      if (!admin && /^\/(collaborators|invitations|actions)/.test(path)) return res(403, { message: 'Must have admin rights' });
+      if (method === 'PUT' && path === '/actions/permissions') return res(204);
       if (method === 'GET' && path === '/collaborators') return res(200, repo.collaborators.map(function (l) { return { login: l }; }));
       if (method === 'GET' && path === '/invitations') return res(200, repo.invitations.map(function (i) { return { id: i.id, invitee: { login: i.login } }; }));
       var col = /^\/collaborators\/(.+)$/.exec(path);

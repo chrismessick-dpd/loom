@@ -213,6 +213,71 @@
     eq(res.pushed, 1);
   });
 
+  // ── Shared harnesses (signoff_pl/docs/sharing.md): review-loom-<slug> repos and the shared map ──
+  function shareOnHub(hub, id, name) {
+    // What Signoff PL's share does: the file moves into its own repo, and loom_data's roster records it.
+    const full = OWNER + '/review-loom-' + name;
+    const files = hub.files(OWNER + '/loom_data'), text = files['projects/' + id + '.json'];
+    hub.makeRepo(full, { 'README.md': '#', ['projects/' + id + '.json']: text }, ['alice', 'cat']);
+    delete files['projects/' + id + '.json'];
+    const roster = SG.model.mergeRosters(SG.model.emptyRoster(), JSON.parse(files['users.json'] || 'null'));
+    roster.shared[id] = { id, repo: full, name, updatedAt: '2026-11-07T12:00:00.000Z', updatedBy: 'alice' };
+    roster.users.cat = { login: 'cat', name: 'Cat', role: 'contractor', projects: [id], updatedAt: '2026-11-07T12:00:00.000Z', updatedBy: 'alice' };
+    files['users.json'] = stable(roster);
+    hub.push(OWNER + '/loom_data', files);
+    return full;
+  }
+  test('sync: a harness shared into its own repo syncs there, and is never pushed back to loom_data', async () => {
+    const hub = setup();
+    const h = harness('Shared one', { project: 'Gizmo' }), k = harness('Kept inside');
+    let res = await R.sync({ [h.id]: h, [k.id]: k }, opts(hub));
+    const full = shareOnHub(hub, h.id, 'shared-one');
+    res = await R.sync(res.store, opts(hub));
+    eq(res.access, 'fte');
+    eq([res.homes[h.id], res.homes[k.id]], [full, OWNER + '/loom_data'], 'each harness knows its repo');
+    ok(!hub.files(OWNER + '/loom_data')['projects/' + h.id + '.json'], 'the data repo does not get the shared harness back');
+    ok(R.isShared(h.id) && !R.isShared(k.id), 'the store says which are shared');
+    // An edit here goes to the shared repo.
+    res.store[h.id].title = 'Edited by alice'; res.store[h.id].updated = Date.now();
+    res = await R.sync(res.store, opts(hub));
+    eq(JSON.parse(hub.files(full)['projects/' + h.id + '.json']).meta.name, 'Edited by alice');
+    ok(!hub.files(OWNER + '/loom_data')['projects/' + h.id + '.json'], '…and still not to loom_data');
+    // A file planted in the shared repo under another id is ignored.
+    const planted = hub.files(full); planted['projects/' + k.id + '.json'] = planted['projects/' + h.id + '.json'].replace(h.id, k.id);
+    hub.push(full, planted);
+    res = await R.sync(res.store, opts(hub));
+    eq(res.store[k.id].title, 'Kept inside', 'a shared repo only counts for the harness the shared map puts there');
+  });
+
+  test('sync: a contractor gets only the harnesses shared with them, and their edits reach the FTE', async () => {
+    const hub = setup();
+    const h = harness('For the client', { project: 'Gizmo' }), k = harness('Internal');
+    let res = await R.sync({ [h.id]: h, [k.id]: k }, opts(hub));
+    const full = shareOnHub(hub, h.id, 'for-the-client');
+    // Cat's browser: nothing yet, no access to loom_data.
+    clearNs();
+    localStorage.setItem(NSP + 'repos', JSON.stringify({ owner: OWNER }));
+    const cat = { token: 'tok-cat', fetch: hub.fetchFor('tok-cat') };
+    let cres = await R.sync({}, cat);
+    eq(cres.access, 'contractor');
+    eq(Object.keys(cres.store), [h.id], 'only the shared harness');
+    eq(cres.errors, []);
+    cres.store[h.id].title = 'Cat was here'; cres.store[h.id].updated = Date.now() + 1000;
+    cres = await R.sync(cres.store, cat);
+    eq(cres.pushed, 1);
+    // Alice's browser again.
+    clearNs();
+    localStorage.setItem(NSP + 'repos', JSON.stringify({ owner: OWNER }));
+    res = await R.sync({}, opts(hub));
+    eq([res.store[h.id].title, res.store[k.id].title], ['Cat was here', 'Internal'], 'the FTE sees both, with the contractor’s edit');
+    // Cat loses access: her untouched copy goes at her next sync.
+    hub.repos[full].collaborators = ['alice'];
+    clearNs();
+    localStorage.setItem(NSP + 'repos', JSON.stringify({ owner: OWNER }));
+    cres = await R.sync(cres.store, cat).catch(e => e);
+    ok(cres.status === 404, 'with no harness shared any more a contractor gets the 404, as with no data repo');
+  });
+
   test('sync with no data repo fails with 404', async () => {
     clearNs();
     localStorage.setItem(NSP + 'repos', JSON.stringify({ owner: OWNER }));
