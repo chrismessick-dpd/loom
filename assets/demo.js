@@ -1,19 +1,22 @@
-// The demo harness: part of the made-up Smart Thermostat for "Acme Climate" that every Signoff tool's
-// ?demo tells. It joins the Main PCBA to the Display & Sensor Board (with a ground splice) and the remote
-// sensor, and carries 24 VAC from the Main PCBA to the wall plate. Pin labels are the boards' net names.
+// The demo harness: an example for a made-up Zone Controller (another "Acme Climate" product), with
+// every kind of part Loom draws. It joins the controller board to its display board (with a ground
+// splice) and a remote sensor, and carries 24 VAC from the controller to the wall plate. It is not the
+// Smart Thermostat that the other Signoff demos tell: that product's boards (Fabcheck's demo packages)
+// meet through an FFC and screw terminals, so the suite tour has the visitor build the thermostat's own
+// small harness from Main PCBA J1 (From a board) next to this one.
 (function (LM) {
   'use strict';
   const M = LM.model;
-  const VERSION = 15; // bump when the demo changes, so stored copies rebuild
+  const VERSION = 16; // bump when the demo changes, so stored copies rebuild
 
   function harness() {
     const h = M.blank('Display & Sensor Harness');
     h.nodes = []; h.segments = []; h.wires = []; h.sets = [];
-    Object.assign(h, { id: 'hdemo1', demoVersion: VERSION, pn: '2100430-001', rev: 'A', project: 'Smart Thermostat', drawnBy: 'Dovetail', date: '2026-11-06' });
+    Object.assign(h, { id: 'hdemo1', demoVersion: VERSION, pn: '2200430-001', rev: 'A', project: 'Zone Controller', drawnBy: 'Dovetail', date: '2026-11-06' });
     const c = (ref, p, labels) => { const n = M.addConnector(h, 0, 0, p); n.ref = ref; labels.forEach((l, i) => { if (l) n.pinLabels[String(i + 1)] = l; }); return n; };
-    const p1 = c('P1', { name: 'Main PCBA J6', family: 'jst-gh', pins: 8, mate: 'SM08B-GHS-TB' }, ['3V3', 'GND', 'I2C_SDA', 'I2C_SCL', 'TOUCH_INT', '', 'NTC', 'NTC_RTN']);
-    const p4 = c('P4', { name: 'Main PCBA J2, 24 VAC in', family: 'molex-microfit', pins: 2, rows: 1 }, ['24VAC_R', '24VAC_C']);
-    const p2 = c('P2', { name: 'Display & Sensor Board J1', family: 'jst-gh', pins: 6, mate: 'SM06B-GHS-TB' }, ['3V3', 'GND', 'I2C_SDA', 'I2C_SCL', 'TOUCH_INT', 'GND']);
+    const p1 = c('P1', { name: 'Controller J6', family: 'jst-gh', pins: 8, mate: 'SM08B-GHS-TB' }, ['3V3', 'GND', 'I2C_SDA', 'I2C_SCL', 'TOUCH_INT', '', 'NTC', 'NTC_RTN']);
+    const p4 = c('P4', { name: 'Controller J2, 24 VAC in', family: 'molex-microfit', pins: 2, rows: 1 }, ['24VAC_R', '24VAC_C']);
+    const p2 = c('P2', { name: 'Display board J1', family: 'jst-gh', pins: 6, mate: 'SM06B-GHS-TB' }, ['3V3', 'GND', 'I2C_SDA', 'I2C_SCL', 'TOUCH_INT', 'GND']);
     const p3 = c('P3', { name: 'Remote temperature sensor', family: 'jst-ph', pins: 2 }, ['NTC', 'NTC_RTN']);
     const p5 = c('P5', { name: 'Wall plate terminals R and C', family: 'flying', pins: 2 }, ['R', 'C']);
     const s1 = M.addNode(h, 'splice', 0, 0);

@@ -39,7 +39,7 @@
     const h = LM.demo.harness();
     const doc = R.envelope(h);
     const s = R.summarize(doc);
-    eq([s.tool, s.name, s.number, s.project], ['loom', 'Display & Sensor Harness', '2100430-001', 'Smart Thermostat']);
+    eq([s.tool, s.name, s.number, s.project], ['loom', 'Display & Sensor Harness', '2200430-001', 'Zone Controller']);
     eq([s.total, s.reviewed, s.pct], [0, 0, 0], 'a harness has no checks to review');
     eq(s.harness.wires, h.wires.length);
     eq(s.harness.ends, h.nodes.filter(M.isConn).length);

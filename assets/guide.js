@@ -35,7 +35,7 @@
     { title: 'Welcome', steps: [
       { title: 'Welcome to Loom',
         text: 'Loom draws cable harnesses. You place the ends, click pin to pin to run wires, and group wires into twisted pairs, shields, cables and bundles. From that one picture it makes the sheet a tech builds from: the wiring diagram, connector faces, wire list, BOM and notes.',
-        do: 'This guide uses the demo harness, part of a made-up Smart Thermostat, so nothing of yours changes. Each step sets the page up and rings what it’s about. Use {Next} and {Back}, or {Contents} to jump around.',
+        do: 'This guide uses the demo harness, an example for a made-up zone controller, so nothing of yours changes. Each step sets the page up and rings what it’s about. Use {Next} and {Back}, or {Contents} to jump around.',
         setup() { build(); clear(); G().fit(); } },
       { title: 'Your harnesses',
         text: 'The menu lists your harnesses, with their ends, wires and any check problems. {New} starts one with two ends, and {Open a file} reads a .loom.json. In this demo nothing leaves your browser. Signed in for real, harnesses sync with Loom’s private data repo, so the other engineers on a project see and edit the same harnesses, and Signoff PL lists them by client project. The menu’s foot shows when you last synced.',
@@ -79,7 +79,7 @@
         spot: () => ['#parts-pane .palette'] },
       { title: 'A connector from a board',
         text: '{From a board} reads a board’s fab package as Signoff EE stores it, its netlist and BOM. The connector arrives with the board’s pin names and its net names as pin labels. When two ends share net names on free pins, a connector’s Properties suggest the wires to run.',
-        do: 'Click {From a board}, pick the Main PCBA, then a connector. In the demo it reads the made-up thermostat boards. {k:Esc} closes it.',
+        do: 'Click {From a board}, pick the Main PCBA, then a connector. In the demo it reads the made-up Smart Thermostat’s boards, the ones Fabcheck’s demo checks. {k:Esc} closes it.',
         phone: '{From a board} is in the parts pane, which needs a wider screen.',
         setup() { build(); clear(); },
         spot: () => ['.lm-modal', '#parts-pane [data-act="from-board"]'] },

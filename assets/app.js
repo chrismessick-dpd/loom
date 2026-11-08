@@ -238,8 +238,17 @@
   }
 
   // ── Render ──
+  // A new selection brings a folded parts pane back, so its Properties show (Chris, 2026-11-08); not
+  // the node picked by clicking a pin to start a wire, which would move the canvas mid-wire.
+  let selWas = '';
+  function unfoldForSelection() {
+    const k = S.sel ? S.sel.kind + ':' + [...S.sel.ids].join(',') : '';
+    if (k && k !== selWas && !S.pending && fold.parts && !narrow()) { fold.parts = false; saveFold(); }
+    selWas = k;
+  }
   function renderAll() {
     const h = H();
+    if (h && S.view === 'build') unfoldForSelection();
     renderSidebar();
     renderToolbar();
     const build = h && S.view === 'build';
@@ -461,9 +470,10 @@
     bv.classList.toggle('fold-rail', !!fold.rail);
     bv.classList.toggle('fold-parts', !!fold.parts);
   }
+  function saveFold() { try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } }
   function toggleFold(which) {
     fold[which] = !fold[which];
-    try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ }
+    saveFold();
     applyFold();
     renderHud();
     renderCanvas();
@@ -1346,7 +1356,7 @@
       `<div class="rail-list">${boardBox}${suggBox}<div class="face-tile" data-act="configure" title="Configure">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.fitViews(h, n, 0, 0, 330, 150).note)}</span></div>
       <div class="rail-sec">
       ${LM.shapes.hasBack(n) ? fld('Views', segBtns('n.faceView', LM.shapes.views(n).length > 1 ? 'both' : LM.shapes.views(n)[0], [['front', 'Front'], ['back', 'Back'], ['both', 'Both']]), 'Front is the mating face, back the wire side. The drawing prints these.') : ''}
-      <div class="row2 r-ref">${fld('Ref', inp('n.ref', n.ref))}${fld('Name', inp('n.name', n.name, ' placeholder="Main PCBA J6"'))}</div>
+      <div class="row2 r-ref">${fld('Ref', inp('n.ref', n.ref))}${fld('Name', inp('n.name', n.name, ' placeholder="Main PCBA J1"'))}</div>
       ${fld('Family', famSel, fam.awg ? `Terminals typically take ${fam.awg[0]}–${fam.awg[1]} AWG.` : '')}
       <div class="row2">${fld(fam.style === 'flying' ? 'Leads' : 'Pins', pinSel)}${fam.rows && fam.rows.length > 1 ? fld('Rows', segBtns('n.rows', n.rows, [[1, '1'], [2, '2']])) : ''}</div>
       ${housing ? fld('Gender', segBtns('n.gender', n.gender, [['receptacle', 'Receptacle'], ['plug', 'Plug']])) : ''}
@@ -1698,6 +1708,9 @@
       case 'theme': { const t = isDark(readTheme()) ? 'light' : 'dark'; writeTheme(t); applyTheme(t); break; }
       case 'new': { const n = M.blank(); n.drawnBy = ''; S.store[n.id] = n; S.view = 'build'; openHarness(n.id); toast('Two ends to start. Click a pin, then a pin on the other end, to run a wire.'); break; }
       case 'demo': S.store.hdemo1 = LM.demo.harness(); openHarness('hdemo1'); break;
+      // The banner's Reset demo: the demo's own storage goes back to just the demo harness, so
+      // harnesses made while trying it (the suite tour has one built) go too.
+      case 'demo-reset': if (!DEMO) break; S.store = { hdemo1: LM.demo.harness() }; openHarness('hdemo1'); toast('The demo is back as it started.'); break;
       case 'open': $('#file-input').click(); break;
       case 'save': if (h) U.download(baseName(h) + '.loom.json', JSON.stringify(h, null, 2), 'application/json'); break;
       case 'sync': syncNow(false); break;
@@ -2002,7 +2015,7 @@
   if (DEMO) {
     const b = $('#demo-banner');
     b.hidden = false; document.body.classList.add('has-banner');
-    b.innerHTML = 'Demo: a harness for the made-up Smart Thermostat for Acme Climate. Edits stay in this browser. <button class="btn btn-plain" data-act="demo">Reset demo</button> <a href="./">Leave the demo</a>';
+    b.innerHTML = 'Demo: made-up harnesses for Acme Climate. Edits stay in this browser. <button class="btn btn-plain" data-act="demo-reset">Reset demo</button> <a href="./">Leave the demo</a>';
     document.querySelectorAll('[data-demo-href]').forEach(a => { a.href = a.getAttribute('href') + '?demo'; });
   }
   load();
@@ -2021,6 +2034,14 @@
       // Both panels shown off phones, so the guide can point into them.
       panels() { if (narrow() || !(fold.rail || fold.parts)) return; fold.rail = false; fold.parts = false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } if (S.view === 'build') { applyFold(); renderHud(); renderCanvas(); } },
       menu() { if (narrow() || !fold.side) return; toggleSidebar(); },
+      // The suite tour's first Loom step (signoff/assets/tour.js): the menu and the parts pane fold
+      // away and the diagram fits the bigger canvas. A selection brings the parts pane back.
+      focus() {
+        if (narrow() || !H()) return;
+        fold.side = true; fold.parts = true; saveFold(); applySide();
+        S.view = 'build'; S.pending = null; S.placing = null; renderAll();
+        setTimeout(() => { if (H() && S.view === 'build') fitGlide(); }, 350);
+      },
       // The How it works card, which would cover Properties.
       help(open) { if ((fold.help !== false) === open) return; fold.help = open; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } if (H() && S.view === 'build') renderParts(); },
       wires(open) { S.wiresOpen = open; renderAll(); },

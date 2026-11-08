@@ -89,7 +89,13 @@ links to it so far. Before every commit:
     (`LM.store.setNamespace`).
   - **Not done:** the live sync with a real token; PL's demo has no harness Part yet (its snapshot
     generator would need Loom's demo summary).
-    Demo `VERSION` 15 (the demo harness's client project).
+    Demo `VERSION` 16 (2026-11-08): the demo harness is an example for a made-up "Zone Controller"
+    (Controller J6, Display board J1, 2200430-001), not the Smart Thermostat, whose boards meet through
+    an FFC and screw terminals; the suite tour has the visitor build the thermostat's harness from Main
+    PCBA J1 beside it. The banner's Reset demo (`demo-reset`) brings back only the demo harness; the
+    home page's Demo harness button (`demo`) rebuilds it alone. A new selection unfolds a folded parts
+    pane (`unfoldForSelection`, not while wiring), and `LM.app.guide.focus()` folds the menu and the
+    parts pane and fits, for the tour's first Loom step.
   - **Shared harnesses (2026-11-07, pushed `fa25c7d`, with `signoff_pl` `f3e2087`):** Signoff PL shares a
     product's harnesses when it shares the product (`signoff_pl/docs/sharing.md`): each moves into its
     own private `review-loom-<slug>` repo and `loom_data/users.json` (the engine's roster) records it in
