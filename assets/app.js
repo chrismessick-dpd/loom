@@ -1158,9 +1158,11 @@
     h.nodes.forEach(n => { if (n.board && n.board.client) names.add(n.board.client); });
     const parts = (pl && pl.links[h.id]) || [];
     const placed = parts.length ? `<div class="pl-links">${parts.map(p => `<div class="pl-link"><span class="lay-ico">${ICON.harness}</span><div><b>${esc(p.projectName)}</b><div class="f-hint">${esc(p.path.concat(p.name).join(' › '))}</div></div></div>`).join('')}</div>` : '';
-    const hint = DEMO ? 'Signoff PL lists this harness for the PL project of this client project.'
-      : !pl ? 'Signoff PL lists this harness for the PL project of this client project. Sync to read PL’s projects.'
-      : parts.length ? 'In Signoff PL as a Part of:' : h.project ? 'Waiting in that Signoff PL project’s tray: add it there to place it.' : 'Signoff PL lists this harness for the PL project of this client project.';
+    // Chris: say what the field does, not how PL matches it.
+    const what = 'The client project this harness is for. Once it’s set, the harness shows up in that project in Signoff PL, ready to add to the product.';
+    const hint = DEMO ? what
+      : !pl ? what + ' Sync to load Signoff PL’s projects.'
+      : parts.length ? 'In Signoff PL as a Part of:' : h.project ? 'Waiting in that project in Signoff PL: add it there to place it in the product.' : what;
     return fld('Project', `<input class="input" data-f="h.project" list="lm-projects" value="${esc(h.project || '')}" placeholder="Client project">` +
       `<datalist id="lm-projects">${[...names].sort().map(n => `<option value="${esc(n)}">`).join('')}</datalist>`, hint) + placed;
   }
