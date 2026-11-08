@@ -47,10 +47,12 @@ links to it so far. Before every commit:
     link of record and its place in the tree; Loom never writes PL's repo. Each sync reads PL's data repo
     (read only, cached by blob sha, `loom.v1.pl`) for the project list and the Parts linking each
     harness, shown under Project ("In Signoff PL as a Part of"). A token that can't read PL skips it.
+    Chris (2026-11-07): keep the tray; adding a harness to a PL project should be deliberate, so PL never
+    adds one by itself.
   - **Name and part number both ways**, with no tool writing the other's repo: Loom stamps `h.identAt`
     when Title or Part number change, PL stamps the node's `identAt` when its Part sheet changes them,
     and the newer side wins (`adoptFromPl` here before each push; `pl.js adoptHarnesses` after PL reads
-    designs). Rev stays Loom's.
+    designs). Rev stays Loom's. Chris (2026-11-07): newest-wins after each tool syncs is fine for now.
   - **Deep link:** `?project=<harness id>` (what PL's Open in Loom uses) or `?harness=`.
   - **Tests:** `tests/test.html` (16, title PASS/FAIL): the envelope, summary, merge (and `forget` for an edit made while a sync brought another change), `adoptFromPl`,
     `slimPl`, and sync against `tests/fake-hub.js` (copied from PL), in storage `loom.test.*`
