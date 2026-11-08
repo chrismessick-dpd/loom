@@ -102,7 +102,10 @@ links to it so far. Before every commit:
   Wire sets, Views and notes, The drawing, Done), each a title, what the feature is, a *Try it*
   instruction, a `setup` (view, selection, panels shown, the How it works card closed) and a `spot`
   (selectors, first one shown wins), ringed by `#lm-guide-spot`, moved every animation frame. The card
-  (`#lm-guide`) has Back/Next, a Contents list to jump anywhere, and drags by its top line. It sits at the
+  (`#lm-guide`) has Back/Next, a Contents list to jump anywhere, and drags by its top line. In a
+  step's text, `{From a board}` names something on screen (drawn as a chip, `.lg-ui`) and `{k:Esc}` a
+  key (`.lg-key`), so a button's name doesn't read as part of the sentence (Chris); the suite tour does
+  the same with `{…}` (`.t-ui`). The demo opens with Real proportions off. It sits at the
   canvas's bottom left, or moves aside when it would cover the spot. It always runs on the demo harness:
   started outside `?demo`, it opens `?demo&guide` in the same tab and its last step offers Back to my
   harnesses. State is sessionStorage `loom.guide`. It opens from Guide in the menu, Take the guide on the
@@ -353,6 +356,15 @@ links to it so far. Before every commit:
     Properties (`railNote`). With a part number it's a BOM line. The sheet prints notes. A note
     goes with the part it's pinned to; one on a dissolved set moves to its first wire. Refs are
     N1, N2…; the drawing's numbered notes are still `h.notes`.
+    **Area notes** (2026-11-07, Chris): in Add › Note, a drag (not a click) draws a light dashed
+    rounded box (`at: { kind: 'area', node, x, y, w, h, e }`). x, y are from the top-left of the
+    connector or splice nearest the box when drawn, so it follows that part between views
+    (`areaRect` in `conn.js`; world coordinates when there was none). Its edge drags it
+    (`data-areaedge`; the inside lets clicks through), its corners resize it when selected
+    (`data-areah`), and its pin is the same dot, sliding round the edge (`data-areapin`, `e` 0–1
+    clockwise from the top-left, `C.edgeAt`/`edgeT`) while the bubble stays put. `dragArea` and
+    `placeArea` in `app.js`. An area note stays when its part is deleted (it then sits off by that
+    part's old position).
   - **How it works** (Chris): a ? button in the right pane's bottom-right corner pops a card up over
     the bottom of the pane, in either tab (`renderParts`, `.pane-help`); open until closed, kept in
     this browser (`fold.help`).

@@ -318,7 +318,7 @@
     svg.classList.toggle('placing', !!S.placing);
     if (S.placing) {
       tip.style.display = 'flex';
-      tip.innerHTML = `<span class="tip-dot"></span><span>Click a wire, a set or a connector to pin a note to it. <span class="tip-k">Esc</span> cancels.</span>`;
+      tip.innerHTML = `<span class="tip-dot"></span><span>Click a wire, a set or a connector to pin a note to it, or drag to draw an area for it. <span class="tip-k">Esc</span> cancels.</span>`;
     } else if (S.pending) {
       tip.style.display = 'flex';
       tip.innerHTML = `<span class="tip-dot"></span><span>Wiring from <b>${esc(M.endText(h, S.pending))}</b>. Click a glowing pin or a splice. <span class="tip-k">Esc</span> cancels.</span>`;
@@ -385,6 +385,8 @@
   // The two side panels fold away; remembered in this browser.
   const FOLD_KEY = NS + 'fold';
   const fold = (() => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { return {}; } })();
+  // The demo always opens in the arranged view, Real proportions off (Chris).
+  if (DEMO) fold.prop = false;
   const FOLD_ICON = side => `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="${side === 'left' ? 'M8 3.5v13' : 'M12 3.5v13'}"/></svg>`;
   function applyFold() {
     const bv = $('#build-view');
@@ -450,6 +452,21 @@
         svgEl().setPointerCapture(e.pointerId);
         return;
       }
+    }
+    // Add › Note: a click pins the note to a part, a drag draws an area for it (Chris).
+    if (e.button === 0 && S.placing === 'note') {
+      gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: 0, touch: e.pointerType === 'touch', shift: false, cam0: Object.assign({}, S.cam), draw: true };
+      svgEl().setPointerCapture(e.pointerId);
+      return;
+    }
+    // An area note's edge moves it, a corner resizes it, and its dot slides along the edge.
+    const areaEl = e.button === 0 && !S.pending && !S.placing && e.target.closest('[data-areaedge], [data-areah], [data-areapin]');
+    if (areaEl) {
+      const d = areaEl.dataset, k = d.areah ? d.areah.split('|') : null;
+      gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: 0, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam),
+        area: k ? { id: k[0], part: k[1] } : { id: d.areaedge || d.areapin, part: d.areapin ? 'pin' : 'move' } };
+      svgEl().setPointerCapture(e.pointerId);
+      return;
     }
     // A wire-end dot (a splice port, a loose end, or where a wire meets a pin) drags that end.
     const endEl = e.button === 0 && !S.pending && e.target.closest('[data-end]');
@@ -531,6 +548,8 @@
       if (g.lo) previewEnd(g, e);
       return;
     }
+    if (g.draw) { drawArea(g, e); return; }
+    if (g.area) { dragArea(g, e); return; }
     if (g.setEnd) { dragSetEnd(g, e); return; }
     if (g.label) { (g.ldot ? slideDot : moveLabel)(g, e); return; }
     if (g.badge) { dragBadge(g, e); return; }
@@ -729,7 +748,11 @@
       }
       return;
     }
-    if (g && (g.setEnd || g.note || g.badge) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
+    if (g && g.draw) {
+      if (g.moved && g.rect && g.rect.w >= AREA_MIN && g.rect.h >= AREA_MIN) { placeArea(g.rect); return; }
+      if (g.moved) { renderCanvas(); toast('Drag a bigger box, or click a part to pin the note to it.'); return; }
+    }
+    if (g && (g.setEnd || g.note || g.badge || g.area) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
       renderAll();
@@ -737,6 +760,66 @@
     }
     if (g && g.item && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && !g.moved && g.button === 0) click(g.t, g.shift, g);
+  }
+  // Draw an area for a note (Add › Note, then a drag): a dashed box from where the drag began.
+  const AREA_MIN = 16;
+  function drawArea(g, e) {
+    if (!g.moved) g.p0 = toWorld({ clientX: g.x, clientY: g.y });
+    g.moved = true;
+    const p = toWorld(e), r = { x: Math.min(p.x, g.p0.x), y: Math.min(p.y, g.p0.y), w: Math.abs(p.x - g.p0.x), h: Math.abs(p.y - g.p0.y) };
+    g.rect = r;
+    const gh = $('#ghost');
+    if (gh) gh.innerHTML = `<rect class="cv-area draw" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="${Math.min(10, r.w / 2, r.h / 2)}"/>`;
+  }
+  // The note for a drawn area, kept from the top-left of the connector or splice nearest it so it
+  // follows that part between views (conn.js areaRect), its dot three quarters along the top edge
+  // and its bubble above that.
+  function placeArea(r) {
+    const Lo = lastLayout, cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    let best = null, bd = Infinity;
+    (Lo ? Lo.items : []).forEach(it => {
+      if (it.kind !== 'conn' && it.kind !== 'splice') return;
+      const d = Math.hypot(it.x + it.w / 2 - cx, it.y + it.h / 2 - cy);
+      if (d < bd) { bd = d; best = it; }
+    });
+    const at = { kind: 'area', node: best ? best.n.id : null, x: Math.round(r.x - (best ? best.x : 0)), y: Math.round(r.y - (best ? best.y : 0)),
+      w: Math.round(r.w), h: Math.round(r.h), e: Math.round(0.75 * r.w / (2 * (r.w + r.h)) * 1000) / 1000 };
+    S.placing = null;
+    change(x => { const c = M.addNote(x, at, { dx: 40, dy: -50 }); S.sel = { kind: 'note', ids: new Set([c.id]) }; });
+  }
+  // Drag an area note: its edge moves the area, a corner resizes it (not below AREA_MIN), and its
+  // dot slides round the edge (at.e). One snapshot, so one undo puts it back.
+  function dragArea(g, e) {
+    const c = M.note(H(), g.area.id), Lo = lastLayout;
+    if (!c || !c.at || c.at.kind !== 'area' || !Lo) { gesture = null; return; }
+    const a = c.at;
+    if (!g.moved) {
+      snapshot();
+      g.a0 = { x: +a.x || 0, y: +a.y || 0, w: +a.w || AREA_MIN, h: +a.h || AREA_MIN };
+      g.r0 = Lo.areaRect(c);
+      // Sliding the dot leaves the bubble where it is; only the leader moves.
+      const p0 = Lo.noteAt(c);
+      g.b0 = p0 && { x: p0.x + (+c.dx || 0), y: p0.y + (+c.dy || 0) };
+      S.sel = { kind: 'note', ids: new Set([c.id]) };
+      svgEl().classList.add('dragging');
+    }
+    g.moved = true;
+    const dx = (e.clientX - g.x) / S.cam.k, dy = (e.clientY - g.y) / S.cam.k, part = g.area.part;
+    if (part === 'pin') {
+      a.e = Math.round(C.edgeT(g.r0, toWorld(e)) * 1000) / 1000;
+      const p = C.edgeAt(g.r0, a.e);
+      if (g.b0) { c.dx = Math.round(g.b0.x - p.x); c.dy = Math.round(g.b0.y - p.y); }
+    }
+    else if (part === 'move') { a.x = Math.round(g.a0.x + dx); a.y = Math.round(g.a0.y + dy); }
+    else {
+      let { x, y, w, h } = g.a0;
+      if (part.includes('w')) { const nx = Math.min(x + w - AREA_MIN, x + dx); w += x - nx; x = nx; }
+      if (part.includes('e')) w = Math.max(AREA_MIN, w + dx);
+      if (part.includes('n')) { const ny = Math.min(y + h - AREA_MIN, y + dy); h += y - ny; y = ny; }
+      if (part.includes('s')) h = Math.max(AREA_MIN, h + dy);
+      Object.assign(a, { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
+    }
+    renderCanvas();
   }
   // Pin a note where the click landed: on a connector or splice, a set, or a wire.
   function placeNote(t, g) {
@@ -1156,10 +1239,12 @@
   // A note: its text, and a part number and quantity when it stands for a part (the BOM lists it).
   function railNote(h, c) {
     if (!c) return '';
-    const a = c.at || {}, on = a.kind === 'node' ? M.label(M.node(h, a.id)) : a.kind === 'set' ? (M.set(h, a.id) || {}).label : M.wire(h, a.id) ? M.wireName(M.wire(h, a.id)) : '?';
+    const a = c.at || {}, area = a.kind === 'area';
+    const on = area ? 'an area' : a.kind === 'node' ? M.label(M.node(h, a.id)) : a.kind === 'set' ? (M.set(h, a.id) || {}).label : M.wire(h, a.id) ? M.wireName(M.wire(h, a.id)) : '?';
     return railHead('Note', `<span class="mono-ref">${esc(c.ref)}</span> on ${esc(on || '?')}`) +
       `<div class="rail-list"><div class="rail-sec">
-      ${fld('Text', `<textarea class="input" rows="4" data-f="note.text" placeholder="Label with the ref, 25 mm from the housing">${esc(c.text || '')}</textarea>`, 'Drag its bubble on the canvas to move it.')}
+      ${fld('Text', `<textarea class="input" rows="4" data-f="note.text" placeholder="Label with the ref, 25 mm from the housing">${esc(c.text || '')}</textarea>`,
+        area ? 'Drag its bubble to move it. Drag the area by its edge, resize it by its corners, and slide its dot along the edge.' : 'Drag its bubble on the canvas to move it.')}
       <div class="row2">${fld('Part number', inp('note.pn', c.pn, ' placeholder="Optional"'))}${fld('Qty', inp('note.qty', c.qty || 1, ' type="number" min="1" step="1"'))}</div>
       <p class="f-hint">With a part number, it's listed in the BOM.</p>
       </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${esc(c.ref)}</button></div></div>`;

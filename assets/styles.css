@@ -708,6 +708,16 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-note.sel .cv-note-lead { stroke: var(--cv-sel); }
 .lm-canvas .cv-note-t { fill: var(--cv-ink); font: 11.5px var(--sans); pointer-events: none; }
 .lm-canvas .cv-note-pn { fill: var(--cv-ink-2); font: 600 10.5px var(--mono); pointer-events: none; }
+/* An area note: a light dashed box (its inside lets clicks through), dragged by its edge, resized by
+   its corners when selected; its dot slides along the edge. */
+.lm-canvas .cv-area { fill: var(--cv-sel); fill-opacity: 0.04; stroke: var(--cv-ink-2); stroke-opacity: 0.5; stroke-width: 1.2; stroke-dasharray: 6 4; pointer-events: none; }
+.lm-canvas .cv-area.draw { stroke: var(--cv-sel); stroke-opacity: 0.9; fill-opacity: 0.07; }
+.lm-canvas .cv-area-hit { fill: none; stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: move; }
+.lm-canvas .cv-note:hover .cv-area { stroke: var(--cv-sel); stroke-opacity: 0.6; }
+.lm-canvas .cv-note.sel .cv-area { stroke: var(--cv-sel); stroke-opacity: 0.95; }
+.lm-canvas .cv-area-h { fill: var(--cv-paper); stroke: var(--cv-sel); stroke-width: 1.2; cursor: nwse-resize; }
+.lm-canvas .cv-area-h.ne, .lm-canvas .cv-area-h.sw { cursor: nesw-resize; }
+.lm-canvas .cv-note-pinhit { fill: transparent; cursor: grab; }
 .lm-canvas.placing, .lm-canvas.placing * { cursor: crosshair !important; }
 /* How it works: a ? button in the parts pane's bottom-right corner, and a card it pops up over the
    bottom of the pane. */
@@ -758,6 +768,9 @@ button.chip.g-chip { cursor: pointer; }
 .lm-guide p { margin: 0 0 8px; color: var(--text-2); }
 .lm-guide .lg-do { color: var(--text); padding: 8px 10px; border-radius: 10px; background: var(--accent-soft, rgba(0, 114, 127, 0.1)); }
 .lm-guide .lg-do b { color: var(--accent); }
+/* What's on screen, named in a step's text: a button, tab or field as a chip, a key as a key cap. */
+.lm-guide .lg-ui { display: inline-block; padding: 0 6px; border: 1px solid var(--hair-2); border-radius: 6px; background: var(--surface, var(--bg)); font-size: 0.92em; font-weight: 600; line-height: 1.45; white-space: nowrap; }
+.lm-guide .lg-key { display: inline-block; min-width: 1.5em; padding: 0 5px; border: 1px solid var(--hair-2); border-bottom-width: 2px; border-radius: 5px; background: var(--surface, var(--bg)); font: 600 0.85em var(--mono); line-height: 1.5; text-align: center; white-space: nowrap; }
 .lm-guide .lg-act { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 .lm-guide .lg-sp { flex: 1; }
 .lm-guide .lg-toc { max-height: 46vh; overflow-y: auto; margin: 0 -6px; }

@@ -1079,8 +1079,16 @@
       for (const b of boxes) { const sp = b.item.path && b.item.sz.spans.find(x => x.s.id === id); if (sp) { const g = band(b.item, sp); return { x: g.x, y: g.y, w: g.w, h: g.h }; } }
       return null;
     }
+    // An area note's rectangle. at.x, at.y are from the top-left of the connector or splice nearest
+    // it when drawn (at.node), so it follows that part between views; with no such part they're
+    // world coordinates.
+    function areaRect(c) {
+      const a = c.at || {}, it = a.node && itemOf.get(a.node);
+      return { x: (it ? it.x : 0) + (+a.x || 0), y: (it ? it.y : 0) + (+a.y || 0), w: Math.max(AREA_MIN, +a.w || 0), h: Math.max(AREA_MIN, +a.h || 0) };
+    }
     function noteAt(c) {
       const a = c.at || {};
+      if (a.kind === 'area') return edgeAt(areaRect(c), a.e);
       if (a.kind === 'node') { const it = itemOf.get(a.id); return it && { x: it.x + (a.fx || 0) * it.w, y: it.y + (a.fy || 0) * it.h }; }
       if (a.kind === 'set') { const g = setGeom(a.id); return g && { x: g.x + (a.fx || 0) * g.w, y: g.y + (a.fy || 0) * g.h }; }
       const w = M.wire(h, a.id), e = w && wireEnds(w), t = a.t == null ? 0.5 : a.t;
@@ -1092,8 +1100,12 @@
       return Math.min(1, Math.max(0, (p.x - e[0].x) / (e[1].x - e[0].x)));
     }
     // The diagram's bounds take in the notes' bubbles.
-    (h.callouts || []).forEach(c => { const p = noteAt(c); if (!p) return; const s = noteSize(c); box.x0 = Math.min(box.x0, p.x + c.dx - s.w / 2); box.x1 = Math.max(box.x1, p.x + c.dx + s.w / 2); box.y0 = Math.min(box.y0, p.y + c.dy - s.h / 2); box.y1 = Math.max(box.y1, p.y + c.dy + s.h / 2); });
-    return { items, itemOf, boxes, wirePath, twistStart, twistEnd, wireAt, lane, labelAt, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom, setEndAt, anchorsOf };
+    (h.callouts || []).forEach(c => {
+      const p = noteAt(c); if (!p) return; const s = noteSize(c);
+      box.x0 = Math.min(box.x0, p.x + c.dx - s.w / 2); box.x1 = Math.max(box.x1, p.x + c.dx + s.w / 2); box.y0 = Math.min(box.y0, p.y + c.dy - s.h / 2); box.y1 = Math.max(box.y1, p.y + c.dy + s.h / 2);
+      if (c.at.kind === 'area') { const r = areaRect(c); box.x0 = Math.min(box.x0, r.x); box.x1 = Math.max(box.x1, r.x + r.w); box.y0 = Math.min(box.y0, r.y); box.y1 = Math.max(box.y1, r.y + r.h); }
+    });
+    return { items, itemOf, boxes, wirePath, twistStart, twistEnd, wireAt, lane, labelAt, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom, setEndAt, anchorsOf, areaRect };
   }
 
   // A lane (layout's lane: points with arc length s): the point at s along it, and how far along it
@@ -1387,14 +1399,49 @@
     const lines = noteLines(c), pn = c.pn ? `${c.pn}${c.qty > 1 ? ' × ' + c.qty : ''}` : '';
     return { lines, pn, w: Math.max(64, ...lines.map(l => tw(l, 11.5)), pn ? tw(pn, 10.5) + 18 : 0) + 20, h: lines.length * 15 + (pn ? 14 : 0) + 12 };
   }
+  // An area note's rectangle (Chris): a dashed, rounded box drawn on the canvas, with the note's
+  // dot on its edge. edgeAt: the point e (0 to 1) of the way round the edge, clockwise from the
+  // top-left corner, on the rounded corners as drawn; edgeT: the reverse, for the point on the edge
+  // nearest p.
+  const AREA_R = 10, AREA_MIN = 16;
+  function edgeAt(r, e) {
+    let s = (((+e || 0) % 1) + 1) % 1 * 2 * (r.w + r.h), x, y;
+    if (s < r.w) { x = r.x + s; y = r.y; }
+    else if ((s -= r.w) < r.h) { x = r.x + r.w; y = r.y + s; }
+    else if ((s -= r.h) < r.w) { x = r.x + r.w - s; y = r.y + r.h; }
+    else { s -= r.w; x = r.x; y = r.y + r.h - s; }
+    const rr = Math.min(AREA_R, r.w / 2, r.h / 2), cx = Math.min(Math.max(x, r.x + rr), r.x + r.w - rr), cy = Math.min(Math.max(y, r.y + rr), r.y + r.h - rr);
+    if (cx !== x && cy !== y) { const d = Math.hypot(x - cx, y - cy) || 1; x = cx + (x - cx) / d * rr; y = cy + (y - cy) / d * rr; }
+    return { x, y };
+  }
+  function edgeT(r, p) {
+    const x = Math.min(Math.max(p.x, r.x), r.x + r.w), y = Math.min(Math.max(p.y, r.y), r.y + r.h);
+    const d = [y - r.y, r.x + r.w - x, r.y + r.h - y, x - r.x], side = d.indexOf(Math.min(...d));
+    const s = side === 0 ? x - r.x : side === 1 ? r.w + (y - r.y) : side === 2 ? r.w + r.h + (r.x + r.w - x) : 2 * r.w + r.h + (r.y + r.h - y);
+    return s / (2 * (r.w + r.h));
+  }
+  // The area itself; on the canvas its edge drags it (data-areaedge; its inside lets clicks through
+  // to the parts in it), and when selected its corners resize it (data-areah).
+  function areaSvg(c, Lo, opts, on) {
+    const r = Lo.areaRect(c), rr = Math.min(AREA_R, r.w / 2, r.h / 2), id = esc(c.id);
+    const rect = cls => `<rect class="${cls}" x="${f(r.x)}" y="${f(r.y)}" width="${f(r.w)}" height="${f(r.h)}" rx="${f(rr)}"`;
+    let o = rect('cv-area') + '/>';
+    if (opts.sheet) return o;
+    o += rect('cv-area-hit') + ` data-areaedge="${id}"/>`;
+    if (on) [['nw', r.x, r.y], ['ne', r.x + r.w, r.y], ['se', r.x + r.w, r.y + r.h], ['sw', r.x, r.y + r.h]]
+      .forEach(([k, x, y]) => { o += `<rect class="cv-area-h ${k}" x="${f(x - 4)}" y="${f(y - 4)}" width="8" height="8" rx="1.5" data-areah="${id}|${k}"/>`; });
+    return o;
+  }
   // A note: a dot where it's pinned, a leader to its bubble, and the bubble (drags by data-notebox).
+  // An area note's dot slides along the area's edge (data-areapin).
   function noteSvg(c, Lo, opts) {
     const p = Lo.noteAt(c);
     if (!p) return '';
     const s = noteSize(c), cx = p.x + (+c.dx || 0), cy = p.y + (+c.dy || 0), x = cx - s.w / 2, y = cy - s.h / 2;
-    const on = opts.sel && opts.sel.kind === 'note' && opts.sel.ids.has(c.id);
-    let o = `<g class="cv-note${on ? ' sel' : ''}" data-note="${esc(c.id)}"><title>${esc(c.ref)}</title>` +
+    const on = opts.sel && opts.sel.kind === 'note' && opts.sel.ids.has(c.id), area = c.at && c.at.kind === 'area';
+    let o = `<g class="cv-note${on ? ' sel' : ''}" data-note="${esc(c.id)}"><title>${esc(c.ref)}</title>` + (area ? areaSvg(c, Lo, opts, on) : '') +
       `<path class="cv-note-lead" d="M${f(p.x)} ${f(p.y)}L${f(cx)} ${f(cy)}"/><circle class="cv-note-pin" cx="${f(p.x)}" cy="${f(p.y)}" r="3"/>` +
+      (area && !opts.sheet ? `<circle class="cv-note-pinhit" cx="${f(p.x)}" cy="${f(p.y)}" r="8" data-areapin="${esc(c.id)}"/>` : '') +
       `<rect class="cv-note-box" x="${f(x)}" y="${f(y)}" width="${f(s.w)}" height="${f(s.h)}" rx="8" data-notebox="${esc(c.id)}"/>`;
     s.lines.forEach((l, i) => { o += `<text class="cv-note-t" x="${f(x + 10)}" y="${f(y + 18 + i * 15)}">${esc(l)}</text>`; });
     if (s.pn) o += `<text class="cv-note-pn" x="${f(x + 10)}" y="${f(y + 18 + s.lines.length * 15)}">${esc(s.pn)}</text>`;
@@ -1564,5 +1611,5 @@
 
   // A set's badge as drawn (its spot, its dot and where along the set that is), for dragging it.
   const badgeOf = (it, id) => badgeRow(it).find(b => b.sp.s.id === id) || null;
-  LM.conn = { G, layout, render, boxesOf, pinLabel, project, pathAt, badgeOf };
+  LM.conn = { G, layout, render, boxesOf, pinLabel, project, pathAt, badgeOf, edgeAt, edgeT };
 })(window.LM = window.LM || {});

@@ -175,7 +175,10 @@
   // A note (h.callouts; h.notes is the drawing's numbered notes) is a bubble of text pinned to a
   // part of the diagram (Chris): a connector or splice (at: { kind: 'node', id, fx, fy }, a spot on
   // it as fractions of its size), a set ({ kind: 'set', id, fx, fy }, on its drawn area) or a wire
-  // ({ kind: 'wire', id, t }, how far along its run, 0 to 1). The bubble sits dx, dy from the pin,
+  // ({ kind: 'wire', id, t }, how far along its run, 0 to 1), or an area drawn on the canvas
+  // ({ kind: 'area', node, x, y, w, h, e }: a rectangle from the top-left of the connector or splice
+  // nearest it, and the pin e of the way round its edge, clockwise from its top-left; conn.js
+  // areaRect). An area note stays when its part goes. The bubble sits dx, dy from the pin,
   // so both follow the part in either view. It can stand for a part: with a part number it's
   // listed in the BOM, qty times.
   function addNote(h, at, props) {
@@ -188,7 +191,7 @@
   // Notes pinned to a part that's gone go with it.
   function tidyNotes(h) {
     if (!Array.isArray(h.callouts)) { h.callouts = []; return; }
-    h.callouts = h.callouts.filter(c => c && c.at && (c.at.kind === 'node' ? node(h, c.at.id) : c.at.kind === 'set' ? set(h, c.at.id) : wire(h, c.at.id)));
+    h.callouts = h.callouts.filter(c => c && c.at && (c.at.kind === 'area' || (c.at.kind === 'node' ? node(h, c.at.id) : c.at.kind === 'set' ? set(h, c.at.id) : wire(h, c.at.id))));
   }
 
   // ── Sets ──────────────────────────────────────────────────────────────────

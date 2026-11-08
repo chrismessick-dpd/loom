@@ -222,6 +222,26 @@
     ok(err && err.status === 404, 'expected a 404, got ' + (err && (err.status || err.message)));
   });
 
+  // ── Wire sets ──
+  // Deleting a set never deletes what's inside it (Chris): a bundle holding a cable and a second
+  // bundle leaves the cable and that bundle, with their wires and their own sets.
+  test('deleting a set keeps the sets inside it', () => {
+    const h = LM.demo.harness(), L = l => h.sets.find(s => s.label === l);
+    const loose = h.wires.filter(w => !h.sets.some(s => s.wires.includes(w.id))).map(w => w.id);
+    const b2 = M.makeSet(h, M.wiresIn(h, L('TP2')).concat(loose.slice(0, 2)), { bundle: true });
+    const top = M.makeSet(h, M.wiresIn(h, L('C1')).concat(M.wiresIn(h, b2)), { bundle: true });
+    ok(b2 && top, 'made the bundles');
+    eq(top.sets.map(id => M.set(h, id).label).sort(), ['B2', 'C1'], 'the cable and the bundle sit inside the new bundle');
+    const before = h.sets.filter(s => s !== top).map(s => [s.label, M.wiresIn(h, s).slice().sort()]);
+    M.dissolveSet(h, top.id);
+    M.tidySets(h);
+    ok(!M.set(h, top.id), 'the bundle is gone');
+    eq(h.sets.map(s => [s.label, M.wiresIn(h, s).slice().sort()]), before, 'every other set stays, with the same wires');
+    ok(!M.parentOf(h, L('C1').id) && !M.parentOf(h, b2.id), 'the cable and the inner bundle are now outermost');
+    eq(M.set(h, b2.id).sets.map(id => M.set(h, id).label), ['TP2'], 'the inner bundle keeps its own set');
+    ok(L('C1').cable && M.set(h, b2.id).bundle, 'they keep what they are');
+  });
+
   (async () => {
     let failed = 0;
     for (const t of tests) {
