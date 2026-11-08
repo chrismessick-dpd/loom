@@ -23,7 +23,8 @@ links to it so far. Before every commit:
 - **Storage and Signoff PL (2026-11-07, Chris; branch `store`, with `signoff_pl` branch `loom`):** harnesses
   sync with one private repo for all of them, `loom_data` (`assets/store.js`, `LM.store`), through the
   Signoff engine's `GitHubStore`, vendored from EE into `assets/vendor/model.js` and `github.js`
-  (`tools/sync_vendor.py`). The repo doesn't exist yet: Chris creates it (or OKs creating it).
+  (`tools/sync_vendor.py`). `chrismessick-dpd/loom_data` was created 2026-11-07 (private, `main` with only a
+  README); the first sync from a signed-in browser writes `projects/`.
   - **The file** is `projects/<harness id>.json`, an envelope shaped like a Signoff review so PL's reader
     reads it like any design: `{ schema, id, meta: { name, number, revision, project, deleted, updatedAt,
     updatedBy }, summary, harness }`. `harness` is the truth; `meta` and `summary` (`summarize`: `tool:
