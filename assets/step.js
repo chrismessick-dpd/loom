@@ -56,7 +56,7 @@
     return { pos, idx, face, tris: nt };
   }
 
-  // Weld, normals and the edge list: view independent, so done once per mesh.
+  // Weld, normals, and the edge list: view independent, so done once per mesh.
   function prepare(mesh) {
     if (mesh.edges) return mesh;
     const { pos, idx, face } = mesh, nv = pos.length / 3, nt = idx.length / 3;
@@ -434,7 +434,7 @@
   // The kinds of file a model can come from, by extension.
   const KINDS = { step: 'step', stp: 'step', iges: 'iges', igs: 'iges', stl: 'stl' };
   const kindOf = name => KINDS[(String(name).match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase()] || null;
-  // Read a STEP, IGES or STL file into a prepared mesh.
+  // Read a STEP, IGES, or STL file into a prepared mesh.
   async function load(file) {
     const kind = kindOf(file.name || '') || 'step', buf = await file.arrayBuffer();
     if (kind === 'stl') return prepare(fromStl(buf));

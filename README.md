@@ -10,7 +10,7 @@ harness).
 ## Features
 
 **Build**: a WireViz-style wiring diagram, laid out automatically.
-- **Arranging.** Drag a connector, splice or box to move it; it snaps to the grid. Hold Ctrl to
+- **Arranging.** Drag a connector, splice, or box to move it; it snaps to the grid. Hold Ctrl to
   place it anywhere. The grid size (or Off) is set over the canvas, and **Auto layout** forgets the
   dragged positions. Positions are saved with the harness and used on the drawing.
 - **Navigating.** Drag with the right (or middle) mouse button to pan, and use the wheel to zoom.
@@ -20,17 +20,17 @@ harness).
   fold either one away, and the browser remembers it.
 - **Connectors.** Each is a table with a header, its family, gender and pin count, and one row per
   pin with its label.
-  - Families: JST, Molex, TE, D-sub, M8/M12, generic, flying leads, ring terminals and ferrules.
+  - Families: JST, Molex, TE, D-sub, M8/M12, generic, flying leads, ring terminals, and ferrules.
     Housing part numbers are suggested where the series names them.
   - Pin labels are usually net names.
 - **Wires.** Click a pin, then a pin on another end or a splice. Each wire has a color (IEC 60757
   codes, with stripes), a gauge and a signal. *Wire 1:1* runs pin *n* to pin *n* between two ends.
 - **Cables and bundles.**
-  - Shift-click wires to make a cable, a twisted pair or a shield.
+  - Shift-click wires to make a cable, a twisted pair, or a shield.
   - Each cable gets its own box (`4x · 0.13 mm² (26 AWG) · 300 mm`). Other wires are bundled by the
     two ends they join.
   - Lengths are set per box, face to face.
-- **Selecting.** Selecting an end, wire or cable dims everything unrelated.
+- **Selecting.** Selecting an end, wire, or cable dims everything unrelated.
 
 **From a board**: add a connector from a Signoff EE board's stored fab package.
 - Loom reads the latest tagged revision's package, or the latest stored Fabcheck run when none is
@@ -42,19 +42,19 @@ harness).
 
 **Drawing**: one printable sheet.
 - **Contents:** the wiring diagram, a face view of each connector (with pin 1 and the side shown),
-  the wire list, the BOM, numbered notes and a title block.
+  the wire list, the BOM, numbered notes, and a title block.
 - **Export:** SVG, PNG, or print and PDF.
 - **Wires section:** under the sheet, it opens to the editable wire list. It has CSV export and
   paste from a spreadsheet (`P1.3, P2.3, I2C_SDA, BU, 28`).
 
-**BOM**: housings, terminals per wired pin, splices, wire by gauge and color, cables, shields and
+**BOM**: housings, terminals per wired pin, splices, wire by gauge and color, cables, shields, and
 coverings. Lengths include an allowance (5% by default). CSV export.
 
 **Checks**:
 - duplicate refs;
 - wires on pins that don't exist, or two wires on one pin;
 - gauges outside a terminal's range;
-- missing colors, gauges or lengths;
+- missing colors, gauges, or lengths;
 - unused pins and loose ends.
 
 **Everything else**

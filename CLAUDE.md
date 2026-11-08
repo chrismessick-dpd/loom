@@ -7,6 +7,8 @@ pin to run wires, and group wires into cables. Loom then draws the sheet a tech 
 - the wire list and the BOM;
 - notes and a title block.
 
+**Serial comma** (Chris, 2026-11-08): use the Oxford comma in every list of three or more, in UI text, docs, demo data, checklists, and commit messages: "A, B, and C". Never change check ids or data keys to fit it.
+
 Read `../CLAUDE.md` first for the suite's hard rules. Loom is in development (Chris, 2026-11-07): nothing
 needs to fit existing structures or keep old saved harnesses working, so redesign cleanly as needed,
 without compatibility shims or migrations. The name is final (Chris, 2026-11-06, after
@@ -43,7 +45,7 @@ links to it so far. Before every commit:
     to every set by `setFlag` and `set-holder`), *Together* (one bundle or cable of all of them,
     `setFlag(flag, on, together)`, i.e. `makeSet` over their wires) and Set color. Label, part
     number and lengths are edited one set at a time.
-  - **Drag and delete.** Dragging a selected connector, splice or box moves the whole selection
+  - **Drag and delete.** Dragging a selected connector, splice, or box moves the whole selection
     (`selectedKeys`: `n:<node>` and the box of each selected set or wire; `g.parts` in `onMove`,
     one snapshot), in Real proportions up and down only. Delete deletes every kind in it
     (`deleteSel`: notes, sets dissolved, wires, nodes). No tests (the canvas has none).
@@ -64,11 +66,11 @@ links to it so far. Before every commit:
     copy)". A harness edited while a sync runs keeps the edit (`before` hashes). Deleting a synced harness
     leaves a tombstone (`h.deleted`, `meta.deleted`; PL reads it as archived); a file deleted on GitHub
     drops an untouched local copy (`dropGone`).
-  - **Sync** runs on opening, from the footer's Sync button and on Ctrl+S (Save file is the toolbar
+  - **Sync** runs on opening, from the footer's Sync button, and on Ctrl+S (Save file is the toolbar
     button; Ctrl+S saves a file only with no sign-in or in the demo). It uses the token Signoff EE keeps
     (`signoff.token`) and the owner in `signoff.v1.settings`; repos can be changed under
     `loom.v1.repos`. A 404 says to ask for access or create the repo. The footer says where harnesses
-    are (`#sync-pill`, Signoff EE's pill: dot, title and sub line, with the build hash in its tooltip;
+    are (`#sync-pill`, Signoff EE's pill: dot, title, and sub line, with the build hash in its tooltip;
     2026-11-07, Chris: match EE's footer), and the sidebar groups them by client project and dots
     unsynced ones.
   - **Signoff PL.** A harness has a client project (`h.project`, the Project field in the harness rail,
@@ -117,10 +119,10 @@ links to it so far. Before every commit:
     description shown in place of a family name (`library.kindName`: the info row, the sheet, the BOM).
     `pins[i]` is the mark for `M.pinList(n)[i]` (so board pin names like A1 work; a board's count is locked).
     `shapes.js` `custom` draws the face from it: the sketch or the model's edges, and a cavity per mark
-    filled with its wire's color, on the canvas header, the Properties tile and the sheet. The back view
+    filled with its wire's color, on the canvas header, the Properties tile, and the sheet. The back view
     mirrors it left to right; gender doesn't flip a drawing made by hand. Switching to a family keeps
     `n.custom`, and the Family list offers Custom again once one exists.
-  - **3D model tab:** import (or drop) STEP, IGES or STL. OpenCascade reads it in `occt-worker.js` and
+  - **3D model tab:** import (or drop) STEP, IGES, or STL. OpenCascade reads it in `occt-worker.js` and
     `step.js` makes the mesh (STL parsed in `step.js`); three.js r149 (Partcheck's pinned build, loaded
     on first use) shows it orthographic, turned like a trackball (one quaternion, `V3.q`). Clicking a face
     looks straight at it (area-weighted normal of its b-rep face; up the nearest world axis), with the
@@ -129,7 +131,7 @@ links to it so far. Before every commit:
     model stays in memory for the session (`meshes`), so changing the view after a reload means importing
     again. Fixed in `step.js` on the way: closed loops collapsed to dots in `simplify`, and inside-out
     meshes (negative volume) now flip their normals.
-  - **Sketch tab:** Select, Rectangle, Rounded rectangle, Circle or ellipse and Line (V R U C L), drag to
+  - **Sketch tab:** Select, Rectangle, Rounded rectangle, Circle or ellipse, and Line (V R U C L), drag to
     draw (a click places a typical size; Shift squares), move and resize by eight handles, X/Y/W/H/R
     fields and Fill for the selection, a snap grid (0.1 to 2.54 mm; Alt places freely), wheel zoom, pan by
     right drag or empty space, Trace model to sketch over the model's face view.
@@ -171,12 +173,12 @@ links to it so far. Before every commit:
   - **Turning the face (Chris: the key at 4 o'clock had to go to 12).** In the face view: ±90° buttons, a
     degrees field (`model.rot`), `[` and `]` (1°, Shift 15°), and **Point up**: click a feature and it turns
     to 12 o'clock about the connector's axis (the center of the biggest circle at least 30% of the face,
-    else the frame's middle; `rotCenter`). It turns the stored drawing, circles, cavities and marks exactly
+    else the frame's middle; `rotCenter`). It turns the stored drawing, circles, cavities, and marks exactly
     and turns `model.view` to match, so no model is needed (`rotate`). In 3D, Shift-drag rolls about the
     view axis. Marks snap to fitted circles first (`snapMark`), other closed loops only where none is.
   - Positions edits apply as typed, and the window swaps its Assign block and toolbar only when they
     change: typing 8 then clicking Assign used to lose that click to the re-render (Chris: locked out
-    after going from 4 to 8). Enter makes the part only from Ref, Name or Description.
+    after going from 4 to 8). Enter makes the part only from Ref, Name, or Description.
   - The CSP now allows `cdn.jsdelivr.net` for scripts and fetches, and `blob:` workers (three.js and
     OpenCascade, as Partcheck).
   - **Mirror** (2026-11-08, Chris): Mirror horizontally and Mirror vertically (`mirrorBtns`) after the turn
@@ -184,7 +186,7 @@ links to it so far. Before every commit:
     center (in `V3.group.matrix`, so three.js keeps winding and lighting; flipping the camera's frame lit the
     back faces), drags and the ring turn the right way on screen (`mirSign`), and Make face view negates the
     view's `right` or `up` and stores `model.mirror`. In the face view `mirror2d` flips the drawing,
-    circles, cavities and marks about the drawing's middle, like `rotate`, and Change view restores the
+    circles, cavities, and marks about the drawing's middle, like `rotate`, and Change view restores the
     flip in 3D.
   - **Load demo model** (2026-11-08, Chris; pushed `da4348b` with the guide's custom connector steps): in `?demo`, beside Import a model…, it reads
     `assets/demo/S11M0-P08M.stp.gz` (a vendor's 8-position circular connector, 632 KB of STEP gzipped to
@@ -194,7 +196,7 @@ links to it so far. Before every commit:
 - **The guide (2026-11-07, Chris: an interactive getting started for new users):** `assets/guide.js`,
   `window.LoomGuide` (also `LM.guide`). 27 steps in seven chapters (Welcome, The canvas, Ends and wires,
   Wire sets, Views and notes, The drawing, Done), each a title, what the feature is, a *Try it*
-  instruction, a `setup` (view, selection, panels shown, the How it works card closed) and a `spot`
+  instruction, a `setup` (view, selection, panels shown, the How it works card closed), and a `spot`
   (selectors, first one shown wins; a list of selectors in a spot rings them as one box), ringed by
   `#lm-guide-spot`, moved every animation frame. 2026-11-08 (Chris): after *A connector from a board*,
   *A custom connector* (Connector, Configure, Custom, 3D model, Load demo model, each ringed in turn) and
@@ -235,13 +237,13 @@ links to it so far. Before every commit:
   loads it.
 
 - **Direction:** `docs/direction-2026-11.md` covers the name options, the look (three references:
-  WireViz, RapidHarness, Wirely), the EE → PL → Loom connector integration and the harness software
+  WireViz, RapidHarness, Wirely), the EE → PL → Loom connector integration, and the harness software
   audit with its feature options list. Chris: strip it back to a clean interface and add features as
   needed; the first concept could be ripped out.
 - **Rewritten 2026-11-06:**
   - The Build canvas is the connection diagram (`assets/conn.js`), laid out automatically, with no
     + handles.
-  - Dragging came back the same day (Chris). Connectors, splices and boxes drag by any part of them
+  - Dragging came back the same day (Chris). Connectors, splices, and boxes drag by any part of them
     (`data-item`), and their positions are saved in `h.place` (`n:<node id>` or `b:<box key>`),
     which win over the auto layout on the canvas and the sheet. They snap to `h.grid`: 0 (off),
     5, 10 (default) or 20, set in the Grid control over the canvas, which also picks the grid's
@@ -282,8 +284,8 @@ links to it so far. Before every commit:
     other parts.
   - The canvas and the drawing sheet use the same diagram. The sheet stays a plain paper diagram;
     the canvas adds a finish (see *Canvas finish* below).
-  - The formboard renderer (`render.js`), breakouts in the UI, coverings in the UI and the
-    Formboard/Wiring sheet toggle are gone. The model still has segments, breakouts and coverings,
+  - The formboard renderer (`render.js`), breakouts in the UI, coverings in the UI, and the
+    Formboard/Wiring sheet toggle are gone. The model still has segments, breakouts, and coverings,
     so a Layout view can come back.
 - **Wire sets (2026-11-06, Chris; merged from branch `sets`):** `h.groups` became `h.sets`, a forest of nested
   sets (schema 2; `normalize` converts old groups, `fromGroups`).
@@ -324,7 +326,7 @@ links to it so far. Before every commit:
     per unit), and each set's ends sit where `M.reach` puts them (`sz.arc`: `u0`, `u1`), so a set
     reaching its wire ends is drawn out to the end of each lead. Its wires fan to their pins from
     wherever it ends, arriving along the lead's tangent (`joins`, `tanAt`). A box whose sets have no
-    cable, shield, bundle or twist has no leads. In Real proportions the path is the box.
+    cable, shield, bundle, or twist has no leads. In Real proportions the path is the box.
     - Twists ride leads too (branch `wire-ends`, Chris): a twist packs its wires like a shield, and
       its helix runs by distance along the path (`twistSpan`: `ua`, `ub`), so it follows the curves.
     - **Anchors on loose wires** (Chris: drag individual wires like cables). A stack (wires in no
@@ -349,7 +351,7 @@ links to it so far. Before every commit:
       normals and edge offsets, `at(u)`): the sheath (`jacket`, `capOf`), braid, lacing, set
       areas (paths), end grips (square to the path) and badge leaders. Notes on a set use its band's
       bounds (`setGeom`).
-    - A check moving P1, P2 and P4 to 54 spots, anchors pulled out, found no wire or band edge
+    - A check moving P1, P2, and P4 to 54 spots, anchors pulled out, found no wire or band edge
       doubling back.
   - **Dragging a set's ends** (Chris). Every set has a grip at each end (`setEnds`,
     `data-setend`; it shows on hover and while selected). Dragging it slides that end along its
@@ -372,7 +374,7 @@ links to it so far. Before every commit:
     bundle `BUNDLE_R` (12). On the canvas a shield is metallic (Chris, 2026-11-07): its outline (1.2)
     and its 7.5-unit crosshatch in one steel gray, `#b4b9bf`, with nothing under them; selected, its
     outline goes to the selection blue.
-  - **Cables, shields and bundles pack their wires** (2026-11-07, Chris: look more like a cable;
+  - **Cables, shields, and bundles pack their wires** (2026-11-07, Chris: look more like a cable;
     shields and bundles from branch `curves`). Each wire eases into every packing set that holds
     it (its chain, `chainOf`, `packAt`), so a shielded pair running past its bundle stays packed.
     A set nested in a packing set packs at its real width, its wires plus its `R` each side, so its
@@ -388,7 +390,7 @@ links to it so far. Before every commit:
       split round it until slid: rows above its middle sit just above it, rows below just under it,
       and the badges move down with them (`offLane`, `it.labelDrop`). That's also what happens
       when a packed set runs out along both leads.
-    - Wire paths (`runPts`), lanes, twist leaders and `wireAt` all go through the packing
+    - Wire paths (`runPts`), lanes, twist leaders, and `wireAt` all go through the packing
       (`packAt`), and every set's band is drawn round its packed wires, so a set running past its
       parent narrows inside it and widens as its wires fan out.
     - The canvas draws the sheath only just see-through (Chris: 90%): opaque colors at the tint the
@@ -408,7 +410,7 @@ links to it so far. Before every commit:
       still selects the set. Unmoved, a badge keeps its place in the row with its elbow leader. Auto
       layout forgets both.
   - **Wire labels** (2026-11-07, Chris: they size nothing and slide anywhere along their wires).
-    Each boxed wire's label (from, color and to, in its box's shared columns, `sz.cols`,
+    Each boxed wire's label (from, color, and to, in its box's shared columns, `sz.cols`,
     `sz.inner`) is drawn in its own layer over the parts, outside every `data-item`
     (`labelSvg`). Boxes no longer size to their text: a box gives its rows a nominal run,
     `ROW_W` (140).
@@ -456,7 +458,7 @@ links to it so far. Before every commit:
       of it (`sz.textC`). A run with no length is `NOMINAL` long.
     - Boxes can then reach into another column's parts, so anything that would overlap what's
       already placed moves down below it, top down.
-    - In this view connectors, splices, sets and stacks drag only up and down (2026-11-07, Chris),
+    - In this view connectors, splices, sets, and stacks drag only up and down (2026-11-07, Chris),
       snapped like the arranged view (first port on the grid). The heights are kept in `h.propY`
       by item key (`n:<node id>`, `b:<box key>`), apart from `h.place`, and Auto layout here
       forgets only them. A box nobody moved whose end was moved centers its rows on its ends.
@@ -465,11 +467,11 @@ links to it so far. Before every commit:
       push stands). Set ends drag too, to the box's true scale (`g.prop` in `dragSetEnd`),
       between the set's other end and the wire ends.
   - **Notes** (`h.callouts`; Chris). Add › Note, then a click on a connector or splice, a wire's
-    line or a set pins a note there (`placeNote` in `app.js`, preferring them in that order). A
+    line, or a set pins a note there (`placeNote` in `app.js`, preferring them in that order). A
     note stores where it's pinned relative to that part (`at`: a node's or set's spot as
     fractions of its size, a wire's `t` along its run; `Lo.noteAt`, `wireT`, `setGeom`), so it
     follows the part in either view, and its bubble sits `dx`, `dy` from the pin, with a leader.
-    Dragging the bubble (`data-notebox`) moves it; clicking it opens Text, Part number and Qty in
+    Dragging the bubble (`data-notebox`) moves it; clicking it opens Text, Part number, and Qty in
     Properties (`railNote`). With a part number it's a BOM line. The sheet prints notes. A note
     goes with the part it's pinned to; one on a dissolved set moves to its first wire. Refs are
     N1, N2…; the drawing's numbered notes are still `h.notes`.
@@ -487,7 +489,7 @@ links to it so far. Before every commit:
     this browser (`fold.help`).
   - **Properties.** Several wires or a set show the **Wire set** panel. Its header's label edits in place (`.title-edit`), with a pencil that always shows on an
     accent chip at the end of the row (`.title-pen`; Chris: more prominent). It has Twist and Shield tick
-    boxes, a **Held as** radio choice of None, Cable or Bundle (Chris: show the mutual exclusion), Label, Description and Part number (cable or shield), the wire length,
+    boxes, a **Held as** radio choice of None, Cable, or Bundle (Chris: show the mutual exclusion), Label, Description, and Part number (cable or shield), the wire length,
     each end's overhang with the total (`coversField`), Set color, and a clickable **Hierarchy**
     tree (`setTree`). Delete on a set dissolves
     it (`dissolveSet`) and never deletes wires. A wire's chips link to its sets, and its Sets section
@@ -498,7 +500,7 @@ links to it so far. Before every commit:
     lists the wire sets as trees, and its Ends list is gone. A set clicked in that tree is selected without
     leaving Parts (`S.keepTab`), and its row shows an Edit chip (`.st-edit`, `edit-set`) that opens
     Properties (2026-11-07, Chris).
-- **Diagram look (2026-11-06, Chris; the bundle, table and Wire bundle notes predate wire sets):**
+- **Diagram look (2026-11-06, Chris; the bundle, table, and Wire bundle notes predate wire sets):**
   - A connector table's header shows a small sketch of the connector beside its ref (`sketchOf`,
     the view the drawing prints; the front when it prints both). A circular connector's sketch is twice as tall, and its header grows to hold it (`sz.hh`; 2026-11-07). Chris tried the header as a band
     down the card's side (2026-11-07) and kept it on top. Under it, the info row has the
@@ -514,7 +516,7 @@ links to it so far. Before every commit:
   - Each housed connector (rect, D-sub, circular) has **Views: Front, Back, Both** in Properties,
     stored as `n.faceView` (unset means front). Back is the wire side, the mirror of the face
     (`shapes.js` `face(h, n, view)`, `views`, `fitViews`). The sheet prints the chosen views; Both
-    takes a double-width cell. Leads, rings and ferrules have no back view.
+    takes a double-width cell. Leads, rings, and ferrules have no back view.
   - Twisted wires twist inside their box (`conn.js` `twist`): any run of two or more wires of one
     twist group on neighboring rows (a pair, three motor wires…) is drawn as a helix seen from the
     side, a whole number of turns of about 40 units per wire, easing level into and out of the
@@ -524,7 +526,7 @@ links to it so far. Before every commit:
     at each end a tie loops round the wires, with more ties between about every `LACE_GAP` (75; Chris): a thin ellipse slanted like a
     wrapped cord, round at the bottom (`tieHalf`), tied off at the top in a knot of two crossed lobes,
     a wrap and two tails (`laceKnot`), its
-    far side drawn under the wires (in `boxBack`) and its near side, knot and tails over them.
+    far side drawn under the wires (in `boxBack`) and its near side, knot, and tails over them.
     A bundle that is nothing but one twisted set (`b.twistOnly`) gets no bands, and its twist
     runs nearly the box's width; a cable keeps its sheath.
   - A box's label table (B1 or C1, count, gauge, length) sits under its wires, and a cable's note
@@ -543,13 +545,13 @@ links to it so far. Before every commit:
     (`--cv-conn-edge`, 1.3), a lit header (`lmfx-conn-head`), a stronger shadow
     (`--cv-conn-shadow`), and glass: a faint shade down the card (`.cv-glass`, `lmfx-glass`) and a
     bright inner rim (`.cv-rim`), in both themes.
-  - **Ends and splices.** Every wire-end dot (pin ends, splice ports and loose ends) is a metal
+  - **Ends and splices.** Every wire-end dot (pin ends, splice ports, and loose ends) is a metal
     contact ringed in its wire's color (`ring`, `--wc`), and it glows when grabbable. A splice's
     conductors are gold and meet in a silver crimp sleeve (`.cv-crimp`). A cable's cut end is a lit
     face (`lmfx-face`), and lacing is a light cord. While a wire end is dragged, its wire is lit
     (`carry`) and the pin it would land on fills in (`dropPin`, `.land`).
   - **The stage and the glass.** The stage is a lit gradient (`--cv-stage`). Glass capsules (`.glass`)
-    hold the HUD, the zoom pill (`#coords`, `#zoom-val`) and the wiring tip.
+    hold the HUD, the zoom pill (`#coords`, `#zoom-val`), and the wiring tip.
   - **Motion:**
     - The camera only changes the viewBox (`setView`), and Fit and zoom glide (`glide`).
     - The intro runs once per harness.
@@ -605,7 +607,7 @@ links to it so far. Before every commit:
   - a revision table on the sheet;
   - WireViz import and export;
   - tests beyond sync (`tests/test.html` covers `store.js` only).
-- A client's in-house harness tool inspired the twist, shield and merged-leg ideas. Don't name it
+- A client's in-house harness tool inspired the twist, shield, and merged-leg ideas. Don't name it
   here (this repo is public), and no code or data from it goes in.
 
 ## Model and diagram
@@ -633,8 +635,8 @@ only) is the only other network use, and the CSP in `index.html` allows just tho
 
 | File | What |
 | --- | --- |
-| `assets/model.js` | The graph: nodes (connector, splice, breakout), segments (length, covering), wires (pin to pin, routed through segments) and nested wire sets (twist, shield, cable or bundle). Also `analyze`, `checks`, `fromTo` and `bom`. |
-| `assets/conn.js` | The connection diagram: boxes, column layout and SVG, for the canvas and the sheet. |
+| `assets/model.js` | The graph: nodes (connector, splice, breakout), segments (length, covering), wires (pin to pin, routed through segments), and nested wire sets (twist, shield, cable, or bundle). Also `analyze`, `checks`, `fromTo`, and `bom`. |
+| `assets/conn.js` | The connection diagram: boxes, column layout, and SVG, for the canvas and the sheet. |
 | `assets/boards.js` | Board connectors from Signoff EE's stored fab packages (GitHub, read only) or the demo packages. |
 | `assets/store.js` | Sync with `loom_data` and the read of Signoff PL (see *Storage and Signoff PL* above). |
 | `assets/vendor/` | Fabcheck's `ipc356.js` and `assembly.js`, and the Signoff engine's `model.js` and `github.js` (from EE). Don't edit; run `tools/sync_vendor.py`. |
@@ -642,7 +644,7 @@ only) is the only other network use, and the CSP in `index.html` allows just tho
 | `assets/library.js` | Parametric connector families. Housing part numbers are suggested only where the series names them by pin count. |
 | `assets/shapes.js` | Face views, labeled with the side shown, with a pin-1 mark; custom faces from `n.custom`. |
 | `assets/configure.js` | The Configure window: ref, name, type, and a custom face from a 3D model or a sketch with assigned positions. |
-| `assets/step.js`, `occt-worker.js` | STEP, IGES and STL to a mesh, and a view's visible edges as one path. |
+| `assets/step.js`, `occt-worker.js` | STEP, IGES, and STL to a mesh, and a view's visible edges as one path. |
 | `assets/sheet.js` | The paper sheet, a self-contained SVG with its own `.lm-sheet` styles. |
 | `assets/app.js` | The UI. |
 | `assets/demo.js` | The Smart Thermostat demo harness. |

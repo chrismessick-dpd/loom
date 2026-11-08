@@ -1,5 +1,5 @@
 // The drawing sheet a tech builds from: the harness (formboard, or every wire), a detail cell per
-// connector with its face view, the wire list, the BOM, notes and a title block. One self-contained
+// connector with its face view, the wire list, the BOM, notes, and a title block. One self-contained
 // SVG on white paper, so the same markup previews, prints, and exports as SVG or PNG.
 (function (LM) {
   'use strict';
@@ -104,7 +104,7 @@
   }
 
   function detailCell(h, n, x, y, cw, chh) {
-    // The views chosen on the connector (Front, Back or Both); Both takes a double-width cell.
+    // The views chosen on the connector (Front, Back, or Both); Both takes a double-width cell.
     const fam = L.family(n.family), fitH = 118;
     const v = S.fitViews(h, n, x + 15, y + 34, cw - 30, fitH, { max: 1.5, cap: 'cell-cap' });
     let o = `<rect class="cell" x="${x}" y="${y}" width="${cw}" height="${chh}" rx="6"/>`;

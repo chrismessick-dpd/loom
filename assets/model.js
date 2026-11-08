@@ -1,6 +1,6 @@
-// The harness model. A harness is a graph: nodes (connectors, splices and breakouts) joined by
+// The harness model. A harness is a graph: nodes (connectors, splices, and breakouts) joined by
 // segments, each with a length and a covering. Wires run from a pin (or a splice) to another, and
-// their routes are found through the segments, so splits, merges and several ends on one side are
+// their routes are found through the segments, so splits, merges, and several ends on one side are
 // all the same thing. Wires are grouped into sets, which nest (see *Sets* below); a set covers the
 // segments all of its wires share, so a pair untwists where its wires part at a breakout.
 (function (LM) {

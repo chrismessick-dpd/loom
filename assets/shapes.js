@@ -164,7 +164,7 @@
   const VIEW_NOTE = { rect: 'Mating face, latch up', dsub: 'Mating face', circular: 'Mating face, key up', flying: 'Lead ends', ring: 'Side view', ferrule: 'Side view', custom: 'Mating face, as configured' };
   const BACK_NOTE = { rect: 'Wire side, latch up', dsub: 'Wire side', circular: 'Wire side, key up', custom: 'Wire side, mirrored' };
 
-  // Housings have a wire side worth drawing; leads, rings and ferrules are side views only.
+  // Housings have a wire side worth drawing; leads, rings, and ferrules are side views only.
   const hasBack = n => !!BACK_NOTE[L.family(n.family).style];
   // Which views a connector shows (n.faceView: 'front', the default, 'back' or 'both'), on the
   // sheet and in the inspector.

@@ -1,6 +1,6 @@
-// Configure a connector (Chris, 2026-11-07): its ref, name and type in one window, opened from the
+// Configure a connector (Chris, 2026-11-07): its ref, name, and type in one window, opened from the
 // Configure button in Properties. A type is one of the families, or Custom: a face drawn from a 3D
-// model (STEP, IGES or STL; turn it, or click a face to look straight at it, then make the face view)
+// model (STEP, IGES, or STL; turn it, or click a face to look straight at it, then make the face view)
 // or sketched with basic shapes, with a mark dropped on each position (Assign) before the part can be
 // made. Custom data is n.custom, all in mm (shapes.js customParts reads it):
 //   { kind, mark, src: 'sketch' | 'model',
@@ -190,12 +190,12 @@
       if (housing) o += fld('Gender', seg('gender', D.gender, [['receptacle', 'Receptacle'], ['plug', 'Plug']]));
       return o;
     }
-    o += fld('Description', `<input class="input" data-cf="kind" value="${esc(D.custom.kind || '')}" placeholder="LEMO 1B plug">`, 'Shown on the diagram, the drawing and the BOM in place of a family name.');
+    o += fld('Description', `<input class="input" data-cf="kind" value="${esc(D.custom.kind || '')}" placeholder="LEMO 1B plug">`, 'Shown on the diagram, the drawing, and the BOM in place of a family name.');
     o += `<div class="row2">${fld('Positions', D.board ? `<div class="input ro">${D.board.length} from the board</div>` : `<input class="input" type="number" min="1" max="${MAX_POS}" step="1" data-cf="pins" value="${D.pins}">`)}${fld('Gender', seg('gender', D.gender, [['receptacle', 'Rcpt'], ['plug', 'Plug']]))}</div>`;
     o += assignHtml();
     return o;
   }
-  // The Assign button, mark size and one chip per position (click one to place it again).
+  // The Assign button, mark size, and one chip per position (click one to place it again).
   function assignHtml() {
     if (!isCustom()) return '<div id="cfg-assign"></div>';
     const p = part(), nm = names(), n = nm.length, k = placed(p), on = D.assign >= 0, ok = !!p && (D.tab === 'sketch' || !D.mode3d);
@@ -267,7 +267,7 @@
     if (D.tab === 'model' && D.busy) { st.innerHTML = `<div class="cfg-empty"><span class="spinner"></span>${esc(D.busy)}</div>`; return; }
     if (D.tab === 'model' && D.mode3d && mesh) { st.innerHTML = '<div class="cfg-3d" id="cfg-3d"></div><svg class="cfg-ring" id="cfg-ring3"></svg><div class="cfg-tip glass" id="cfg-tip">Drag to turn · click a face to look straight at it · drag the dot to turn it in place</div>'; mount3d($('#cfg-3d')); return; }
     if (D.tab === 'model' && !D.custom.model) {
-      st.innerHTML = `<div class="cfg-empty cfg-drop" id="cfg-drop">${ico('cube', 'big')}<b>Drop a STEP, IGES or STL file here</b><span>or</span><div class="cfg-drop-btns"><button class="btn btn-primary" data-cfg="import">Import a model…</button>${demoBtn()}</div>
+      st.innerHTML = `<div class="cfg-empty cfg-drop" id="cfg-drop">${ico('cube', 'big')}<b>Drop a STEP, IGES, or STL file here</b><span>or</span><div class="cfg-drop-btns"><button class="btn btn-primary" data-cfg="import">Import a model…</button>${demoBtn()}</div>
         <p class="f-hint">Turn it, or click a face to look straight at it, then make the face view. Loom keeps that drawing; the model itself stays in this tab only. Vendors’ sites and 3D ContentCentral usually have connector models.</p></div>`;
       return;
     }
@@ -561,7 +561,7 @@
 
   // ── Turning the face view ──
   // Turning about the axis we look down is exact on the drawing itself, so it works without the
-  // model in memory: points, circles and marks turn about the center (the connector's axis when a
+  // model in memory: points, circles, and marks turn about the center (the connector's axis when a
   // big circle shows it), the frame is fitted again, and the stored view turns to match.
   function rotCenter() {
     const p = part(), big = (p.c || []).concat(p.f || []).filter(c => c[2] * 2 >= Math.max(p.w, p.h) * 0.3).sort((a, b) => b[2] - a[2])[0];
@@ -603,7 +603,7 @@
     if (ri && document.activeElement !== ri) ri.value = p.rot;
   }
   // Mirror the face drawing left to right (h) or top to bottom (v) about its middle: the drawing,
-  // circles, cavities and marks, exactly; its view's right or up turns round to match (model.mirror).
+  // circles, cavities, and marks, exactly; its view's right or up turns round to match (model.mirror).
   function mirror2d(axis) {
     const p = part();
     if (!p || D.tab !== 'model') return;
@@ -646,7 +646,7 @@
   }
   async function importFile(file) {
     if (!file) return;
-    if (!LM.step.kindOf(file.name)) { D.err = 'Loom reads STEP (.step, .stp), IGES (.iges, .igs) and STL files.'; refresh(); return; }
+    if (!LM.step.kindOf(file.name)) { D.err = 'Loom reads STEP (.step, .stp), IGES (.iges, .igs), and STL files.'; refresh(); return; }
     D.err = '';
     D.busy = LM.step.kindOf(file.name) === 'stl' ? 'Reading the model…' : 'Reading the model (the STEP reader loads the first time)…';
     D.tab = 'model';
@@ -1144,7 +1144,7 @@
       close();
       return true;
     }
-    // Enter in Ref, Name or Description makes the part; in a number field it only commits it.
+    // Enter in Ref, Name, or Description makes the part; in a number field it only commits it.
     if (typing) { if (e.key === 'Enter') { const k = e.target.dataset.cf; if (k === 'ref' || k === 'name' || k === 'kind') { e.preventDefault(); apply(); } else if (k) { e.preventDefault(); e.target.blur(); } } return true; }
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return true; }

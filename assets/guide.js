@@ -1,5 +1,5 @@
 // Loom's guide: a walk through every feature, on the demo harness, for anyone new to Loom. Opened
-// from Guide in the menu, the How it works card or the home page, any time (window.LoomGuide.start).
+// from Guide in the menu, the How it works card, or the home page, any time (window.LoomGuide.start).
 // It runs on the demo (?demo keeps its own storage), so the user's own harnesses are never touched:
 // started outside the demo, it reopens this page with ?demo&guide in the same tab.
 //
@@ -39,11 +39,11 @@
   const CHAPTERS = [
     { title: 'Welcome', steps: [
       { title: 'Welcome to Loom',
-        text: 'Loom draws cable harnesses. You place the ends, click pin to pin to run wires, and group wires into twisted pairs, shields, cables and bundles. From that one picture it makes the sheet a tech builds from: the wiring diagram, connector faces, wire list, BOM and notes.',
+        text: 'Loom draws cable harnesses. You place the ends, click pin to pin to run wires, and group wires into twisted pairs, shields, cables, and bundles. From that one picture it makes the sheet a tech builds from: the wiring diagram, connector faces, wire list, BOM, and notes.',
         do: 'This guide uses the demo harness, an example for a made-up zone controller, so nothing of yours changes. Each step sets the page up and rings what it’s about. Use {Next} and {Back}, or {Contents} to jump around.',
         setup() { build(); clear(); G().fit(); } },
       { title: 'Your harnesses',
-        text: 'The menu lists your harnesses, with their ends, wires and any check problems. {New} starts one with two ends, and {Open a file} reads a .loom.json. In this demo nothing leaves your browser. Signed in for real, harnesses sync with Loom’s private data repo, so the other engineers on a project see and edit the same harnesses, and Signoff PL lists them by client project. The menu’s foot shows when you last synced.',
+        text: 'The menu lists your harnesses, with their ends, wires, and any check problems. {New} starts one with two ends, and {Open a file} reads a .loom.json. In this demo nothing leaves your browser. Signed in for real, harnesses sync with Loom’s private data repo, so the other engineers on a project see and edit the same harnesses, and Signoff PL lists them by client project. The menu’s foot shows when you last synced.',
         do: 'Drop a .loom.json anywhere on the page to open it. {k:[} hides the menu and shows it again.',
         setup() { build(); clear(); G().menu(); },
         spot: () => ['#harness-list', '.sidebar [data-act="new"]'] },
@@ -60,7 +60,7 @@
         setup() { build(); clear(); G().fit(); },
         spot: () => ['#coords'] },
       { title: 'Moving parts',
-        text: 'Drag a connector, a splice or a run of wires by any part of it. Parts snap to the grid by their first pin, so pins on different parts line up and wires run straight.',
+        text: 'Drag a connector, a splice, or a run of wires by any part of it. Parts snap to the grid by their first pin, so pins on different parts line up and wires run straight.',
         do: 'Drag P2 down a little, then press {k:Ctrl+Z} to put it back. Hold {k:Ctrl} while dragging to place a part anywhere.',
         setup() { build(); clear(); },
         spot: () => [item('P2')] },
@@ -72,13 +72,13 @@
     ] },
     { title: 'Ends and wires', steps: [
       { title: 'Connectors',
-        text: 'A connector is a table: its ref and a sketch of it in the header, its family and gender, then a row per pin with the pin’s label, usually the board’s net name. Selected, its Properties hold the family and pin count, the part it mates with, the face views the drawing prints and every pin’s label.',
+        text: 'A connector is a table: its ref and a sketch of it in the header, its family and gender, then a row per pin with the pin’s label, usually the board’s net name. Selected, its Properties hold the family and pin count, the part it mates with, the face views the drawing prints, and every pin’s label.',
         do: 'P1 is selected. In Properties, set {Views} to {Both} and watch the face drawing show the wire side too.',
         setup() { build(); const n = node('P1'); if (n) pick('node', n.id); },
         spot: () => [...props().map(s => s + ' .face-tile'), item('P1')] },
       // No Try it (Chris, 2026-11-08): the custom connector steps add the connector.
       { title: 'Adding parts',
-        text: '{Add › Connector} puts a new end on the canvas (or press {k:C}). {Splice} adds a splice, and {Note} pins a note to a part (more on notes later). The {Parts} tab also lists the splices, notes and wire sets; click one to select it.',
+        text: '{Add › Connector} puts a new end on the canvas (or press {k:C}). {Splice} adds a splice, and {Note} pins a note to a part (more on notes later). The {Parts} tab also lists the splices, notes, and wire sets; click one to select it.',
         phone: 'The parts pane needs a wider screen; on a phone, open Loom on a computer to add parts.',
         setup() { build(); clear(); },
         spot: () => ['#parts-pane .palette'] },
@@ -89,7 +89,7 @@
         setup() { build(); clear(); },
         spot: () => ['#board-modal .lm-modal', '#parts-pane [data-act="from-board"]'] },
       { title: 'A custom connector',
-        text: 'When no family fits, draw the connector yourself. {Configure}, in a connector’s Properties, sets its ref, name and type; {Custom} takes its face from a 3D model (STEP, IGES or STL) or a sketch. Loom keeps only the face drawing, never the model.',
+        text: 'When no family fits, draw the connector yourself. {Configure}, in a connector’s Properties, sets its ref, name, and type; {Custom} takes its face from a 3D model (STEP, IGES, or STL) or a sketch. Loom keeps only the face drawing, never the model.',
         do: 'Click {Connector}, then {Configure} in its Properties. Pick {Custom}, then the {3D model} tab, then {Load demo model}: an 8-position circular connector.',
         phone: '{Configure} needs a wider screen; on a phone, open Loom on a computer to draw a custom connector.',
         setup() { build(); clear(); },
@@ -97,19 +97,19 @@
           '#parts-pane .cfg-open', '#parts-pane [data-act="add-conn"]'] },
       { title: 'Its face and positions',
         text: 'Drag to turn the model, and click its mating face to look straight at it. {Make face view} draws the face from that side. Then set {Positions} and press {Assign}: each click drops the next position’s mark, snapping to the round cavity under the pointer. {Make part} saves it.',
-        do: 'Click the face with the eight holes, then {Make face view}. Set {Positions} to 8, press {Assign} and click the eight holes in order, then {Make part}.',
+        do: 'Click the face with the eight holes, then {Make face view}. Set {Positions} to 8, press {Assign}, and click the eight holes in order, then {Make part}.',
         phone: '{Configure} needs a wider screen.',
         at: 'right',
         setup() { build(); },
         spot: () => [`${CFG} [data-cfg="make-face"]`, `${CFG} #cfg-apply:not(:disabled)`, [`${CFG} .row2:has([data-cf="pins"])`, `${CFG} .cfg-assign-btn`],
           `${CFG} #cfg-drop [data-cfg="demo-model"]`, custom(), '#parts-pane .cfg-open'] },
       { title: 'Running a wire',
-        text: 'Click a pin, then a pin on another end or a splice: that’s a wire. While you’re wiring, the pins you can land on glow, the wire follows the pointer and {k:Esc} cancels. New wires take the gauge and color set in the harness panel.',
-        do: 'Run a few wires from the board connector you added (or P1’s free pin 6) to your custom connector. Then {k:Shift}-click them and try {Twist}, {Shield}, {Cable} and {Bundle} in Properties.',
+        text: 'Click a pin, then a pin on another end or a splice: that’s a wire. While you’re wiring, the pins you can land on glow, the wire follows the pointer, and {k:Esc} cancels. New wires take the gauge and color set in the harness panel.',
+        do: 'Run a few wires from the board connector you added (or P1’s free pin 6) to your custom connector. Then {k:Shift}-click them and try {Twist}, {Shield}, {Cable}, and {Bundle} in Properties.',
         setup() { build(); clear(); G().fit(); },
         spot: () => [custom(), item('P1')] },
       { title: 'A wire’s properties',
-        text: 'Select a wire by clicking its line. Properties show its ends, signal, color (with a stripe), gauge and length, and chips for the sets it’s in. The canvas, the drawing and the wire list all follow a change.',
+        text: 'Select a wire by clicking its line. Properties show its ends, signal, color (with a stripe), gauge, and length, and chips for the sets it’s in. The canvas, the drawing, and the wire list all follow a change.',
         do: 'The 3V3 wire is selected. Change its color, then press {k:Ctrl+Z}.',
         setup() { build(); const w = wire('3V3'); if (w) pick('wire', w.id); },
         spot: () => props() },
@@ -120,9 +120,9 @@
         spot: () => [item('S1')] },
     ] },
     { title: 'Wire sets', steps: [
-      { title: 'Twists, shields, cables and bundles',
+      { title: 'Twists, shields, cables, and bundles',
         text: '{k:Shift}-click two or more wires, or drag a box over them (right to left, green: everything it touches; left to right, blue: everything inside it), then tick {Twist} or {Shield}, or pick {Cable} or {Bundle} under {Held as}, in Properties: the wires become a wire set. C1 is a two-wire cable, TP2 a twisted pair, and B1 a laced bundle.',
-        do: 'C1 is selected. Its {Wire set} panel holds its label, part number, the cable note and its color. Try ticking {Shield}.',
+        do: 'C1 is selected. Its {Wire set} panel holds its label, part number, the cable note, and its color. Try ticking {Shield}.',
         setup() { build(); const s = set('C1'); if (s) pick('set', s.id); },
         spot: () => [...props(), box('C1')] },
       { title: 'Sets inside sets',
@@ -135,7 +135,7 @@
         do: 'Drag B1’s right grip to the right, then press {k:Ctrl+Z}.',
         setup() { build(); const s = set('B1'); if (s) pick('set', s.id); },
         spot: () => { const s = set('B1'); return s ? [`[data-setend="${s.id}|r"]`, box('B1')] : []; } },
-      { title: 'Badges, labels and anchors',
+      { title: 'Badges, labels, and anchors',
         text: 'Every set has a badge under it: click it to select the set, drag it anywhere, or slide its dot along the set. Each wire’s label hangs from a dot on its wire: slide the dot along the wire, or drag the label anywhere. Wires in no set have anchor dots that slide along their curves. {Auto layout} puts all of these back.',
         do: 'Drag the B1 badge somewhere else, then press {k:Ctrl+Z}.',
         setup() { build(); clear(); },
@@ -148,7 +148,7 @@
         setup() { build(); clear(); },
         spot: () => ['.hud-br'] },
       { title: 'Notes',
-        text: '{Add › Note}, then click a wire, a set or a connector to pin a note there, or drag to draw an area for it: a dashed box around what the note is about. A pinned note follows its part. Drag a bubble to move it, and click it to edit. An area moves by its edge and resizes by its corners, and its dot slides along the edge. A note with a part number and quantity is a BOM line: heat shrink, a label, a clip.',
+        text: '{Add › Note}, then click a wire, a set, or a connector to pin a note there, or drag to draw an area for it: a dashed box around what the note is about. A pinned note follows its part. Drag a bubble to move it, and click it to edit. An area moves by its edge and resizes by its corners, and its dot slides along the edge. A note with a part number and quantity is a BOM line: heat shrink, a label, a clip.',
         do: 'Click {Note}, then click C1’s cable. Click {Note} again and drag a box around P1.',
         phone: '{Note} is in the parts pane, which needs a wider screen. Notes already on a harness can be tapped and edited.',
         setup() { build(); clear(); },
@@ -156,17 +156,17 @@
     ] },
     { title: 'The drawing', steps: [
       { title: 'The harness panel',
-        text: 'With nothing selected, the left panel is the harness: its title, part number, rev, drawn by and date for the title block, the gauge and color new wires get, the allowance added to every BOM length, and numbered notes for the drawing. Its checks are listed under them.',
+        text: 'With nothing selected, the left panel is the harness: its title, part number, rev, drawn by, and date for the title block, the gauge and color new wires get, the allowance added to every BOM length, and numbered notes for the drawing. Its checks are listed under them.',
         do: 'Type a note in {Notes}, one per line. The drawing numbers them.',
         setup() { G().demo(); G().view('build'); G().panels(); G().help(false); clear(); },
         spot: () => ['#rail'] },
       { title: 'Checks',
-        text: 'Checks look at the harness as drawn: pins with no wire, two wires on one pin, wires with no path, color or gauge, loose ends, runs with no length, gauges a terminal won’t take, and sets that run past their wires.',
+        text: 'Checks look at the harness as drawn: pins with no wire, two wires on one pin, wires with no path, color, or gauge, loose ends, runs with no length, gauges a terminal won’t take, and sets that run past their wires.',
         do: 'Click a check to see it on the canvas.',
         setup() { G().demo(); G().view('checks'); },
         spot: () => ['.checks-card'] },
       { title: 'The sheet',
-        text: '{Drawing} is one sheet for the tech: the wiring diagram, the connector face views, the wire list, the BOM, the notes and a title block. It always uses the arranged view.',
+        text: '{Drawing} is one sheet for the tech: the wiring diagram, the connector face views, the wire list, the BOM, the notes, and a title block. It always uses the arranged view.',
         do: '{SVG} and {PNG} download it, and {Print or PDF} prints it (choose Save as PDF in the print dialog).',
         setup() { G().demo(); G().wires(false); G().view('drawing'); },
         spot: () => ['.sheet-card'] },
@@ -176,7 +176,7 @@
         setup() { G().demo(); G().view('drawing'); G().wires(true); },
         spot: () => ['#wires-fold'] },
       { title: 'Bill of materials',
-        text: 'The {BOM} lists the connectors with their housings and terminals, the wire by gauge and color, cables, shields and noted parts. Lengths include the allowance. Where a connector has no housing part number, one is suggested from its series; check it against the datasheet.',
+        text: 'The {BOM} lists the connectors with their housings and terminals, the wire by gauge and color, cables, shields, and noted parts. Lengths include the allowance. Where a connector has no housing part number, one is suggested from its series; check it against the datasheet.',
         do: '{CSV} downloads it.',
         setup() { G().demo(); G().view('bom'); },
         spot: () => ['#page .table-wrap'] },
@@ -190,14 +190,14 @@
         setup() { build(); clear(); G().help(true); },
         spot: () => ['#parts-pane .pane-help-btn'] },
       { title: 'You’re set',
-        text: 'Shortcuts: {k:C} adds a connector, {k:F} fits, {k:+} {k:−} {k:0} zoom, {k:Delete} deletes the selection, {k:Esc} cancels, {k:Ctrl+Z} undoes, {k:Ctrl+Shift+Z} redoes, {k:Ctrl+S} saves (or syncs, signed in) and {k:[} hides the menu.',
+        text: 'Shortcuts: {k:C} adds a connector, {k:F} fits, {k:+} {k:−} {k:0} zoom, {k:Delete} deletes the selection, {k:Esc} cancels, {k:Ctrl+Z} undoes, {k:Ctrl+Shift+Z} redoes, {k:Ctrl+S} saves (or syncs, signed in), and {k:[} hides the menu.',
         do: 'Open this guide again any time from {Guide} in the menu or the {?} card. {Reset demo}, in the banner, puts the demo harness back.',
         setup() { build(); clear(); G().fit(); },
         last: true },
     ] },
   ];
   // A step's text names what's on screen in braces (Chris: "From a board does…" read as a sentence):
-  // {From a board} is a button, tab or field, drawn as a chip, and {k:Esc} a key.
+  // {From a board} is a button, tab, or field, drawn as a chip, and {k:Esc} a key.
   const marks = t => esc(t).replace(/\{(k:)?([^{}]+)\}/g, (m, k, x) => k ? `<kbd class="lg-key">${x}</kbd>` : `<span class="lg-ui">${x}</span>`);
   const STEPS = CHAPTERS.flatMap((c, ci) => c.steps.map(s => Object.assign({ chapter: ci }, s)));
 

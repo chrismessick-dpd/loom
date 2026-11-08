@@ -145,7 +145,7 @@
   // ── Connectors ──
   const REF = /^(J|P|CN|CON|X|XS|XP|XJ)\d+[A-Z]?$/i;
   const DESC = /\b(conn|connector|header|receptacle|socket|terminal block|term blk|plug|jack)\b/i;
-  const MOUNT = /^(MH|MP|SH|S|EP|M|H|PAD)\d*$/i;           // mounting, shield and exposed pads
+  const MOUNT = /^(MH|MP|SH|S|EP|M|H|PAD)\d*$/i;           // mounting, shield, and exposed pads
   const UNNAMED = /^(Net[A-Za-z]*\d*_\w+|Net-\(.*\)|N\$\d+|N\d{4,}|\$\$\$\d+|)$/;
   const natural = (a, b) => a.localeCompare(b, 'en', { numeric: true });
 

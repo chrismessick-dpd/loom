@@ -156,7 +156,7 @@
   }
   const undo = () => swapHistory(S.past, S.future);
   const redo = () => swapHistory(S.future, S.past);
-  // The selection: things of one kind ({ kind, ids }: node, wire, set, note or seg), or of several
+  // The selection: things of one kind ({ kind, ids }: node, wire, set, note, or seg), or of several
   // kinds at once ({ kind: 'mix', ids: Set of 'kind:id', parts: { kind: Set } }), which a marquee
   // or shift-clicks across kinds make (Chris, 2026-11-07). A mix drags and deletes as one;
   // Properties shows what's in it, with the wire set options off (railMulti).
@@ -283,7 +283,7 @@
     };
     $('#harness-list').innerHTML = list.length ? keys.map(k => `<div class="side-group">` + (keys.length > 1 || k ? `<div class="side-group-head lm-group-head" title="Client project"><span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></div>` : '') + groups.get(k).map(row).join('') + `</div>`).join('')
       : '<div class="side-empty">No harnesses yet.</div>';
-    // The footer's sync pill, as Signoff EE's: a dot, a title and a sub line; its tooltip carries the
+    // The footer's sync pill, as Signoff EE's: a dot, a title, and a sub line; its tooltip carries the
     // build hash (EE keeps that off the sidebar).
     const pill = $('#sync-pill');
     if (!pill) return;
@@ -329,13 +329,13 @@
     return `<div class="page"><div class="drop" id="drop">
       <div class="empty-art">${ICON.upload}</div>
       <h2>Draw a harness a tech can build from</h2>
-      <p>Add the ends, click pin to pin to wire them, and group wires into cables. Loom draws the wiring diagram, the connector faces, the wire list and the BOM.</p>
+      <p>Add the ends, click pin to pin to wire them, and group wires into cables. Loom draws the wiring diagram, the connector faces, the wire list, and the BOM.</p>
       <div class="actions"><button class="btn btn-primary" data-act="new">New harness</button><button class="btn" data-act="open">Open a file…</button>
       ${DEMO ? '<button class="btn" data-act="demo">Demo harness</button>' : '<a class="btn" href="?demo">Try the demo</a>'}<button class="btn" data-act="guide">Take the guide</button></div>
       <div class="drop-tiles">
         <div><b>Ends</b>Connector tables with pin labels, face views with pin 1</div>
         <div><b>Wires</b>Colors, gauges, splices, lengths</div>
-        <div><b>Cables</b>Cables, twisted pairs and shields</div>
+        <div><b>Cables</b>Cables, twisted pairs, and shields</div>
         <div><b>Drawing</b>Wiring diagram, wire list, BOM, notes, title block</div>
       </div>
       <div class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>${canSync() ? `Harnesses sync with Loom’s private repo, ${esc(R.config().dataRepo)}, and show in Signoff PL by their client project.` : 'Harnesses stay in this browser until you sign in to Signoff EE (they then sync with Loom’s private repo) or save a file.'}</div>
@@ -395,7 +395,7 @@
     svg.classList.toggle('placing', !!S.placing);
     if (S.placing) {
       tip.style.display = 'flex';
-      tip.innerHTML = `<span class="tip-dot"></span><span>Click a wire, a set or a connector to pin a note to it, or drag to draw an area for it. <span class="tip-k">Esc</span> cancels.</span>`;
+      tip.innerHTML = `<span class="tip-dot"></span><span>Click a wire, a set, or a connector to pin a note to it, or drag to draw an area for it. <span class="tip-k">Esc</span> cancels.</span>`;
     } else if (S.pending) {
       tip.style.display = 'flex';
       tip.innerHTML = `<span class="tip-dot"></span><span>Wiring from <b>${esc(M.endText(h, S.pending))}</b>. Click a glowing pin or a splice. <span class="tip-k">Esc</span> cancels.</span>`;
@@ -409,7 +409,7 @@
     svgEl().querySelectorAll('.cv-setarea.hover').forEach(el => el.classList.remove('hover'));
     if (badgeHover) svgEl().querySelectorAll('.cv-setarea').forEach(el => { if (el.dataset.set === badgeHover) el.classList.add('hover'); });
   }
-  // The camera only moves the viewBox: zoom, pan and Fit never redraw the diagram.
+  // The camera only moves the viewBox: zoom, pan, and Fit never redraw the diagram.
   function setView() {
     const svg = svgEl(), wrap = $('#canvas-wrap');
     const w = wrap.clientWidth || 800, hh = wrap.clientHeight || 600;
@@ -506,7 +506,7 @@
       `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${(fold.gridStyle === 'lines') === (k === 'lines') ? '● ' : '○ '}${t}</option>`).join('')}</optgroup></select></label>`;
   }
 
-  // Pointer: drag a connector, splice or box to move it (snapping to the grid; Ctrl places it
+  // Pointer: drag a connector, splice, or box to move it (snapping to the grid; Ctrl places it
   // anywhere); drag with the right or middle button to pan; wheel to zoom; click to pick or wire.
   // A left drag on empty canvas draws a selection box (drawMarquee).
   let gesture = null;
@@ -1006,7 +1006,7 @@
     else if (wireEl) { const w = M.wire(h, wireEl.dataset.wire); if (w) at = { kind: 'wire', id: w.id, t: Lo.wireT(w, p) }; }
     else if (setEl) { const gm = Lo.setGeom(setEl.dataset.set); if (gm) at = { kind: 'set', id: setEl.dataset.set, fx: (p.x - gm.x) / gm.w, fy: (p.y - gm.y) / gm.h }; }
     else if (wireEl) { const w = M.wire(h, wireEl.dataset.wire); if (w) at = { kind: 'wire', id: w.id, t: Lo.wireT(w, p) }; }
-    if (!at) { toast('Click a wire, a set or a connector to pin the note to.'); return; }
+    if (!at) { toast('Click a wire, a set, or a connector to pin the note to.'); return; }
     S.placing = null;
     change(x => { const c = M.addNote(x, at); S.sel = { kind: 'note', ids: new Set([c.id]) }; });
   }
@@ -1128,7 +1128,7 @@
     const tabs = `<div class="pane-tabs" role="tablist">${[['parts', 'Parts'], ['props', 'Properties']].map(([k, t]) =>
       `<button role="tab" class="pane-tab${k === tab ? ' on' : ''}" aria-selected="${k === tab}" data-act="pane-tab" data-tab="${k}">${t}</button>`).join('')}</div>`;
     const body = tab === 'props'
-      ? `<div class="pane-props">${propsHtml() || `<div class="pane-empty">Select a connector, splice, wire or box on the canvas to see its properties here.</div>`}</div>`
+      ? `<div class="pane-props">${propsHtml() || `<div class="pane-empty">Select a connector, splice, wire, or box on the canvas to see its properties here.</div>`}</div>`
       : `<div class="pane-body">${partsHtml()}</div>`;
     // How it works (Chris): a ? button in the pane's bottom-right corner pops this card up over the
     // bottom of the pane, in either tab. Open until closed, remembered in this browser (fold.help).
@@ -1137,7 +1137,7 @@
         <p><i>●</i> Click a pin, then a pin on another end or a splice, to run a wire.</p>
         <p><i>⇧</i> Shift-click wires, then tick Twist or Shield, or pick Cable or Bundle, to make them a set. Sets nest: select a set and more wires to bundle them.</p>
         <p><i>◉</i> Click a set's badge, or inside it, to edit it. Drag a set's ends to shorten it or run it past what holds it.</p>
-        <p><i>✎</i> Add › Note, then click a wire, set or connector to pin a note. Drag its bubble; click it to edit.</p>
+        <p><i>✎</i> Add › Note, then click a wire, set, or connector to pin a note. Drag its bubble; click it to edit.</p>
         <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p>
         <button class="btn hp-guide" data-act="guide">Take the guide: every feature, step by step</button></div>` : '') +
       `<button class="pane-help-btn${open ? ' on' : ''}" data-act="help" title="How it works" aria-label="How it works" aria-expanded="${open}">?</button>`;
@@ -1176,7 +1176,7 @@
       <button data-act="add-conn">${ICON.conn}<span>Connector</span></button>
       <button data-act="from-board" title="A board connector from Signoff EE, with its pins and nets">${ICON.board}<span>From a board</span></button>
       <button data-act="add-splice">${ICON.splice}<span>Splice</span></button>
-      <button data-act="add-note" title="A note or part pinned to a wire, set or connector">${ICON.note}<span>Note</span></button></div>`;
+      <button data-act="add-note" title="A note or part pinned to a wire, set, or connector">${ICON.note}<span>Note</span></button></div>`;
     return o;
   }
 
@@ -1384,7 +1384,7 @@
     const sugg = matchRows(h, n);
     const boardBox = n.board ? `<div class="board-src"><span class="lay-ico">${ICON.board}</span><div><b>${esc(n.board.name)} ${esc(n.board.ref)}</b><div class="f-hint">${esc(n.board.source)}${n.board.mpn ? ' · board part ' + esc(n.board.mpn) : ''}. Pins and labels come from its netlist.</div></div></div>` : '';
     const suggBox = sugg.length ? `<div class="cat-label">Suggested wires</div><div class="rail-sec">${sugg.map(r => `<div class="sugg"><div><b>${r.pairs.length} pin${r.pairs.length > 1 ? 's' : ''} match ${esc(r.other.ref)}</b><div class="f-hint">${esc([...new Set(r.pairs.map(p => p.label))].slice(0, 6).join(', '))}${new Set(r.pairs.map(p => p.label)).size > 6 ? '…' : ''}</div></div><button class="btn" data-act="match-wire" data-a="${n.id}" data-b="${r.other.id}">Wire them</button></div>`).join('')}<p class="f-hint">Same net name on both ends, on pins with no wire yet. Check each against the boards.</p></div>` : '';
-    return railHead('Connector', `<span class="mono-ref">${esc(n.ref)}</span> ${esc(n.name || L.kindName(n))}`, `<button class="btn cfg-open" data-act="configure" title="Name, type and a custom face drawing">${ICON.sliders}Configure</button>`) +
+    return railHead('Connector', `<span class="mono-ref">${esc(n.ref)}</span> ${esc(n.name || L.kindName(n))}`, `<button class="btn cfg-open" data-act="configure" title="Name, type, and a custom face drawing">${ICON.sliders}Configure</button>`) +
       `<div class="rail-list">${boardBox}${suggBox}<div class="face-tile" data-act="configure" title="Configure">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.fitViews(h, n, 0, 0, 330, 150).note)}</span></div>
       <div class="rail-sec">
       ${LM.shapes.hasBack(n) ? fld('Views', segBtns('n.faceView', LM.shapes.views(n).length > 1 ? 'both' : LM.shapes.views(n)[0], [['front', 'Front'], ['back', 'Back'], ['both', 'Both']]), 'Front is the mating face, back the wire side. The drawing prints these.') : ''}
@@ -1426,7 +1426,7 @@
       ${lenField(h, A, [w])}
       <div class="cat-label">Sets</div>
       ${gs.length ? wireSetChain(h, w, gs) : ''}
-      <p class="f-hint">${gs.length ? 'Click a set to select it. ' : ''}Shift-click other wires to make a set with this one: twisted, shielded, a cable or a bundle.</p>
+      <p class="f-hint">${gs.length ? 'Click a set to select it. ' : ''}Shift-click other wires to make a set with this one: twisted, shielded, a cable, or a bundle.</p>
       </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${M.wireName(w)}</button></div></div>`;
   }
   // A note: its text, and a part number and quantity when it stands for a part (the BOM lists it).
@@ -1540,7 +1540,7 @@
   }
 
   // Several sets at once (a marquee over whole sets, or shift-clicks). Chris (2026-11-07): options
-  // scoped to the selection. Twist, Shield and Held as apply to each set (a tick is half on when
+  // scoped to the selection. Twist, Shield, and Held as apply to each set (a tick is half on when
   // only some have it), Set color to all their wires, and Together makes one bundle or cable of
   // all of them (as selecting their wires and picking it would). One set's label, part number
   // and lengths are edited on its own: click its chip.
@@ -1562,7 +1562,7 @@
       <div class="f-label">Each set</div>
       <div class="tick-row">${ticks}</div>
       <div class="hold-row"><span class="hold-label">Held as</span><div class="hold-seg" role="radiogroup" aria-label="Held as">${holders}</div></div>
-      <p class="f-hint">Applies to each of the ${sts.length} sets. Click a chip above to edit one set's label, part number and lengths.</p>
+      <p class="f-hint">Applies to each of the ${sts.length} sets. Click a chip above to edit one set's label, part number, and lengths.</p>
       ${together}
       <p class="f-hint">${why ? esc(why) : 'One set holding all of them, with these sets inside it.'}</p>
       ${fld('Set color', colorSelects('ws.color', ''))}
@@ -1692,7 +1692,7 @@
   }
   function bomHtml(h) {
     const rows = M.bom(h);
-    return `<div class="page wide">` + pageHead('Bill of materials', esc(h.title), `Wire, cable and covering lengths include a ${h.allowancePct || 0}% allowance`, `<button class="btn" data-act="csv-bom">${ICON.save}CSV</button>`) +
+    return `<div class="page wide">` + pageHead('Bill of materials', esc(h.title), `Wire, cable, and covering lengths include a ${h.allowancePct || 0}% allowance`, `<button class="btn" data-act="csv-bom">${ICON.save}CSV</button>`) +
       `<div class="card table-wrap"><table class="table compact"><thead><tr><th class="num">Item</th><th class="num">Qty</th><th>Description</th><th>Part number</th><th>Refs</th></tr></thead><tbody>
       ${rows.map(r => `<tr><td class="num">${r.item}</td><td class="num">${esc(M.qtyText(r))}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.pn || '—')}</td><td>${esc(r.refs.join(', '))}</td></tr>`).join('') || '<tr><td colspan="5" class="pc-muted">Nothing to buy yet.</td></tr>'}
       </tbody></table></div><p class="f-hint" style="margin-top:12px">Where a connector has no housing part number, the BOM suggests one from the series; check it against the datasheet. Terminals depend on wire gauge and plating, so enter them on each connector.</p></div>`;
@@ -2018,7 +2018,7 @@
   // ── Tool updates (as in Signoff EE and Partcheck) ──
   // A page left open keeps running the version it loaded. Now and then (5 s after opening, every 5
   // minutes, when the tab comes back into view) it asks this site which version it serves. If that's
-  // another one, it reloads into it once the page is idle (not typing, dragging, wiring or picking a
+  // another one, it reloads into it once the page is idle (not typing, dragging, wiring, or picking a
   // board), after writing any pending save. The new page says "Tool updated". A version it already
   // reloaded for is never tried twice. Asset URLs carry ?v= stamps (tools/stamp_version.py), and the
   // browser's copies are refreshed before the reload too.

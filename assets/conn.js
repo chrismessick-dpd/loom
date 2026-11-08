@@ -41,7 +41,7 @@
   // is drawn only when it runs at least MIN_LEAD; one bending too tight comes in to MIN_BRK first.
   const BREAKOUT = 40, MIN_LEAD = 30, MIN_BRK = 16;
   const fanLen = sp => Math.max(24, Math.min(90, (sp.i1 - sp.i0) * (PITCH - PACK) * 0.7));
-  // The sets that pack their wires: cables, shields and bundles inside no other (an inner one packs
+  // The sets that pack their wires: cables, shields, and bundles inside no other (an inner one packs
   // with it).
   const packSpans = sz => (sz.spans || []).filter(sp => rides(sp.s) && !sz.spans.some(o => o !== sp && rides(o.s) && o.depth < sp.depth && o.i0 <= sp.i0 && o.i1 >= sp.i1));
   // The badges: one per set, in a row under the box, left-aligned (Chris).
@@ -517,7 +517,7 @@
           sz.ext.set(st.id, { x0: e0, x1: e1 });
         });
       });
-      // Heights dragged in this view (Chris: x comes from lengths, but connectors, splices and sets
+      // Heights dragged in this view (Chris: x comes from lengths, but connectors, splices, and sets
       // move up and down). They're kept in h.propY by item key (n:<node id>, b:<box key>), apart
       // from the arranged view's h.place. A box nobody moved whose end was moved centers its rows
       // on its ends' heights, on the pitch.
@@ -603,11 +603,11 @@
     // ── Paths and leads ──
     // Each set box has a path: the straight run across the box at its rows' middle (cy) and, in
     // the arranged view, a lead off each side toward the one part its wires run to there (Chris:
-    // drag a cable's, shield's or bundle's ends along the curves, closer to the connectors). u is
+    // drag a cable's, shield's, or bundle's ends along the curves, closer to the connectors). u is
     // the distance along the path, and the wires' run maps onto all of it at one scale (sz.k, mm
     // per unit), so a set reaching its wire ends is drawn to the end of each lead, a breakout short
     // of the part, and its wires fan to their pins from wherever it ends. A box whose sets hold no
-    // cable, shield or bundle (a twist alone) has no leads: its path is its frame, as before.
+    // cable, shield, or bundle (a twist alone) has no leads: its path is its frame, as before.
     // Lessons from the first try (branch `sets`, Chris: glitchy once ends crossed or parts moved):
     // - Only packed wires ride a lead; a band at grid spacing folds over itself on a bend.
     // - No fixed breakout the wires must meet: they leave the lead where their set ends, along it.
@@ -725,7 +725,7 @@
       });
     });
 
-    // Packing (Chris: cables, shields, bundles and twists hold their wires PACK apart, edges touching). Each
+    // Packing (Chris: cables, shields, bundles, and twists hold their wires PACK apart, edges touching). Each
     // boxed wire's chain is the sets that pack it, innermost first, each with where it reaches, the
     // middle of its rows (c) and its fan length; the wire eases from its row into each over F before
     // the set's end. packAt gives its height at u for a base height (its row, or the helix).
@@ -804,7 +804,7 @@
     const steps = (a, b, d) => { const n = Math.max(1, Math.ceil(Math.abs(b - a) / d)); return [...Array(n + 1)].map((_, i) => a + (b - a) * i / n); };
     const tanAt = (P, u) => { const p = pathAt(P, u); return { x: p.ny, y: -p.nx }; };
 
-    // Where a wire meets its box: its box, its ends and the points it enters and leaves by, each on
+    // Where a wire meets its box: its box, its ends, and the points it enters and leaves by, each on
     // the side facing that end.
     function entry(w) {
       const b = boxes.find(bx => bx.wires.includes(w));
@@ -855,7 +855,7 @@
       return { pts: out, J };
     }
     const whichOf = (w, e) => (e === w.from ? 'from' : 'to');
-    // A wire's path, plus its two ends (where each meets its pin, port or loose end) for the drag
+    // A wire's path, plus its two ends (where each meets its pin, port, or loose end) for the drag
     // handles. A wire with a loose end curves straight to it. A boxed wire fans from its pin to
     // where it joins its box's path, arriving along it, and leaves the same way.
     function wirePath(w) {
@@ -887,7 +887,7 @@
     // alternate over and under where they cross. Twists stay on the box's straight part.
     const TURN = 40;
     // The stretch a twisted wire twists along, or null when it runs straight.
-    // It runs inside its set's stretch of the box, clear of the set's lacing, sheath or braid ends.
+    // It runs inside its set's stretch of the box, clear of the set's lacing, sheath, or braid ends.
     function twistSpan(w) {
       const t = twistOf.get(w.id), it = t && t.it, P = it && it.path, a = P && it.sz.arc.get(t.sp.s.id);
       if (!a) return null;
@@ -1321,7 +1321,7 @@
   };
   const spanSel = (sp, opts) => !!opts.pick && opts.pick.set.has(sp.s.id);
   const spanCls = (it, sp, opts) => (spanSel(sp, opts) || (!sp.depth && boxSel(it, opts)) ? ' sel' : '') + dimIf(boxDim(it, opts));
-  // Under the wires: the box's paper, the far side of each lacing tie and each cable's cut end (a
+  // Under the wires: the box's paper, the far side of each lacing tie, and each cable's cut end (a
   // full, lighter ellipse the wires come out of).
   function boxBack(it, opts) {
     let o = `<rect class="cv-box${boxSel(it, opts) && it.b.kind !== 'set' ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>` + badgeLeaders(it, opts);
@@ -1535,7 +1535,7 @@
     });
     return o;
   }
-  // A wire's label: from, color and to, in its box's columns, its left side at its spot (labelAt),
+  // A wire's label: from, color, and to, in its box's columns, its left side at its spot (labelAt),
   // and a small white dot on the wire it hangs from, with a line from the dot to the label's left
   // side (Chris). It sizes nothing. Labels are drawn over everything but the end dots and notes. On
   // the canvas the dot drags along its wire and the label drags anywhere (app.js); a click on the
@@ -1616,7 +1616,7 @@
     return { svg: backs + wires + overs + fronts + ends + labels + dots + notes, box: Lo.box, layout: Lo };
   }
 
-  // A set's badge as drawn (its spot, its dot and where along the set that is), for dragging it.
+  // A set's badge as drawn (its spot, its dot, and where along the set that is), for dragging it.
   const badgeOf = (it, id) => badgeRow(it).find(b => b.sp.s.id === id) || null;
   LM.conn = { G, layout, render, boxesOf, pinLabel, project, pathAt, badgeOf, edgeAt, edgeT };
 })(window.LM = window.LM || {});
