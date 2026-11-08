@@ -179,13 +179,24 @@ links to it so far. Before every commit:
     after going from 4 to 8). Enter makes the part only from Ref, Name or Description.
   - The CSP now allows `cdn.jsdelivr.net` for scripts and fetches, and `blob:` workers (three.js and
     OpenCascade, as Partcheck).
-  - Not done: pinch zoom on the stage, the guide has no step for it, no tests.
+  - **Load demo model** (2026-11-08, Chris): in `?demo`, beside Import a model…, it reads
+    `assets/demo/S11M0-P08M.stp.gz` (a vendor's 8-position circular connector, 632 KB of STEP gzipped to
+    116 KB; `DecompressionStream`, then `importFile` as a `File`). The guide's Custom connector steps use it.
+  - Not done: pinch zoom on the stage, no tests.
 
 - **The guide (2026-11-07, Chris: an interactive getting started for new users):** `assets/guide.js`,
-  `window.LoomGuide` (also `LM.guide`). 25 steps in seven chapters (Welcome, The canvas, Ends and wires,
+  `window.LoomGuide` (also `LM.guide`). 27 steps in seven chapters (Welcome, The canvas, Ends and wires,
   Wire sets, Views and notes, The drawing, Done), each a title, what the feature is, a *Try it*
   instruction, a `setup` (view, selection, panels shown, the How it works card closed) and a `spot`
-  (selectors, first one shown wins), ringed by `#lm-guide-spot`, moved every animation frame. The card
+  (selectors, first one shown wins; a list of selectors in a spot rings them as one box), ringed by
+  `#lm-guide-spot`, moved every animation frame. 2026-11-08 (Chris): after *A connector from a board*,
+  *A custom connector* (Connector, Configure, Custom, 3D model, Load demo model, each ringed in turn) and
+  *Its face and positions* (Make face view, then Positions and Assign as one ring, then Make part; the
+  card sits at the window's right middle, `at: 'right'`, or the bottom right where that would cover the
+  Configure stage, below about 1950 px wide); *Running a wire* then wires to the custom connector and
+  tries the sets. *How it works* is always the second to last step. A new
+  spot scrolled out of its pane (not just the window, `viewOf`) is scrolled into view, so *Sets inside
+  sets* rings the Hierarchy and brings it up in Properties (2026-11-08, Chris). The card
   (`#lm-guide`) has Back/Next, a Contents list to jump anywhere, and drags by its top line. In a
   step's text, `{From a board}` names something on screen (drawn as a chip, `.lg-ui`) and `{k:Esc}` a
   key (`.lg-key`), so a button's name doesn't read as part of the sentence (Chris); the suite tour does
@@ -461,7 +472,11 @@ links to it so far. Before every commit:
     boxes, a **Held as** radio choice of None, Cable or Bundle (Chris: show the mutual exclusion), Label, Description and Part number (cable or shield), the wire length,
     each end's overhang with the total (`coversField`), Set color, and a clickable **Hierarchy**
     tree (`setTree`). Delete on a set dissolves
-    it (`dissolveSet`) and never deletes wires. A wire's chips link to its sets. The Parts tab
+    it (`dissolveSet`) and never deletes wires. A wire's chips link to its sets, and its Sets section
+    (2026-11-08, Chris) lists the sets it sits in, outermost first, as an indented chain down to the
+    wire itself, each with its chip and a description in words (`wireSetChain`, `setDesc`: "Shielded
+    twisted pair", "2 wires", "1 set inside", a cable's or shield's description and part number);
+    clicking a row selects that set. The Parts tab
     lists the wire sets as trees, and its Ends list is gone. A set clicked in that tree is selected without
     leaving Parts (`S.keepTab`), and its row shows an Edit chip (`.st-edit`, `edit-set`) that opens
     Properties (2026-11-07, Chris).

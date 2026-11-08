@@ -22,6 +22,10 @@
   const set = label => { const h = H(); return h && h.sets.find(s => s.label === label); };
   const wire = sig => { const h = H(); return h && h.wires.find(w => w.signal === sig); };
   const item = ref => { const n = node(ref); return n ? `[data-item="n:${n.id}"]` : null; };
+  // The custom connector the visitor made in the Custom connector steps (the newest one).
+  const custom = () => { const h = H(), n = h && h.nodes.filter(x => x.family === 'custom').pop(); return n ? `[data-item="n:${n.id}"]` : null; };
+  // In the Configure window: what to do next there, ringed in turn.
+  const CFG = '#cfg-modal';
   const box = label => { const s = set(label); return s ? `.cv-setarea[data-set="${s.id}"]` : null; };
   const pick = (kind, id) => G().select(kind, id ? [id] : []);
   const clear = () => G().select(null);
@@ -82,12 +86,27 @@
         do: 'Click {From a board}, pick the Main PCBA, then a connector. In the demo it reads the made-up Smart Thermostat’s boards, the ones Fabcheck’s demo checks. {k:Esc} closes it.',
         phone: '{From a board} is in the parts pane, which needs a wider screen.',
         setup() { build(); clear(); },
-        spot: () => ['.lm-modal', '#parts-pane [data-act="from-board"]'] },
+        spot: () => ['#board-modal .lm-modal', '#parts-pane [data-act="from-board"]'] },
+      { title: 'A custom connector',
+        text: 'When no family fits, draw the connector yourself. {Configure}, in a connector’s Properties, sets its ref, name and type; {Custom} takes its face from a 3D model (STEP, IGES or STL) or a sketch. Loom keeps only the face drawing, never the model.',
+        do: 'Click {Connector}, then {Configure} in its Properties. Pick {Custom}, then the {3D model} tab, then {Load demo model}: an 8-position circular connector.',
+        phone: '{Configure} needs a wider screen; on a phone, open Loom on a computer to draw a custom connector.',
+        setup() { build(); clear(); },
+        spot: () => [`${CFG} [data-cfg="type"][data-v="custom"]:not(.on)`, `${CFG} [data-cfg="tab"][data-v="model"]:not(.on)`, `${CFG} #cfg-drop [data-cfg="demo-model"]`,
+          '#parts-pane .cfg-open', '#parts-pane [data-act="add-conn"]'] },
+      { title: 'Its face and positions',
+        text: 'Drag to turn the model, and click its mating face to look straight at it. {Make face view} draws the face from that side. Then set {Positions} and press {Assign}: each click drops the next position’s mark, snapping to the round cavity under the pointer. {Make part} saves it.',
+        do: 'Click the face with the eight holes, then {Make face view}. Set {Positions} to 8, press {Assign} and click the eight holes in order, then {Make part}.',
+        phone: '{Configure} needs a wider screen.',
+        at: 'right',
+        setup() { build(); },
+        spot: () => [`${CFG} [data-cfg="make-face"]`, `${CFG} #cfg-apply:not(:disabled)`, [`${CFG} .row2:has([data-cf="pins"])`, `${CFG} .cfg-assign-btn`],
+          `${CFG} #cfg-drop [data-cfg="demo-model"]`, custom(), '#parts-pane .cfg-open'] },
       { title: 'Running a wire',
         text: 'Click a pin, then a pin on another end or a splice: that’s a wire. While you’re wiring, the pins you can land on glow, the wire follows the pointer and {k:Esc} cancels. New wires take the gauge and color set in the harness panel.',
-        do: 'P1’s pin 6 is free. Press {k:C} for a new connector, then click P1’s pin 6 and a pin on the new one.',
+        do: 'Run a few wires from the board connector you added (or P1’s free pin 6) to your custom connector. Then {k:Shift}-click them and try {Twist}, {Shield}, {Cable} and {Bundle} in Properties.',
         setup() { build(); clear(); G().rail(false); G().fit(); },
-        spot: () => [item('P1')] },
+        spot: () => [custom(), item('P1')] },
       { title: 'A wire’s properties',
         text: 'Select a wire by clicking its line. Properties show its ends, signal, color (with a stripe), gauge and length, and chips for the sets it’s in. The canvas, the drawing and the wire list all follow a change.',
         do: 'The 3V3 wire is selected. Change its color, then press {k:Ctrl+Z}.',
@@ -109,7 +128,7 @@
         text: 'Sets nest. TP1, the shielded I²C pair, runs inside B1. Select a set and more wires, then tick {Bundle}, and the set goes inside the new one. The {Hierarchy} in Properties shows the tree; click a row to select it. {k:Delete} on a set unmakes it and keeps its wires.',
         do: 'TP1 is selected. Click B1 in its {Hierarchy}.',
         setup() { build(); const s = set('TP1'); if (s) pick('set', s.id); },
-        spot: () => props() },
+        spot: () => [...props().map(s => s + ' .set-tree'), ...props()] },
       { title: 'Set lengths',
         text: 'A set needn’t run the wires’ whole length. A selected set has a grip at each end: drag one to shorten the set or run it past what holds it. It snaps to 5 mm, and Properties show each end’s overhang. B1 is laced over 150 mm of the 250 mm run, and TP1 runs past it to both ends.',
         do: 'Drag B1’s right grip to the right, then press {k:Ctrl+Z}.',
@@ -133,12 +152,6 @@
         phone: '{Note} is in the parts pane, which needs a wider screen. Notes already on a harness can be tapped and edited.',
         setup() { build(); clear(); },
         spot: () => ['#parts-pane [data-act="add-note"]'] },
-      { title: 'How it works',
-        text: 'The {?} in the parts pane’s corner opens a short card with these moves, in either tab, and this guide can be opened again from it.',
-        do: 'Click {?} to open or close it.',
-        phone: 'The card is in the parts pane, which needs a wider screen.',
-        setup() { build(); clear(); G().help(true); },
-        spot: () => ['#parts-pane .pane-help-btn'] },
     ] },
     { title: 'The drawing', steps: [
       { title: 'The harness panel',
@@ -168,6 +181,13 @@
         spot: () => ['#page .table-wrap'] },
     ] },
     { title: 'Done', steps: [
+      // Always the second to last step (Chris, 2026-11-08).
+      { title: 'How it works',
+        text: 'The {?} in the parts pane’s corner opens a short card with these moves, in either tab, and this guide can be opened again from it.',
+        do: 'Click {?} to open or close it.',
+        phone: 'The card is in the parts pane, which needs a wider screen.',
+        setup() { build(); clear(); G().help(true); },
+        spot: () => ['#parts-pane .pane-help-btn'] },
       { title: 'You’re set',
         text: 'Shortcuts: {k:C} adds a connector, {k:F} fits, {k:+} {k:−} {k:0} zoom, {k:Delete} deletes the selection, {k:Esc} cancels, {k:Ctrl+Z} undoes, {k:Ctrl+Shift+Z} redoes, {k:Ctrl+S} saves (or syncs, signed in) and {k:[} hides the menu.',
         do: 'Open this guide again any time from {Guide} in the menu or the {?} card. {Reset demo}, in the banner, puts the demo harness back.',
@@ -235,7 +255,16 @@
   function place(el, st) {
     const W = el.offsetWidth, Hh = el.offsetHeight, m = 12;
     let x, y;
+    const s = STEPS[st.step];
     if (st.x != null) { x = st.x; y = st.y; }
+    // at: 'right', the window's right edge, halfway down (the Configure steps; Chris: out of the way).
+    // Where that would cover the Configure window's stage (a window under about 1950 px), the bottom
+    // right corner, which the face drawing, fitted in the middle, leaves clear.
+    else if (s && s.at === 'right' && !G().narrow()) {
+      x = innerWidth - W - 16; y = (innerHeight - Hh) / 2;
+      const sg = document.querySelector('#cfg-modal:not([hidden]) #cfg-stage');
+      if (sg && sg.getBoundingClientRect().right > x + 8) y = innerHeight - Hh - 16;
+    }
     else {
       const wrap = $('#canvas-wrap'), main = $('#main');
       const r = wrap && wrap.offsetParent && !$('#build-view').hidden ? wrap.getBoundingClientRect() : main.getBoundingClientRect();
@@ -253,34 +282,59 @@
 
   // ── The spot ──
   let raf = 0, was = null;
+  // What the step rings: the first of its spots that's showing, as { el, r }. A spot that is a list of
+  // selectors rings them all as one box (Positions and Assign in the Configure window), and shows
+  // when its first one does. While a window is open, only what's in it counts.
   function target() {
     const st = get(), s = st && !st.contents && STEPS[st.step];
     if (!s || !s.spot) return null;
     const modal = document.querySelector('.lm-modal-back:not([hidden]) .lm-modal');
-    for (const q of s.spot()) {
-      if (!q) continue;
+    const shown = q => {
       for (const el of document.querySelectorAll(q)) {
         const r = el.getBoundingClientRect();
-        if (!r.width || !r.height || (modal && !modal.contains(el))) continue;
-        return el;
+        if (r.width && r.height && !(modal && !modal.contains(el))) return { el, r };
       }
+      return null;
+    };
+    for (const q of s.spot()) {
+      if (!q) continue;
+      if (!Array.isArray(q)) { const t = shown(q); if (t) return t; continue; }
+      const ts = q.map(shown);
+      if (!ts[0]) continue;
+      const ok = ts.filter(Boolean);
+      const r = { left: Math.min(...ok.map(t => t.r.left)), top: Math.min(...ok.map(t => t.r.top)), right: Math.max(...ok.map(t => t.r.right)), bottom: Math.max(...ok.map(t => t.r.bottom)) };
+      r.width = r.right - r.left; r.height = r.bottom - r.top;
+      return { el: ts[0].el, r };
     }
     return null;
   }
-  function spotRect() { const el = target(); if (!el) return null; const r = el.getBoundingClientRect(); return { x0: r.left, y0: r.top, x1: r.right, y1: r.bottom }; }
+  // The part of the window an element can be seen in: the window, cut by any scrolling pane it's in.
+  function viewOf(el) {
+    let top = 0, bottom = innerHeight;
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const oy = getComputedStyle(p).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) {
+        const q = p.getBoundingClientRect();
+        top = Math.max(top, q.top); bottom = Math.min(bottom, q.bottom);
+      }
+    }
+    return { top, bottom };
+  }
+  function spotRect() { const t = target(); if (!t) return null; const r = t.r; return { x0: r.left, y0: r.top, x1: r.right, y1: r.bottom }; }
   function tick() {
     raf = 0;
     if (!get()) { spotStop(); return; }
-    const el = target();
+    const t = target(), el = t && t.el;
     let ring = $('#lm-guide-spot');
     if (!el) { if (ring) ring.remove(); was = null; }
     else {
       if (!ring) { ring = document.createElement('div'); ring.id = 'lm-guide-spot'; ring.className = 'lm-guide-spot'; ring.setAttribute('aria-hidden', 'true'); document.body.appendChild(ring); }
-      const r = el.getBoundingClientRect(), pad = 5;
+      const r = t.r, pad = 5;
       ring.style.left = (r.left - pad) + 'px'; ring.style.top = (r.top - pad) + 'px';
       ring.style.width = (r.width + pad * 2) + 'px'; ring.style.height = (r.height + pad * 2) + 'px';
-      // A new target off screen in a scrolling page (not the canvas, which the setup frames) comes into view.
-      if (was !== el) { was = el; if ((r.top < 0 || r.bottom > innerHeight) && !el.closest('svg')) el.scrollIntoView({ block: r.height > innerHeight * 0.6 ? 'start' : 'center' }); }
+      // A new target off screen, or scrolled out of its pane (the Hierarchy at the bottom of
+      // Properties), comes into view; not on the canvas, which the setup frames.
+      if (was !== el) { was = el; const v = viewOf(el); if ((r.top < v.top || r.bottom > v.bottom) && !el.closest('svg')) el.scrollIntoView({ block: r.height > (v.bottom - v.top) * 0.6 ? 'start' : 'center' }); }
     }
     raf = requestAnimationFrame(tick);
   }

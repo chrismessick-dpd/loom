@@ -18,6 +18,11 @@
   const TOOLS = [['select', 'Select', 'V'], ['rect', 'Rectangle', 'R'], ['round', 'Rounded rectangle', 'U'], ['ellipse', 'Circle or ellipse', 'C'], ['line', 'Line', 'L']];
   const GRIDS = [0.1, 0.25, 0.5, 1, 1.27, 2.54];
   const MAX_POS = 200;
+  // The demo's sample model, an 8-position circular connector, offered beside Import in ?demo (and used
+  // by the guide's Custom connector steps). Stored gzipped (632 KB of STEP, 116 KB on disk).
+  const DEMO = /[?&]demo\b/.test(location.search);
+  const DEMO_MODEL = { url: 'assets/demo/S11M0-P08M.stp.gz', name: 'S11M0-P08M.stp' };
+  const demoBtn = () => (DEMO ? '<button class="btn" data-cfg="demo-model" title="An 8-position circular connector, for trying this out">Load demo model</button>' : '');
   const ICO = {
     select: '<path d="M4 2.5l8 5.2-3.6.7 2.1 4-1.6.8-2.1-4L4 11.6z"/>',
     rect: '<rect x="2.5" y="4" width="11" height="8" rx="0.5"/>',
@@ -245,7 +250,7 @@
       return `<span class="cfg-file" title="${esc(D.custom.model.name || '')}">${ico('cube')}${esc(D.custom.model.name || 'Model')}</span>` +
         (mesh ? '<button class="btn" data-cfg="change-view">Change view</button>' : '') + `<button class="btn" data-cfg="import">${mesh ? 'Another model…' : 'Import again…'}</button>${rot}<span class="cfg-spacer"></span>${gridSel}${fit}`;
     }
-    return mesh ? '' : '<span class="cfg-spacer"></span><button class="btn" data-cfg="import">Import a model…</button>';
+    return mesh ? '' : '<span class="cfg-spacer"></span>' + demoBtn() + '<button class="btn" data-cfg="import">Import a model…</button>';
   }
 
   // ── The stage ──
@@ -255,7 +260,7 @@
     if (D.tab === 'model' && D.busy) { st.innerHTML = `<div class="cfg-empty"><span class="spinner"></span>${esc(D.busy)}</div>`; return; }
     if (D.tab === 'model' && D.mode3d && mesh) { st.innerHTML = '<div class="cfg-3d" id="cfg-3d"></div><svg class="cfg-ring" id="cfg-ring3"></svg><div class="cfg-tip glass" id="cfg-tip">Drag to turn · click a face to look straight at it · drag the dot to turn it in place</div>'; mount3d($('#cfg-3d')); return; }
     if (D.tab === 'model' && !D.custom.model) {
-      st.innerHTML = `<div class="cfg-empty cfg-drop" id="cfg-drop">${ico('cube', 'big')}<b>Drop a STEP, IGES or STL file here</b><span>or</span><button class="btn btn-primary" data-cfg="import">Import a model…</button>
+      st.innerHTML = `<div class="cfg-empty cfg-drop" id="cfg-drop">${ico('cube', 'big')}<b>Drop a STEP, IGES or STL file here</b><span>or</span><div class="cfg-drop-btns"><button class="btn btn-primary" data-cfg="import">Import a model…</button>${demoBtn()}</div>
         <p class="f-hint">Turn it, or click a face to look straight at it, then make the face view. Loom keeps that drawing; the model itself stays in this tab only. Vendors’ sites and 3D ContentCentral usually have connector models.</p></div>`;
       return;
     }
@@ -633,6 +638,21 @@
       render();
     }
   }
+  // The demo's sample model, unzipped in the browser and read like an imported file.
+  async function loadDemoModel() {
+    D.err = ''; D.busy = 'Fetching the demo model…'; D.tab = 'model'; render();
+    try {
+      const res = await fetch(DEMO_MODEL.url);
+      if (!res.ok) throw new Error("Couldn't fetch the demo model (" + res.status + ').');
+      const blob = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).blob();
+      if (!D) return;
+      D.busy = '';
+      await importFile(new File([blob], DEMO_MODEL.name));
+    } catch (err) {
+      if (!D) return;
+      D.busy = ''; D.err = String(err.message || err); render();
+    }
+  }
   // The 3D view: three.js, orthographic, turned as a trackball (drag), with the camera's turn as one
   // quaternion (V3.q) so any face can be looked at straight on.
   function V3q(q) {
@@ -1000,6 +1020,7 @@
       case 'pin': startAssign(+b.dataset.i); break;
       case 'clear-marks': if (confirm('Clear every mark?')) { pushUndo(); part().pins = part().pins.map(() => null); D.assign = -1; refresh(); } break;
       case 'import': $('#cfg-file').click(); break;
+      case 'demo-model': loadDemoModel(); break;
       case 'view3d': view3d(v); break;
       case 'spin': spin(+v); break;
       case 'make-face': makeFace(); break;

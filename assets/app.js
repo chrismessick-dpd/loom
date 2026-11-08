@@ -1395,7 +1395,8 @@
       ${fld('Gauge', gaugeSelect('w.gauge', w.gauge))}
       ${lenField(h, A, [w])}
       <div class="cat-label">Sets</div>
-      <p class="f-hint">Shift-click other wires to make a set with this one: twisted, shielded, a cable or a bundle.</p>
+      ${gs.length ? wireSetChain(h, w, gs) : ''}
+      <p class="f-hint">${gs.length ? 'Click a set to select it. ' : ''}Shift-click other wires to make a set with this one: twisted, shielded, a cable or a bundle.</p>
       </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${M.wireName(w)}</button></div></div>`;
   }
   // A note: its text, and a part number and quantity when it stands for a part (the BOM lists it).
@@ -1429,6 +1430,30 @@
       (edit && isOn(st.id) && on.size === 1 ? `<span class="st-edit" role="button" data-act="edit-set" title="Edit ${esc(st.label)} in Properties">Edit</span>` : '') + `</button>` +
       st.sets.map(id => M.set(h, id)).filter(Boolean).map(c => line(c, d + 1)).join('');
     return `<div class="set-tree">${line(root, 0)}</div>`;
+  }
+  // A set in words, for a wire's Properties: what it is ("Shielded twisted pair", "Cable, shielded"),
+  // then what it holds and, for a cable or shield, its description and part number.
+  function setDesc(h, st) {
+    const nW = M.wiresIn(h, st).length, nS = st.sets.length;
+    let what;
+    if (st.cable || st.bundle) what = M.setWord(st) + (M.setTraits(st) ? ', ' + M.setTraits(st) : '');
+    else if (st.twist) what = (st.shield ? 'Shielded twisted ' : 'Twisted ') + (nW === 2 ? 'pair' : nW === 3 ? 'triple' : 'set');
+    else what = 'Shielded set';
+    const holds = `${nW} wire${nW === 1 ? '' : 's'}${nS ? `, ${nS} set${nS === 1 ? '' : 's'} inside` : ''}`;
+    const extra = [st.note, st.pn && 'PN ' + st.pn].filter(Boolean).join(' · ');
+    return { what, detail: holds + (extra ? ' · ' + extra : '') };
+  }
+  // The sets a wire sits in, outermost first, as an indented chain ending in the wire itself.
+  function wireSetChain(h, w, gs) {
+    const rows = gs.map((st, d) => {
+      const t = setDesc(h, st);
+      return `<button class="st-row st-desc" data-pick="set:${st.id}" style="--d:${d}" title="Select ${esc(st.label)}">` +
+        `<span class="g-chip g-${setKind(st)}">${esc(st.label)}</span>` +
+        `<span class="st-text"><span class="st-what">${esc(t.what)}</span><span class="st-detail">${esc(t.detail)}</span></span></button>`;
+    }).join('');
+    const leaf = `<div class="st-row st-leaf on" style="--d:${gs.length}"><span class="chip">${esc(M.wireName(w))}</span>` +
+      `<span class="st-name">This wire${w.signal ? ', ' + esc(w.signal) : ''}</span></div>`;
+    return `<div class="set-tree">${rows}${leaf}</div>`;
   }
   const FLAG_TEXT = { twist: ['Twist', 'Twisted together'], shield: ['Shield', 'A braided shield around them'], cable: ['Cable', 'Bought as one cable, in a jacket'], bundle: ['Bundle', 'Laced together'] };
   // A set, or several wires that aren't one (st null). Ticking a property on loose wires makes them
