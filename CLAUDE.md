@@ -179,7 +179,14 @@ links to it so far. Before every commit:
     after going from 4 to 8). Enter makes the part only from Ref, Name or Description.
   - The CSP now allows `cdn.jsdelivr.net` for scripts and fetches, and `blob:` workers (three.js and
     OpenCascade, as Partcheck).
-  - **Load demo model** (2026-11-08, Chris): in `?demo`, beside Import a model…, it reads
+  - **Mirror** (2026-11-08, Chris): Mirror horizontally and Mirror vertically (`mirrorBtns`) after the turn
+    buttons, in 3D and in the face view. In 3D the model is reflected about the screen's axis through its
+    center (in `V3.group.matrix`, so three.js keeps winding and lighting; flipping the camera's frame lit the
+    back faces), drags and the ring turn the right way on screen (`mirSign`), and Make face view negates the
+    view's `right` or `up` and stores `model.mirror`. In the face view `mirror2d` flips the drawing,
+    circles, cavities and marks about the drawing's middle, like `rotate`, and Change view restores the
+    flip in 3D.
+  - **Load demo model** (2026-11-08, Chris; pushed `da4348b` with the guide's custom connector steps): in `?demo`, beside Import a model…, it reads
     `assets/demo/S11M0-P08M.stp.gz` (a vendor's 8-position circular connector, 632 KB of STEP gzipped to
     116 KB; `DecompressionStream`, then `importFile` as a `File`). The guide's Custom connector steps use it.
   - Not done: pinch zoom on the stage, no tests.
@@ -194,7 +201,12 @@ links to it so far. Before every commit:
   *Its face and positions* (Make face view, then Positions and Assign as one ring, then Make part; the
   card sits at the window's right middle, `at: 'right'`, or the bottom right where that would cover the
   Configure stage, below about 1950 px wide); *Running a wire* then wires to the custom connector and
-  tries the sets. *How it works* is always the second to last step. A new
+  tries the sets. *How it works* is always the second to last step. *Adding parts* has no Try it (a
+  step's `do` is optional), since the custom connector steps add the connector. The card takes the
+  canvas corner (bottom left, bottom right, top right, top left) covering least: never the ring if it
+  can help it, then the fewest connectors and splices, the newest weighted most (a new connector lands
+  at the bottom left). It moves again when a part is added or removed or a window opens or closes
+  (`watchLayout`), unless dragged. A new
   spot scrolled out of its pane (not just the window, `viewOf`) is scrolled into view, so *Sets inside
   sets* rings the Hierarchy and brings it up in Properties (2026-11-08, Chris). The card
   (`#lm-guide`) has Back/Next, a Contents list to jump anywhere, and drags by its top line. In a

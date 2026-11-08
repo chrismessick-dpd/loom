@@ -75,9 +75,9 @@
         do: 'P1 is selected. In Properties, set {Views} to {Both} and watch the face drawing show the wire side too.',
         setup() { build(); const n = node('P1'); if (n) pick('node', n.id); },
         spot: () => [...props().map(s => s + ' .face-tile'), item('P1')] },
+      // No Try it (Chris, 2026-11-08): the custom connector steps add the connector.
       { title: 'Adding parts',
         text: '{Add › Connector} puts a new end on the canvas (or press {k:C}). {Splice} adds a splice, and {Note} pins a note to a part (more on notes later). The {Parts} tab also lists the splices, notes and wire sets; click one to select it.',
-        do: 'Click {Connector}. Its Properties open, ready to pick a family and pin count.',
         phone: 'The parts pane needs a wider screen; on a phone, open Loom on a computer to add parts.',
         setup() { build(); clear(); },
         spot: () => ['#parts-pane .palette'] },
@@ -238,7 +238,7 @@
       let k = 0;
       body = `<div class="lg-toc">${CHAPTERS.map(c => `<div class="lg-ch">${esc(c.title)}</div>` + c.steps.map(x => { const i = k++; return `<button class="lg-li${i === st.step ? ' on' : ''}" data-g="to" data-i="${i}">${esc(x.title)}</button>`; }).join('')).join('')}</div>`;
     } else {
-      body = `<h3>${esc(s.title)}</h3><p>${marks(s.text)}</p><p class="lg-do"><b>Try it.</b> ${marks(s.phone && G().narrow() ? s.phone : s.do)}</p>`;
+      body = `<h3>${esc(s.title)}</h3><p>${marks(s.text)}</p>${(s.phone && G().narrow()) || s.do ? `<p class="lg-do"><b>Try it.</b> ${marks(s.phone && G().narrow() ? s.phone : s.do)}</p>` : ''}`;
     }
     const acts = `<div class="lg-act">${st.step > 0 ? '<button class="btn" data-g="back">Back</button>' : ''}<span class="lg-sp"></span>` +
       (s.last ? (st.mine ? '<button class="btn" data-g="end">Back to my harnesses</button><button class="btn btn-primary" data-g="restart">Start over</button>' : '<button class="btn" data-g="restart">Start over</button><button class="btn btn-primary" data-g="end">Finish</button>')
@@ -269,10 +269,18 @@
       const wrap = $('#canvas-wrap'), main = $('#main');
       const r = wrap && wrap.offsetParent && !$('#build-view').hidden ? wrap.getBoundingClientRect() : main.getBoundingClientRect();
       // On a phone the selection's sheet rises from the bottom, so the card sits at the top.
-      const spots = G().narrow() ? [{ x: r.left + 12, y: r.top + 8 }] : [{ x: r.left + 16, y: r.bottom - Hh - 64 }, { x: r.right - W - 16, y: r.bottom - Hh - 64 }, { x: r.right - W - 16, y: r.top + 64 }];
-      const t = spotRect();
-      const hit = p => t && p.x < t.x1 && p.x + W > t.x0 && p.y < t.y1 && p.y + Hh > t.y0;
-      const p = spots.find(q => !hit(q)) || spots[0];
+      const spots = G().narrow() ? [{ x: r.left + 12, y: r.top + 8 }] : [{ x: r.left + 16, y: r.bottom - Hh - 64 }, { x: r.right - W - 16, y: r.bottom - Hh - 64 }, { x: r.right - W - 16, y: r.top + 64 }, { x: r.left + 16, y: r.top + 64 }];
+      // The corner covering least: never the ring if it can help it, then as few of the canvas's
+      // connectors and splices as it can, the newest most of all (Chris: a connector added in the
+      // custom connector steps lands at the bottom left, under the card). The first corner wins ties.
+      const t = spotRect(), h = H(), last = h && h.nodes.length ? h.nodes[h.nodes.length - 1].id : null;
+      const keep = $('#build-view') && !$('#build-view').hidden ? [...document.querySelectorAll('#canvas [data-item^="n:"]')].map(e => {
+        const q = e.getBoundingClientRect();
+        return { x0: q.left, y0: q.top, x1: q.right, y1: q.bottom, w: e.dataset.item === 'n:' + last ? 4 : 1 };
+      }) : [];
+      const over = (p, b) => Math.max(0, Math.min(p.x + W, b.x1) - Math.max(p.x, b.x0)) * Math.max(0, Math.min(p.y + Hh, b.y1) - Math.max(p.y, b.y0));
+      const cost = p => (t ? 100 * over(p, t) : 0) + keep.reduce((a, b) => a + b.w * over(p, b), 0);
+      const p = spots.reduce((a, q) => (cost(q) < cost(a) ? q : a), spots[0]);
       x = p.x; y = p.y;
     }
     x = Math.max(m, Math.min(innerWidth - W - m, x));
@@ -321,9 +329,22 @@
     return { top, bottom };
   }
   function spotRect() { const t = target(); if (!t) return null; const r = t.r; return { x0: r.left, y0: r.top, x1: r.right, y1: r.bottom }; }
+  // The card moves again when the canvas gains or loses a part or a window opens or closes (once the
+  // canvas has refit), unless it was dragged.
+  let layoutKey = '', replace = 0;
+  function watchLayout() {
+    const key = document.querySelectorAll('#canvas [data-item^="n:"]').length + '|' + !!document.querySelector('.lm-modal-back:not([hidden])');
+    if (key === layoutKey) return;
+    const first = !layoutKey;
+    layoutKey = key;
+    if (first) return;
+    clearTimeout(replace);
+    replace = setTimeout(() => { const st = get(), el = $('#lm-guide'); if (st && el && st.x == null && !st.contents) place(el, st); }, 450);
+  }
   function tick() {
     raf = 0;
     if (!get()) { spotStop(); return; }
+    watchLayout();
     const t = target(), el = t && t.el;
     let ring = $('#lm-guide-spot');
     if (!el) { if (ring) ring.remove(); was = null; }

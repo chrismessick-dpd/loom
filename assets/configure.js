@@ -36,6 +36,8 @@
     cube: '<path d="M8 1.8 13.6 5v6L8 14.2 2.4 11V5z"/><path d="M2.4 5 8 8.2 13.6 5M8 8.2v6"/>',
     pen: '<path d="M10.5 3.5l2 2L6 12H4v-2z"/>',
     pin: '<circle cx="8" cy="7" r="3.2"/><path d="M8 10.2V14"/>',
+    flipH: '<path d="M8 2v12" stroke-dasharray="1.6 1.6"/><path d="M6 4.5 2.5 8 6 11.5z"/><path d="M10 4.5l3.5 3.5-3.5 3.5z" fill="currentColor"/>',
+    flipV: '<path d="M2 8h12" stroke-dasharray="1.6 1.6"/><path d="M4.5 6 8 2.5 11.5 6z"/><path d="M4.5 10 8 13.5 11.5 10z" fill="currentColor"/>',
   };
   const ico = (k, cls) => `<svg class="${cls || 'ico'}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${ICO[k]}</svg>`;
 
@@ -216,6 +218,11 @@
       <div class="cfg-stage" id="cfg-stage" tabindex="-1"></div>
       <input type="file" id="cfg-file" accept=".step,.stp,.iges,.igs,.stl" hidden>`;
   }
+  // Mirror left to right (h) and top to bottom (v): the 3D view's flip, or the face drawing's.
+  function mirrorBtns(on) {
+    return `<button class="icon-btn${on.h ? ' on' : ''}" data-cfg="mirror" data-v="h" title="Mirror horizontally (left to right)" aria-label="Mirror horizontally" aria-pressed="${!!on.h}">${ico('flipH')}</button>` +
+      `<button class="icon-btn${on.v ? ' on' : ''}" data-cfg="mirror" data-v="v" title="Mirror vertically (top to bottom)" aria-label="Mirror vertically" aria-pressed="${!!on.v}">${ico('flipV')}</button>`;
+  }
   function toolsHtml() {
     if (!isCustom()) return '';
     const gridSel = `<label class="cfg-grid" title="Snap grid (hold Alt to place freely)">Grid <select class="input" data-cf="grid">${GRIDS.map(g => opt(g, g + ' mm', D.grid)).join('')}</select></label>`;
@@ -241,11 +248,11 @@
     if (D.busy) return '';
     if (D.mode3d && mesh) {
       const views = Object.entries(LM.step.VIEWS).map(([k, v]) => `<button data-cfg="view3d" data-v="${k}" title="${esc(v.label)}">${esc(k)}</button>`).join('');
-      return `<div class="seg cfg-views">${views}</div><button class="icon-btn" data-cfg="spin" data-v="-1" title="Turn left 90°" aria-label="Turn left">${ico('left')}</button><button class="icon-btn" data-cfg="spin" data-v="1" title="Turn right 90°" aria-label="Turn right">${ico('right')}</button>` +
+      return `<div class="seg cfg-views">${views}</div><button class="icon-btn" data-cfg="spin" data-v="-1" title="Turn left 90°" aria-label="Turn left">${ico('left')}</button><button class="icon-btn" data-cfg="spin" data-v="1" title="Turn right 90°" aria-label="Turn right">${ico('right')}</button>${mirrorBtns(V3 && V3.mirror || {})}` +
         `<span class="cfg-spacer"></span>${D.custom.model ? '<button class="btn" data-cfg="face-back">Cancel</button>' : ''}<button class="btn btn-primary" data-cfg="make-face">Make face view</button>`;
     }
     if (D.custom.model) {
-      const rot = `<span class="cfg-rot" title="Turn the face about the axis you're looking down ([ and ] turn 1°, with Shift 15°)"><button class="icon-btn" data-cfg="rot" data-v="-90" title="Turn left 90°" aria-label="Turn left 90°">${ico('left')}</button><button class="icon-btn" data-cfg="rot" data-v="90" title="Turn right 90°" aria-label="Turn right 90°">${ico('right')}</button><input class="input" type="number" step="1" data-cf="rot" value="${r2(D.custom.model.rot || 0)}" aria-label="Rotation in degrees">°</span>` +
+      const rot = `<span class="cfg-rot" title="Turn the face about the axis you're looking down ([ and ] turn 1°, with Shift 15°)"><button class="icon-btn" data-cfg="rot" data-v="-90" title="Turn left 90°" aria-label="Turn left 90°">${ico('left')}</button><button class="icon-btn" data-cfg="rot" data-v="90" title="Turn right 90°" aria-label="Turn right 90°">${ico('right')}</button><input class="input" type="number" step="1" data-cf="rot" value="${r2(D.custom.model.rot || 0)}" aria-label="Rotation in degrees">°</span>${mirrorBtns(D.custom.model.mirror || {})}` +
         `<button class="btn${D.pointUp ? ' on' : ''}" data-cfg="point-up" title="Click a feature, like the key, to turn it to 12 o'clock">Point up</button>`;
       return `<span class="cfg-file" title="${esc(D.custom.model.name || '')}">${ico('cube')}${esc(D.custom.model.name || 'Model')}</span>` +
         (mesh ? '<button class="btn" data-cfg="change-view">Change view</button>' : '') + `<button class="btn" data-cfg="import">${mesh ? 'Another model…' : 'Import again…'}</button>${rot}<span class="cfg-spacer"></span>${gridSel}${fit}`;
@@ -595,6 +602,29 @@
     const ri = $('#cfg-tools [data-cf="rot"]');
     if (ri && document.activeElement !== ri) ri.value = p.rot;
   }
+  // Mirror the face drawing left to right (h) or top to bottom (v) about its middle: the drawing,
+  // circles, cavities and marks, exactly; its view's right or up turns round to match (model.mirror).
+  function mirror2d(axis) {
+    const p = part();
+    if (!p || D.tab !== 'model') return;
+    pushUndo();
+    const h = axis === 'h', W = p.w, H = p.h, r1 = v => Math.round(v * 10) / 10;
+    const fx = x => (h ? W - x : x), fy = y => (h ? y : H - y);
+    p.d = p.d.replace(/([ML])(-?[\d.]+) (-?[\d.]+)/g, (m, c, x, y) => c + r1(fx(+x)) + ' ' + r1(fy(+y)));
+    p.c = (p.c || []).map(c => [r1(fx(c[0])), r1(fy(c[1])), c[2]]);
+    p.f = (p.f || []).map(c => [r1(fx(c[0])), r1(fy(c[1])), c[2]]);
+    p.pins = p.pins.map(q => (q ? [r2(fx(q[0] / p.k) * p.k), r2(fy(q[1] / p.k) * p.k)] : null));
+    if (p.view) p.view = Object.assign({}, p.view, h ? { right: p.view.right.map(v => (v ? -v : 0)) } : { up: p.view.up.map(v => (v ? -v : 0)) });
+    const mi = Object.assign({ h: false, v: false }, p.mirror);
+    mi[axis] = !mi[axis];
+    if (mi.h || mi.v) p.mirror = mi; else delete p.mirror;
+    // A turn mirrored reads the other way round.
+    if (p.rot) p.rot = -p.rot;
+    loopCache = null;
+    refresh();
+    const ri = $('#cfg-tools [data-cf="rot"]');
+    if (ri && document.activeElement !== ri) ri.value = p.rot || 0;
+  }
   // Turn so the clicked point is straight above the center.
   function pointUp(q) {
     const p = part(), [cx, cy] = rotCenter();
@@ -662,8 +692,11 @@
     if (q) V3.q.copy(q);
     else {
       // The model's saved view, else an isometric look.
-      const v = D.custom.model && D.custom.model.view;
-      V3.q.copy(v ? quatOf(v.look, v.up) : quatOf([-1, 1, -1], [0, 0, 1]));
+      const v = D.custom.model && D.custom.model.view, mi = (D.custom.model && D.custom.model.mirror) || {};
+      // A mirrored face view keeps its basis flipped (right and up negated); the camera turns as the
+      // unflipped view and the flip is drawn by the camera's frame (V3.mirror).
+      V3.mirror = { h: !!(v && mi.h), v: !!(v && mi.v) };
+      V3.q.copy(v ? quatOf(v.look, mi.v ? v.up.map(x => -x) : v.up) : quatOf([-1, 1, -1], [0, 0, 1]));
       V3.zoom = 1;
       V3.faced = !!v;
       V3.roll = 0;
@@ -750,6 +783,19 @@
     if (!V3 || !V3.el || !V3.renderer) return;
     const T = window.THREE, cam = V3.cam, half = mesh.diag * 0.62 / V3.zoom;
     cam.left = -half * V3.aspect; cam.right = half * V3.aspect; cam.top = half; cam.bottom = -half;
+    // Mirrored: the model is reflected about the screen's vertical (h) or horizontal (v) axis through
+    // its center, so the picture is the plain view's mirror image. A reflection in the model's matrix,
+    // not the camera's frame, so three.js keeps the faces' winding and lighting right.
+    if (V3.group) {
+      const m = new T.Matrix4(), mi = V3.mirror || {};
+      const refl = v => { const n = v.clone().applyQuaternion(V3.q); return new T.Matrix4().set(1 - 2 * n.x * n.x, -2 * n.x * n.y, -2 * n.x * n.z, 0, -2 * n.y * n.x, 1 - 2 * n.y * n.y, -2 * n.y * n.z, 0, -2 * n.z * n.x, -2 * n.z * n.y, 1 - 2 * n.z * n.z, 0, 0, 0, 0, 1); };
+      if (mi.h) m.multiply(refl(new T.Vector3(1, 0, 0)));
+      if (mi.v) m.multiply(refl(new T.Vector3(0, 1, 0)));
+      const c = V3.center;
+      V3.group.matrixAutoUpdate = false;
+      V3.group.matrix.makeTranslation(c.x, c.y, c.z).multiply(m).multiply(new T.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
+      V3.group.matrixWorldNeedsUpdate = true;
+    }
     cam.quaternion.copy(V3.q);
     cam.position.copy(V3.center).add(new T.Vector3(0, 0, 1).applyQuaternion(V3.q).multiplyScalar(mesh.diag * 3));
     cam.updateProjectionMatrix();
@@ -768,7 +814,7 @@
     const half = mesh.diag * 0.62 / V3.zoom;
     const r = Math.max(40, Math.min(Math.min(W, H) / 2 - 18, (V3.ringR || mesh.diag / 2) / half * H / 2 * 1.12));
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svg.innerHTML = ringSvg(W / 2, H / 2, r, V3.roll || 0, 7, ring && ring.kind === '3d');
+    svg.innerHTML = ringSvg(W / 2, H / 2, r, mirSign() * (V3.roll || 0), 7, ring && ring.kind === '3d');
   }
   // How far the model reaches from the view's center, across the screen, looking along look: the
   // ring sits just outside it.
@@ -825,8 +871,8 @@
     ring.deg = deg;
     if (ring.kind === '3d') {
       const T = window.THREE;
-      V3.q.copy(ring.q0.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), deg * Math.PI / 180)));
-      V3.roll = ring.roll0 + deg;
+      V3.q.copy(ring.q0.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), mirSign() * deg * Math.PI / 180)));
+      V3.roll = ring.roll0 + mirSign() * deg;
       draw3d();
     } else {
       D.custom.model = clone(ring.snap);
@@ -841,6 +887,8 @@
     if (r.kind === '2d' && !r.deg) undoStack.pop();
     if (r.kind === '3d') draw3d(); else draw2d();
   }
+  // +1, or -1 when the 3D view is mirrored once (a turn on screen is then the other way round).
+  const mirSign = () => (V3 && V3.mirror && (!!V3.mirror.h !== !!V3.mirror.v) ? -1 : 1);
   let d3 = null;
   function down3d(e) { if (V3.goal) { V3.q.copy(V3.goal); V3.goal = null; } d3 = { x: e.clientX, y: e.clientY, q: V3.q.clone(), roll: V3.roll, moved: false }; try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ } }
   function move3d(e) {
@@ -852,14 +900,15 @@
     if (e.shiftKey) {
       // Shift: roll about the axis we look down, by the pointer's turn about the view's center.
       const r = V3.renderer.domElement.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      const a = Math.atan2(e.clientY - cy, e.clientX - cx) - Math.atan2(d3.y - cy, d3.x - cx);
+      const a = mirSign() * (Math.atan2(e.clientY - cy, e.clientX - cx) - Math.atan2(d3.y - cy, d3.x - cx));
       V3.q.copy(d3.q.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), a)));
       V3.roll = (d3.roll || 0) + a * 180 / Math.PI;
       draw3d();
       return;
     }
     V3.faced = false; // turned freely: no longer looking straight at a face
-    const q = d3.q.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 1, 0), -dx * 0.01)).multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), -dy * 0.01));
+    const mx = V3.mirror && V3.mirror.h ? -1 : 1, my = V3.mirror && V3.mirror.v ? -1 : 1;
+    const q = d3.q.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 1, 0), -dx * mx * 0.01)).multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), -dy * my * 0.01));
     V3.q.copy(q);
     draw3d();
   }
@@ -967,7 +1016,7 @@
   }
   // dir 1 turns the model clockwise on screen. The camera turns the other way about its own axis,
   // which is +θ in three.js (its z points at the viewer, so +θ turns the picture clockwise).
-  function spin(dir) { const T = window.THREE; V3.roll = (V3.roll || 0) + dir * 90; glide((V3.goal || V3.q).clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), dir * Math.PI / 2))); }
+  function spin(dir) { const T = window.THREE; dir *= mirSign(); V3.roll = (V3.roll || 0) + dir * 90; glide((V3.goal || V3.q).clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), dir * Math.PI / 2))); }
   function makeFace() {
     if (V3.goal) { V3.q.copy(V3.goal); V3.goal = null; }
     const T = window.THREE, clean = v => v.toArray().map(x => (Math.abs(x) < 1e-6 ? 0 : Math.round(x * 1e6) / 1e6));
@@ -977,13 +1026,15 @@
       V3.q.copy(quatOf(snapped, new T.Vector3(0, 1, 0).applyQuaternion(V3.q).toArray()));
       V3.faced = true; V3.roll = 0; V3.faceLook = snapped;
     }
-    const look = clean(new T.Vector3(0, 0, -1).applyQuaternion(V3.q)), right = clean(new T.Vector3(1, 0, 0).applyQuaternion(V3.q)), up = clean(new T.Vector3(0, 1, 0).applyQuaternion(V3.q));
+    const mi = { h: !!(V3.mirror && V3.mirror.h), v: !!(V3.mirror && V3.mirror.v) };
+    const look = clean(new T.Vector3(0, 0, -1).applyQuaternion(V3.q)), right = clean(new T.Vector3(mi.h ? -1 : 1, 0, 0).applyQuaternion(V3.q)), up = clean(new T.Vector3(0, mi.v ? -1 : 1, 0).applyQuaternion(V3.q));
     const sk = LM.step.sketch(mesh, { look, right, up });
     if (!sk.d) { D.err = 'No edges show from this side. Turn the model and try again.'; refresh(); return; }
     const old = D.custom.model;
     const same = old && old.view && JSON.stringify(old.view) === JSON.stringify({ look, right, up }) && old.name === D.fileName;
     pushUndo();
     D.custom.model = { name: D.fileName, d: sk.d, c: sk.c, f: sk.f, w: sk.w, h: sk.h, k: sk.mm / 1000, view: { look, right, up }, rot: 0, pins: same ? old.pins : [] };
+    if (mi.h || mi.v) D.custom.model.mirror = mi;
     syncPins();
     D.mode3d = false;
     D.err = '';
@@ -1027,6 +1078,7 @@
       case 'change-view': D.mode3d = true; D.assign = -1; V3q(null); render(); if (V3.faced) { fitFace(); draw3d(); } break;
       case 'face-back': D.mode3d = false; render(); break;
       case 'rot': rotate(+v); break;
+      case 'mirror': if (D.mode3d && V3) { V3.mirror = V3.mirror || { h: false, v: false }; V3.mirror[v] = !V3.mirror[v]; draw3d(); refresh(); } else mirror2d(v); break;
       case 'point-up': D.pointUp = !D.pointUp; D.assign = -1; refresh(); break;
     }
   }
