@@ -253,7 +253,7 @@
     const st = $('#cfg-stage');
     if (!st) return;
     if (D.tab === 'model' && D.busy) { st.innerHTML = `<div class="cfg-empty"><span class="spinner"></span>${esc(D.busy)}</div>`; return; }
-    if (D.tab === 'model' && D.mode3d && mesh) { st.innerHTML = '<div class="cfg-3d" id="cfg-3d"></div><div class="cfg-tip glass" id="cfg-tip">Drag to turn · Shift-drag to roll · scroll to zoom · click a face to look straight at it</div>'; mount3d($('#cfg-3d')); return; }
+    if (D.tab === 'model' && D.mode3d && mesh) { st.innerHTML = '<div class="cfg-3d" id="cfg-3d"></div><svg class="cfg-ring" id="cfg-ring3"></svg><div class="cfg-tip glass" id="cfg-tip">Drag to turn · click a face to look straight at it · drag the dot on the ring to turn it in place</div>'; mount3d($('#cfg-3d')); return; }
     if (D.tab === 'model' && !D.custom.model) {
       st.innerHTML = `<div class="cfg-empty cfg-drop" id="cfg-drop">${ico('cube', 'big')}<b>Drop a STEP, IGES or STL file here</b><span>or</span><button class="btn btn-primary" data-cfg="import">Import a model…</button>
         <p class="f-hint">Turn it, or click a face to look straight at it, then make the face view. Loom keeps that drawing; the model itself stays in this tab only. Vendors’ sites and 3D ContentCentral usually have connector models.</p></div>`;
@@ -316,6 +316,12 @@
       o += `<g class="cfg-mark${fill ? ' on' : ''}${D.assign === i ? ' redo' : ''}" data-mark="${i}"><circle cx="${q[0]}" cy="${q[1]}" r="${r}"${fill ? ` style="fill:${fill}"` : ''}/>` +
         `<text x="${q[0]}" y="${q[1]}" font-size="${r2(r * (nm[i].length > 2 ? 0.75 : 1))}" dy="0.36em" text-anchor="middle"${fill ? ` style="fill:${ink(fill)}"` : ''}>${esc(nm[i])}</text></g>`;
     });
+    if (D.tab === 'model' && p && !D.pointUp) {
+      // The ring for turning the face, round the connector's axis.
+      const [ux, uy] = rotCenter(), big = (p.c || []).concat(p.f || []).filter(c => c[2] * 2 >= Math.max(p.w, p.h) * 0.3).sort((a, b) => b[2] - a[2])[0];
+      const rr = big ? big[2] * p.k * 1.1 : Math.hypot(p.w, p.h) / 2 * p.k * 1.04;
+      o += `<g class="cfg-ring2">${ringSvg(ux * p.k, uy * p.k, rr, p.rot || 0, 7 / z, ring && ring.kind === '2d')}</g>`;
+    }
     o += '<g id="cfg-ghost"></g>';
     svg.innerHTML = o;
     svg.classList.toggle('assigning', D.assign >= 0);
@@ -549,10 +555,10 @@
     const p = part(), big = (p.c || []).concat(p.f || []).filter(c => c[2] * 2 >= Math.max(p.w, p.h) * 0.3).sort((a, b) => b[2] - a[2])[0];
     return big ? [big[0], big[1]] : [p.w / 2, p.h / 2];
   }
-  function rotate(deg) {
+  function rotate(deg, silent) {
     const p = part();
     if (!p || D.tab !== 'model' || !deg) return;
-    pushUndo();
+    if (!silent) pushUndo();
     const th = deg * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th), [cx, cy] = rotCenter();
     const turn = (x, y) => [cx + (x - cx) * cs - (y - cy) * sn, cy + (x - cx) * sn + (y - cy) * cs];
     const pts = [];
@@ -639,6 +645,9 @@
       const v = D.custom.model && D.custom.model.view;
       V3.q.copy(v ? quatOf(v.look, v.up) : quatOf([-1, 1, -1], [0, 0, 1]));
       V3.zoom = 1;
+      V3.faced = !!v;
+      V3.roll = 0;
+      V3.faceLook = v ? v.look : null;
     }
   }
   function quatOf(look, up) {
@@ -726,9 +735,94 @@
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
     V3.renderer.render(V3.scene, cam);
+    ring3d();
+  }
+  // The ring round the model while we look straight at a face: its dot turns the model about the
+  // axis into the screen (the view's center, which the camera looks at).
+  function ring3d() {
+    const svg = $('#cfg-ring3');
+    if (!svg) return;
+    if (!V3.faced) { svg.innerHTML = ''; return; }
+    const W = V3.el.clientWidth || 600, H = V3.el.clientHeight || 400;
+    if (V3.ringFor !== V3.faceLook) { V3.ringR = faceRadius(V3.faceLook); V3.ringFor = V3.faceLook; }
+    const half = mesh.diag * 0.62 / V3.zoom;
+    const r = Math.max(40, Math.min(Math.min(W, H) / 2 - 18, (V3.ringR || mesh.diag / 2) / half * H / 2 * 1.12));
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.innerHTML = ringSvg(W / 2, H / 2, r, V3.roll || 0, 7, ring && ring.kind === '3d');
+  }
+  // How far the model reaches from the view's center, across the screen, looking along look: the
+  // ring sits just outside it.
+  function faceRadius(look) {
+    if (!look || !mesh) return 0;
+    const [lx, ly, lz] = look, c = V3.center, w = mesh.wpos;
+    let m = 0;
+    for (let i = 0; i < w.length; i += 3) {
+      const x = w[i] - c.x, y = w[i + 1] - c.y, z = w[i + 2] - c.z, t = x * lx + y * ly + z * lz;
+      m = Math.max(m, (x - t * lx) ** 2 + (y - t * ly) ** 2 + (z - t * lz) ** 2);
+    }
+    return Math.sqrt(m);
+  }
+  function ringSvg(cx, cy, r, deg, dotR, live) {
+    const a = (deg - 90) * Math.PI / 180, x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+    const lab = live ? `<text class="cfg-ring-t" x="${x}" y="${y - dotR * 1.9}" text-anchor="middle" font-size="${dotR * 1.7}">${r2(((deg % 360) + 540) % 360 - 180)}°</text>` : '';
+    return `<circle class="cfg-ring-c" cx="${cx}" cy="${cy}" r="${r}" vector-effect="non-scaling-stroke"/>` +
+      `<line class="cfg-ring-tick" x1="${cx}" y1="${cy - r - dotR * 0.6}" x2="${cx}" y2="${cy - r + dotR * 0.6}" vector-effect="non-scaling-stroke"/>` +
+      `<circle class="cfg-ring-dot${live ? ' live' : ''}" data-ring="1" cx="${x}" cy="${y}" r="${dotR}" vector-effect="non-scaling-stroke"><title>Drag to turn about the axis into the screen (Shift: 15° steps, Alt: free)</title></circle>${lab}`;
+  }
+  // Dragging the ring's dot: the turn is the pointer's angle about the center since the grab,
+  // in 1° steps (Shift 15°, Alt free). One undo reverts a turn of the face view.
+  let ring = null;
+  function ringStart(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ }
+    let c;
+    if (D.tab === 'model' && D.mode3d && V3 && V3.el) {
+      const r = V3.el.getBoundingClientRect();
+      c = [r.left + r.width / 2, r.top + r.height / 2];
+      if (V3.goal) { V3.q.copy(V3.goal); V3.goal = null; }
+      ring = { kind: '3d', q0: V3.q.clone(), roll0: V3.roll || 0 };
+    } else {
+      const p = part(), m = $('#cfg-svg').getScreenCTM(), [ux, uy] = rotCenter();
+      c = [m.a * ux * p.k + m.e, m.d * uy * p.k + m.f];
+      pushUndo();
+      ring = { kind: '2d', snap: clone(p), cam: Object.assign({}, D.cam.model) };
+    }
+    ring.cx = c[0]; ring.cy = c[1];
+    ring.last = Math.atan2(e.clientY - c[1], e.clientX - c[0]);
+    ring.sum = 0;
+    ring.deg = 0;
+  }
+  function ringMove(e) {
+    const a = Math.atan2(e.clientY - ring.cy, e.clientX - ring.cx);
+    let da = a - ring.last;
+    da -= Math.round(da / (2 * Math.PI)) * 2 * Math.PI;
+    ring.last = a;
+    ring.sum += da;
+    const raw = ring.sum * 180 / Math.PI, step = e.altKey ? 0.1 : e.shiftKey ? 15 : 1;
+    const deg = Math.round(raw / step) * step;
+    if (deg === ring.deg) return;
+    ring.deg = deg;
+    if (ring.kind === '3d') {
+      const T = window.THREE;
+      V3.q.copy(ring.q0.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), deg * Math.PI / 180)));
+      V3.roll = ring.roll0 + deg;
+      draw3d();
+    } else {
+      D.custom.model = clone(ring.snap);
+      D.cam.model = Object.assign({}, ring.cam);
+      if (deg) rotate(deg, true); else { loopCache = null; refresh(); }
+    }
+  }
+  function ringEnd() {
+    const r = ring;
+    ring = null;
+    if (!r) return;
+    if (r.kind === '2d' && !r.deg) undoStack.pop();
+    if (r.kind === '3d') draw3d(); else draw2d();
   }
   let d3 = null;
-  function down3d(e) { if (V3.goal) { V3.q.copy(V3.goal); V3.goal = null; } d3 = { x: e.clientX, y: e.clientY, q: V3.q.clone(), moved: false }; try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ } }
+  function down3d(e) { if (V3.goal) { V3.q.copy(V3.goal); V3.goal = null; } d3 = { x: e.clientX, y: e.clientY, q: V3.q.clone(), roll: V3.roll, moved: false }; try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ } }
   function move3d(e) {
     if (!d3) { hover3d(e); return; }
     const dx = e.clientX - d3.x, dy = e.clientY - d3.y;
@@ -739,10 +833,12 @@
       // Shift: roll about the axis we look down, by the pointer's turn about the view's center.
       const r = V3.renderer.domElement.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
       const a = Math.atan2(e.clientY - cy, e.clientX - cx) - Math.atan2(d3.y - cy, d3.x - cx);
-      V3.q.copy(d3.q.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), -a)));
+      V3.q.copy(d3.q.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), a)));
+      V3.roll = (d3.roll || 0) + a * 180 / Math.PI;
       draw3d();
       return;
     }
+    V3.faced = false; // turned freely: no longer looking straight at a face
     const q = d3.q.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 1, 0), -dx * 0.01)).multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), -dy * 0.01));
     V3.q.copy(q);
     draw3d();
@@ -805,9 +901,11 @@
       const d = v.dot(curUp);
       if (d > bd) { bd = d; best = v; }
     });
-    glide(quatOf(n.clone().negate().toArray(), (best || curUp).toArray()));
-    const tip = $('#cfg-tip');
-    if (tip) tip.textContent = 'Looking straight at that face. Turn it 90° if needed, then Make face view.';
+    V3.faced = true;
+    V3.roll = 0;
+    V3.faceLook = n.clone().negate().toArray();
+    fitFace();
+    glide(quatOf(V3.faceLook, (best || curUp).toArray()));
   }
   // Turn the camera to q1. V3.goal holds where it's going, so a face view made mid-glide (or with
   // the tab in the background, where frames don't run) uses the view asked for.
@@ -824,8 +922,17 @@
     };
     requestAnimationFrame(step);
   }
-  function view3d(key) { const v = LM.step.VIEWS[key]; if (v) { V3.zoom = 1; glide(quatOf(v.look, v.up)); } }
-  function spin(dir) { const T = window.THREE; glide((V3.goal || V3.q).clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), -dir * Math.PI / 2))); }
+  function view3d(key) { const v = LM.step.VIEWS[key]; if (v) { V3.faced = true; V3.roll = 0; V3.faceLook = v.look; fitFace(); glide(quatOf(v.look, v.up)); } }
+  // Looking straight at a face, zoom so it (and its ring) fill most of the view.
+  function fitFace() {
+    if (!mesh || !V3.center) return;
+    V3.ringR = faceRadius(V3.faceLook);
+    V3.ringFor = V3.faceLook;
+    V3.zoom = V3.ringR ? Math.max(1, Math.min(40, mesh.diag * 0.62 / (V3.ringR * 1.45))) : 1;
+  }
+  // dir 1 turns the model clockwise on screen. The camera turns the other way about its own axis,
+  // which is +θ in three.js (its z points at the viewer, so +θ turns the picture clockwise).
+  function spin(dir) { const T = window.THREE; V3.roll = (V3.roll || 0) + dir * 90; glide((V3.goal || V3.q).clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 0, 1), dir * Math.PI / 2))); }
   function makeFace() {
     if (V3.goal) { V3.q.copy(V3.goal); V3.goal = null; }
     const T = window.THREE, clean = v => v.toArray().map(x => (Math.abs(x) < 1e-6 ? 0 : Math.round(x * 1e6) / 1e6));
@@ -875,7 +982,7 @@
       case 'view3d': view3d(v); break;
       case 'spin': spin(+v); break;
       case 'make-face': makeFace(); break;
-      case 'change-view': D.mode3d = true; D.assign = -1; V3q(null); render(); break;
+      case 'change-view': D.mode3d = true; D.assign = -1; V3q(null); render(); if (V3.faced) { fitFace(); draw3d(); } break;
       case 'face-back': D.mode3d = false; render(); break;
       case 'rot': rotate(+v); break;
       case 'point-up': D.pointUp = !D.pointUp; D.assign = -1; refresh(); break;
@@ -963,10 +1070,10 @@
     back.addEventListener('click', e => { if (e.target === back) return; onClick(e); });
     back.addEventListener('input', onInput);
     back.addEventListener('change', onChange);
-    back.addEventListener('pointerdown', e => { if (e.target.closest('#cfg-svg')) down2d(e); });
-    back.addEventListener('pointermove', e => { if (drag || e.target.closest('#cfg-svg')) move2d(e); });
-    back.addEventListener('pointerup', up2d);
-    back.addEventListener('pointercancel', up2d);
+    back.addEventListener('pointerdown', e => { if (e.target.closest('[data-ring]')) { ringStart(e); return; } if (e.target.closest('#cfg-svg')) down2d(e); });
+    back.addEventListener('pointermove', e => { if (ring) { ringMove(e); return; } if (drag || e.target.closest('#cfg-svg')) move2d(e); });
+    back.addEventListener('pointerup', e => { if (ring) { ringEnd(); return; } up2d(e); });
+    back.addEventListener('pointercancel', e => { if (ring) { ringEnd(); return; } up2d(e); });
     back.addEventListener('contextmenu', e => {
       if (!e.target.closest('#cfg-svg')) return;
       e.preventDefault();

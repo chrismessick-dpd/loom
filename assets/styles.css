@@ -854,6 +854,14 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
 .cfg-svg.pointing .cfg-mark { pointer-events: none; }
 .cfg-upline { stroke: var(--accent); stroke-width: 1.5px; stroke-dasharray: 5 4; pointer-events: none; }
 .cfg-upc { fill: var(--accent); pointer-events: none; }
+.cfg-ring { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.cfg-ring-c { fill: none; stroke: color-mix(in srgb, var(--accent) 70%, transparent); stroke-width: 1.5px; pointer-events: none; }
+.cfg-ring-tick { stroke: color-mix(in srgb, var(--accent) 70%, transparent); stroke-width: 1.5px; pointer-events: none; }
+.cfg-ring-dot { fill: var(--accent); stroke: #fff; stroke-width: 2px; cursor: grab; pointer-events: all; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5)); }
+.cfg-ring-dot:hover, .cfg-ring-dot.live { fill: #fff; stroke: var(--accent); }
+.cfg-ring-dot.live { cursor: grabbing; }
+.cfg-ring-t { fill: #fff; font-family: var(--mono); font-weight: 600; pointer-events: none; paint-order: stroke; stroke: rgba(0, 0, 0, 0.6); stroke-width: 3px; }
+.cfg-ring2 .cfg-ring-t { stroke: none; }
 .cfg-ghost-t { fill: #fff; font-family: var(--mono); font-weight: 600; pointer-events: none; }
 .cfg-3d { position: absolute; inset: 0; }
 .cfg-3d canvas { display: block; cursor: grab; }

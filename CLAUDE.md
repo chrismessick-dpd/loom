@@ -102,6 +102,15 @@ links to it so far. Before every commit:
     circle adding up to half of it or more are round cavities (`model.f`, not drawn). Short ticks across
     rings are real model edges (contact slits) and the 3D view shows them too. On that connector: 85k
     triangles, 3.7 s to read, 0.7 s per face view, 23 KB stored.
+  - **The ring (2026-11-07, Chris).** While looking straight at a face (after clicking one or a ±X/Y/Z
+    button, and in the face view) a ring sits just outside the face, with a dot at its turn (12 o'clock
+    unturned). Dragging the dot turns the model about the axis into the screen and shows the angle: 1°
+    steps, Shift 15°, Alt free (`ringStart`, `ringMove`; `ringSvg` draws both). In 3D it rolls the camera
+    (`V3.roll`, `V3.faced`, which a free orbit clears); in the face view it turns the drawing from a
+    snapshot taken at the grab, one undo. Picking a face zooms to fit it (`fitFace`, `faceRadius`: the
+    model's reach from the view axis). The dot works during Assign without dropping a mark. The 3D turns
+    used to run backwards: three.js's camera z points at the viewer, so +θ about it turns the picture
+    clockwise (`spin`, Shift-drag).
   - **Turning the face (Chris: the key at 4 o'clock had to go to 12).** In the face view: ±90° buttons, a
     degrees field (`model.rot`), `[` and `]` (1°, Shift 15°), and **Point up**: click a feature and it turns
     to 12 o'clock about the connector's axis (the center of the biggest circle at least 30% of the face,
