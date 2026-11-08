@@ -252,6 +252,8 @@ links to it so far. Before every commit:
     on the pitch.
     **Auto layout** clears `h.place`. A click without movement still selects, or starts a wire
     on a pin.
+  - The harness panel (the left rail) starts folded (2026-11-08, Chris: `fold.rail` defaults to true),
+    and clicking a harness in the menu opens it when folded. Folding or opening it by hand is kept.
   - The right pane has two tabs, **Parts** (the parts list and Add palette) and **Properties** (the
     selection's fields and its Delete button). A new selection switches to Properties, and clearing
     it goes back to Parts (`renderParts`, `propsHtml`). The left rail shows only the harness, except

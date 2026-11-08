@@ -466,6 +466,9 @@
   const fold = (() => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { return {}; } })();
   // The demo always opens in the arranged view, Real proportions off (Chris).
   if (DEMO) fold.prop = false;
+  // The harness panel (the rail) starts folded (Chris, 2026-11-08); clicking a harness in the menu
+  // opens it. Once folded or opened by hand, that's kept.
+  if (fold.rail === undefined) fold.rail = true;
   const FOLD_ICON = side => `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="${side === 'left' ? 'M8 3.5v13' : 'M12 3.5v13'}"/></svg>`;
   function applyFold() {
     const bv = $('#build-view');
@@ -1861,7 +1864,15 @@
     const v = t.closest('[data-view]');
     if (v) { S.view = v.dataset.view; S.pending = null; renderAll(); return; }
     const o = t.closest('[data-open]');
-    if (o) { if (o.dataset.open !== S.cur) openHarness(o.dataset.open); else if (S.view !== 'build') { S.view = 'build'; renderAll(); } return; }
+    if (o) {
+      // A harness clicked in the menu opens its panel when it's folded away.
+      const unfold = fold.rail && !narrow();
+      if (unfold) { fold.rail = false; saveFold(); }
+      if (o.dataset.open !== S.cur) openHarness(o.dataset.open);
+      else if (S.view !== 'build') { S.view = 'build'; renderAll(); }
+      else if (unfold) { applyFold(); renderHud(); renderCanvas(); }
+      return;
+    }
     const sf = t.closest('[data-setf]');
     if (sf) { setField(sf.dataset.setf, sf.dataset.v); return; }
     const p = t.closest('[data-pick]');
