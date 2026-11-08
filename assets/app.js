@@ -1080,9 +1080,35 @@
     S.cam = { k, x: p.x - (e.clientX - rc.left) / k, y: p.y - (e.clientY - rc.top) / k };
     setView();
   }
+  // A new part lands in a blank area (Chris, 2026-11-08: they often landed on one already placed,
+  // since the auto layout doesn't see dragged positions). Where the layout puts it clear of every
+  // other part (GAP all round), it stays there; else it's placed (h.place) at the free spot on the
+  // pitch nearest that, searched over the diagram and a part's width round it.
+  function placeClear(h, id) {
+    const Lo = C.layout(h, M.analyze(h)), it = Lo.itemOf.get(id);
+    if (!it || !it.w) return;
+    const GAP = 30, P = C.G.PITCH, port0 = it.sz.port0 || 0;
+    const others = Lo.items.filter(i => i !== it && i.w > 0 && i.h > 0);
+    if (!others.length) return;
+    const hit = (x, y) => others.some(o => x < o.x + o.w + GAP && o.x < x + it.w + GAP && y < o.y + o.h + GAP && o.y < y + it.h + GAP);
+    if (!hit(it.x, it.y)) return;
+    const x0 = Math.min(...others.map(o => o.x)) - it.w - 2 * GAP, x1 = Math.max(...others.map(o => o.x + o.w)) + 2 * GAP;
+    const y0 = Math.min(...others.map(o => o.y)) - it.h - 2 * GAP, y1 = Math.max(...others.map(o => o.y + o.h)) + 2 * GAP;
+    let best = null;
+    for (let gy = Math.ceil((y0 + port0) / P) * P; gy - port0 <= y1; gy += P) {
+      for (let x = Math.ceil(x0 / P) * P; x <= x1; x += P) {
+        const y = gy - port0;
+        if (hit(x, y)) continue;
+        const d = (x - it.x) ** 2 + (y - it.y) ** 2;
+        if (!best || d < best.d) best = { x, y, d };
+      }
+    }
+    if (best) { h.place = h.place || {}; h.place['n:' + id] = { x: best.x, y: best.y, v: 3 }; }
+  }
   function addEnd(kind) {
     change(h => {
       const n = kind === 'connector' ? M.addConnector(h, 0, 0, { family: 'jst-ph', pins: 4 }) : M.addNode(h, kind, 0, 0);
+      placeClear(h, n.id);
       S.sel = { kind: 'node', ids: new Set([n.id]) };
     });
     S.cam = null;
@@ -1219,6 +1245,7 @@
       n.board = { project: b.id, name: b.name, client: b.client || '', ref: c.ref, mpn: c.mpn || '', source: p.source.label };
       // A harness with no client project yet takes its first board's.
       if (!h.project && b.client) h.project = b.client;
+      placeClear(h, n.id);
       S.sel = { kind: 'node', ids: new Set([n.id]) };
       return n;
     });

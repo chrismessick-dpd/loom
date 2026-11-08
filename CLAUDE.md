@@ -252,6 +252,10 @@ links to it so far. Before every commit:
     on the pitch.
     **Auto layout** clears `h.place`. A click without movement still selects, or starts a wire
     on a pin.
+  - A new connector or splice (Add, C, From a board) lands clear of every other part (2026-11-08,
+    Chris: they landed on dragged ones, which the auto layout doesn't see). `placeClear` keeps the auto
+    layout's spot when it's 30 units clear all round, else places the part (`h.place`) at the nearest
+    free spot on the pitch, within the diagram and a part's width round it.
   - The harness panel (the left rail) starts folded (2026-11-08, Chris: `fold.rail` defaults to true),
     and clicking a harness in the menu opens it when folded. Folding or opening it by hand is kept.
   - The right pane has two tabs, **Parts** (the parts list and Add palette) and **Properties** (the
