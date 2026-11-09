@@ -250,7 +250,8 @@
   // hidden and the face (S.face, the view the drawing prints first) is fitted into its place, against
   // the side its wires leave from, with its ref over it. A side view (leads, ring, spade, ferrule) has
   // its lead on the left, so it's mirrored when the wires leave from the right.
-  const THUMB_STYLE = '.lm-sheet .cv-conn{display:none}.lm-sheet .th-ref{font-size:13px;font-weight:600}';
+  // The wire boxes' backgrounds go too, so nothing but the drawing covers the tile.
+  const THUMB_STYLE = '.lm-sheet .cv-conn{display:none}.lm-sheet .cv-box{fill:none}.lm-sheet .th-ref{font-size:13px;font-weight:600}';
   function diagram(h) {
     const A = M.analyze(h), r = LM.conn.render(h, A, { sheet: true }), Lo = r.layout, P = 24;
     let faces = '', top = r.box.y0;
@@ -268,9 +269,24 @@
       top = Math.min(top, ty - 22);
     });
     const x = f(r.box.x0 - P), y = f(top - P), w = Math.ceil(r.box.x1 - r.box.x0 + P * 2), hh = Math.ceil(r.box.y1 - top + P * 2);
-    const page = style => `<svg xmlns="http://www.w3.org/2000/svg" class="lm-sheet" viewBox="${x} ${y} ${w} ${hh}" width="${w}" height="${hh}">` +
-      `<style>${style}${THUMB_STYLE}</style><rect class="paper" x="${x}" y="${y}" width="${w}" height="${hh}"/>${r.svg}${faces}</svg>`;
-    return { svg: page(STYLE), dark: page(STYLE_DARK), w, h: hh };
+    // Made to be seen small on a PL tile (Chris, 2026-11-09: a black wire vanished on a dark page). No
+    // paper: the tile shows through. Wires are drawn thicker the bigger the drawing, since it's shrunk
+    // to the tile's width (about 0.4 px a unit at 700 units wide).
+    const s = Math.max(1.6, Math.min(4, w / 400));
+    const wires = dark => `.lm-sheet .w-base,.lm-sheet .w-stripe{stroke-width:${f(2.6 * s)}}.lm-sheet .w-edge{stroke-width:${f((dark ? 2.6 + 2.4 : 4.4) * s)}${dark ? ';stroke:#d1d1d6' : ''}}`;
+    // On the dark one, a wire or pin color too dark to see (black, dark brown or blue) is lifted toward
+    // gray, keeping its hue, inside a light outline.
+    const lift = svg => svg.replace(/(stroke|fill):#([0-9a-fA-F]{6})/g, (m, k, hex) => {
+      const c = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+      const lum = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+      if (lum >= 0.18) return m;
+      const t = 0.32 - lum;   // mix toward a mid gray just enough to show on the dark tile
+      return k + ':#' + c.map(v => Math.round(v + (150 - v) * t / 0.32 * 0.7).toString(16).padStart(2, '0')).join('');
+    });
+    const body = r.svg + faces;
+    const page = (style, dark) => `<svg xmlns="http://www.w3.org/2000/svg" class="lm-sheet" viewBox="${x} ${y} ${w} ${hh}" width="${w}" height="${hh}">` +
+      `<style>${style}${THUMB_STYLE}${wires(dark)}</style>${dark ? lift(body) : body}</svg>`;
+    return { svg: page(STYLE, false), dark: page(STYLE_DARK, true), w, h: hh };
   }
 
   LM.sheet = { sheet, diagram, W };

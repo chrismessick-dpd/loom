@@ -22,6 +22,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **PL drawing contrast (2026-11-09, Chris: a black wire vanished on a dark page; drop the dark background;
+  not committed).** `LM.sheet.diagram` draws no paper and no wire-box fill (`.cv-box`), so the PL tile shows
+  through. Wires get thicker with the drawing's width (`s`, 1.6 to 4 times, as it's shrunk to the tile). In
+  the dark one, wire and pin colors under 0.18 luminance (black, dark brown, dark blue) are lifted toward gray
+  keeping their hue (`lift`), inside a light outline (`#d1d1d6`). Every stored drawing is redrawn once (`src`).
 - **Spade and D-sub types (2026-11-09, Chris; pushed `da45ee9`):** Configure's Type tiles now include D-sub
   (moved from the Wire to wire series into the Generic group, so it's a tile; still `dsub`) and **Spade
   connector** (`spade`, one position: a female quick-disconnect drawn from above, lead, insulated barrel
