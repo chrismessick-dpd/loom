@@ -22,6 +22,9 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **PL drawings use tables again (2026-11-09, Chris: the faces left the wires ending short of them; not
+  committed).** `LM.sheet.diagram` keeps each connector's pin table, as in Build; the face views in their place
+  (entry below) are gone. The rest stays: no background, thicker wires, dark colors lifted. Redrawn once (`src`).
 - **PL drawing contrast (2026-11-09, Chris: a black wire vanished on a dark page; drop the dark background;
   pushed `7ebcf08`).** `LM.sheet.diagram` draws no paper and no wire-box fill (`.cv-box`), so the PL tile shows
   through. Wires get thicker with the drawing's width (`s`, 1.6 to 4 times, as it's shrunk to the tile). In

@@ -246,29 +246,12 @@
   // The wiring diagram alone, cropped to it: the picture Signoff PL shows for a harness, on white paper
   // (svg) and drawn for a dark page (dark). store.js storeDrawings writes them as
   // drawing/<id>/preview/diagram.png and diagram-dark.png.
-  // Each connector shows as its configured face, not its pin table (Chris, 2026-11-09): the table is
-  // hidden and the face (S.face, the view the drawing prints first) is fitted into its place, against
-  // the side its wires leave from, with its ref over it. A side view (leads, ring, spade, ferrule) has
-  // its lead on the left, so it's mirrored when the wires leave from the right.
-  // The wire boxes' backgrounds go too, so nothing but the drawing covers the tile.
-  const THUMB_STYLE = '.lm-sheet .cv-conn{display:none}.lm-sheet .cv-box{fill:none}.lm-sheet .th-ref{font-size:13px;font-weight:600}';
+  // Connectors keep their pin tables, as in Build (Chris, 2026-11-09: faces in their place left the wires
+  // ending short of them). The wire boxes' backgrounds go, so nothing but the drawing covers the tile.
+  const THUMB_STYLE = '.lm-sheet .cv-box{fill:none}';
   function diagram(h) {
-    const A = M.analyze(h), r = LM.conn.render(h, A, { sheet: true }), Lo = r.layout, P = 24;
-    let faces = '', top = r.box.y0;
-    Lo.items.filter(it => it.kind === 'conn' && it.n).forEach(it => {
-      const n = it.n, v = S.face(h, n, S.views(n)[0]), fam = L.family(n.family);
-      // Which side its wires leave from: toward the parts at their other ends.
-      const others = h.wires.flatMap(w => (w.from.node === n.id ? [w.to.node] : w.to.node === n.id ? [w.from.node] : []))
-        .map(id => Lo.itemOf.get(id)).filter(Boolean);
-      const cx = it.x + it.w / 2, right = others.length ? others.reduce((t, o) => t + o.x + o.w / 2, 0) / others.length >= cx : true;
-      const k = Math.min(1.6, it.w / v.w, it.h / v.h), fw = v.w * k, fh = v.h * k;
-      const tx = right ? it.x + it.w - fw : it.x, ty = it.y + (it.h - fh) / 2;
-      const flip = right && !L.hasHousing(fam);
-      faces += `<g transform="translate(${f(flip ? tx + fw : tx)} ${f(ty)}) scale(${f((flip ? -k : k) * 1000) / 1000} ${f(k * 1000) / 1000}) translate(${f(v.ox)} 0)">${v.svg}</g>` +
-        `<text class="th-ref" x="${f(tx + fw / 2)}" y="${f(ty - 6)}" text-anchor="middle">${esc(n.ref)}</text>`;
-      top = Math.min(top, ty - 22);
-    });
-    const x = f(r.box.x0 - P), y = f(top - P), w = Math.ceil(r.box.x1 - r.box.x0 + P * 2), hh = Math.ceil(r.box.y1 - top + P * 2);
+    const r = LM.conn.render(h, M.analyze(h), { sheet: true }), P = 24;
+    const x = f(r.box.x0 - P), y = f(r.box.y0 - P), w = Math.ceil(r.box.x1 - r.box.x0 + P * 2), hh = Math.ceil(r.box.y1 - r.box.y0 + P * 2);
     // Made to be seen small on a PL tile (Chris, 2026-11-09: a black wire vanished on a dark page). No
     // paper: the tile shows through. Wires are drawn thicker the bigger the drawing, since it's shrunk
     // to the tile's width (about 0.4 px a unit at 700 units wide).
@@ -283,7 +266,7 @@
       const t = 0.32 - lum;   // mix toward a mid gray just enough to show on the dark tile
       return k + ':#' + c.map(v => Math.round(v + (150 - v) * t / 0.32 * 0.7).toString(16).padStart(2, '0')).join('');
     });
-    const body = r.svg + faces;
+    const body = r.svg;
     const page = (style, dark) => `<svg xmlns="http://www.w3.org/2000/svg" class="lm-sheet" viewBox="${x} ${y} ${w} ${hh}" width="${w}" height="${hh}">` +
       `<style>${style}${THUMB_STYLE}${wires(dark)}</style>${dark ? lift(body) : body}</svg>`;
     return { svg: page(STYLE, false), dark: page(STYLE_DARK, true), w, h: hh };
