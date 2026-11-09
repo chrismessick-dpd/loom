@@ -22,7 +22,7 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
-- **Tools switcher (2026-11-09, Chris; not committed):** signed in, the sidebar's Dovetail Signoff list adds Signoff
+- **Tools switcher (2026-11-09, Chris; pushed `b960a66`):** signed in, the sidebar's Dovetail Signoff list adds Signoff
   EE, ME, FW, and PL (FTE only, `R.access() === 'fte'`) and folds to a row of icons like Signoff EE's (`renderTools`,
   `setupToolsFold` in `app.js`, a copy of the engine's); signed out it's Fabcheck and All tools as before.
 - **PL drawings use tables again (2026-11-09, Chris: the faces left the wires ending short of them;
