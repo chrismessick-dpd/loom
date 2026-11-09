@@ -22,6 +22,19 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Drawings in Signoff PL (2026-11-09, Chris: a harness with wires should show its drawing in PL, as EE
+  boards show their pictures; not committed).** At each sync, every harness with one or more wires stores
+  its wiring diagram (the Drawing's harness part only, `LM.sheet.diagram`: white paper, cropped) as a PNG
+  in the repo it lives in, laid out like Fabcheck's board previews: `drawing/<id>/preview/diagram.png` and
+  `index.json` (`{ v, tool, id, src, hero: 'diagram', images }`). `store.js` `storeDrawings` runs after the
+  harness files sync (`opts.thumb`, from `app.js`: `svg` and `drawingPng`, at most 1600 px on the longer
+  side, never over 2×). `src` hashes the SVG; `loom.v1.drawings` remembers what was put where by
+  'owner/repo|id', so it redraws only when the diagram changes or the harness moves to a shared repo. No
+  wires, or deleted: the files go. index.json has no time, so a second browser commits nothing new. A
+  failure is in `errors` and never fails the sync. PL reads it through `previews: 'drawing/'` on its Loom
+  tool. Sharing (PL `share.js`) doesn't move `drawing/<id>/`; the next Loom sync draws it into the new
+  repo, and the old copy in `loom_data` is ignored. The demo harness's PNG is 1600 × 685, 224 KB.
+  Tests: 26. Not tried with a real token.
 - **Copy and paste parts (2026-11-09, Chris; pushed `fa701d8`):** a right click that doesn't move (a right
   drag still pans) opens a menu on the canvas (`openCtx` in `app.js`, `.menu.lm-ctx`). On a connector or
   splice it selects it (unless it's already in the selection) and offers *Copy P1* (or *Copy 3 parts* for

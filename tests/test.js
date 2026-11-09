@@ -306,6 +306,55 @@
     eq(res.store[k.id].title, 'Kept inside', 'a shared repo only counts for the harness the shared map puts there');
   });
 
+  // The drawing for Signoff PL: a stub renderer (app.js draws the real PNG on a canvas).
+  function stubThumb() {
+    const t = { drawn: 0 };
+    t.svg = h => ({ svg: '<svg>' + h.wires.map(w => w.id + w.color).join(',') + '</svg>', w: 400, h: 100 });
+    t.png = d => { t.drawn++; return Promise.resolve({ bytes: new TextEncoder().encode('PNG ' + d.svg), type: 'image/png', w: 800, h: 200 }); };
+    return t;
+  }
+  test('sync stores a harness drawing for Signoff PL in the repo the harness lives in', async () => {
+    const hub = setup(), thumb = stubThumb();
+    const h = harness('Drawn'), bare = harness('No wires yet');
+    M.addWire(h, { node: h.nodes[0].id, pin: '1' }, { node: h.nodes[1].id, pin: '1' });
+    const o = Object.assign(opts(hub), { thumb });
+    let res = await R.sync({ [h.id]: h, [bare.id]: bare }, o);
+    const D = OWNER + '/loom_data', dir = 'drawing/' + h.id + '/preview/';
+    let files = hub.files(D);
+    ok(files[dir + 'diagram.png'], 'the picture is stored');
+    const text = v => (typeof v === 'string' ? v : new TextDecoder().decode(v));
+    const index = JSON.parse(text(files[dir + 'index.json']));
+    eq(stable([index.tool, index.id, index.hero, index.images]), stable(['loom', h.id, 'diagram', [{ key: 'diagram', file: 'diagram.png', type: 'image/png', w: 800, h: 200 }]]));
+    ok(!files['drawing/' + bare.id + '/preview/index.json'], 'a harness with no wires has no drawing');
+    eq([thumb.drawn, res.errors.length], [1, 0]);
+    // Unchanged: not drawn again, nothing pushed.
+    res = await R.sync(res.store, o);
+    eq([thumb.drawn, res.pushed], [1, 0]);
+    // A changed diagram is drawn again.
+    res.store[h.id].wires[0].color = 'RD'; res.store[h.id].updated = Date.now();
+    res = await R.sync(res.store, o);
+    eq(thumb.drawn, 2);
+    // Shared into its own repo: the drawing goes there too (PL only reads it next to the harness).
+    const full = shareOnHub(hub, h.id, 'drawn');
+    res = await R.sync(res.store, o);
+    ok(hub.files(full)[dir + 'index.json'], 'drawn into the shared repo');
+    // No wires left: its drawing goes.
+    res.store[h.id].wires = []; res.store[h.id].updated = Date.now();
+    res = await R.sync(res.store, o);
+    ok(!hub.files(full)[dir + 'index.json'] && !hub.files(full)[dir + 'diagram.png'], 'removed with the last wire');
+  });
+
+  test('sync: a drawing that can’t be stored is reported and never fails the sync', async () => {
+    const hub = setup(), thumb = stubThumb();
+    thumb.png = () => Promise.resolve(null);
+    const h = harness('Undrawable');
+    M.addWire(h, { node: h.nodes[0].id, pin: '1' }, { node: h.nodes[1].id, pin: '1' });
+    const res = await R.sync({ [h.id]: h }, Object.assign(opts(hub), { thumb }));
+    eq(res.pushed, 1, 'the harness still went up');
+    eq(res.errors.length, 1);
+    ok(/drawing for Signoff PL/.test(res.errors[0].message), res.errors[0].message);
+  });
+
   test('sync: a contractor gets only the harnesses shared with them, and their edits reach the FTE', async () => {
     const hub = setup();
     const h = harness('For the client', { project: 'Gizmo' }), k = harness('Internal');

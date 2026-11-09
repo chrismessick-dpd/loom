@@ -81,7 +81,7 @@
     clearTimeout(saveTimer);
     try {
       const curWas = S.cur && S.store[S.cur] ? R.hash(S.store[S.cur]) : '';
-      const res = await R.sync(S.store);
+      const res = await R.sync(S.store, { thumb: { svg: LM.sheet.diagram, png: drawingPng } });
       // Take what the repo has, except a harness edited while the sync ran: it stays, unsynced. If the
       // sync also brought someone else's change to it, the next sync must merge the two, not push over.
       const forget = [];
@@ -1819,6 +1819,25 @@
   }
 
   // ── Exports ──
+  // The wiring diagram as a PNG for Signoff PL's tiles (store.js storeDrawings): at most 1600 px on its
+  // longer side, and never more than twice its drawn size. Resolves null when it can't be drawn.
+  function drawingPng(d) {
+    return new Promise(resolve => {
+      const url = URL.createObjectURL(new Blob([d.svg], { type: 'image/svg+xml' })), img = new Image();
+      img.onload = () => {
+        const s = Math.min(2, 1600 / Math.max(d.w, d.h)), c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(d.w * s)); c.height = Math.max(1, Math.round(d.h * s));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(b => {
+          if (!b) { resolve(null); return; }
+          b.arrayBuffer().then(buf => resolve({ bytes: new Uint8Array(buf), type: b.type, w: c.width, h: c.height }), () => resolve(null));
+        }, 'image/png');
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
   const baseName = h => U.fileSafe((h.pn ? h.pn + '_' : '') + h.title);
   function exportPng(sh, name) {
     const url = URL.createObjectURL(new Blob([sh.svg], { type: 'image/svg+xml' }));

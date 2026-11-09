@@ -47,8 +47,8 @@
   }
   const stable = v => SG.model.stableStringify(v);
   // A short hash of a harness as stored, to tell whether it changed since the last sync.
-  function hash(h) {
-    const s = stable(h);
+  const hash = h => fnv(stable(h));
+  function fnv(s) {
     let x = 0x811c9dc5;
     for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 0x01000193) >>> 0; }
     return x.toString(36) + ':' + s.length;
@@ -196,6 +196,55 @@
     return !!changed;
   }
 
+  // ── The drawing, for Signoff PL ──
+  // A harness with wires keeps a picture of its wiring diagram next to it, in the repo it lives in, laid
+  // out as Fabcheck stores a board's (ee_design_review/docs/fabcheck-link.md, "Board previews"), so PL's
+  // reader shows it on the harness's tiles as it shows a board's (signoff_pl config `previews`):
+  //   drawing/<id>/preview/index.json  { v, tool: 'loom', id, src, hero: 'diagram', images: [{ key, file, type, w, h }] }
+  //   drawing/<id>/preview/diagram.png
+  // `src` is a hash of the diagram's SVG. This browser remembers what it put where (`drawings`, by
+  // 'owner/repo|id'), so a picture is drawn again only when the diagram changed, or when the harness
+  // moved to another repo (shared). With no wires, or deleted, its picture goes. index.json carries no
+  // time, so a second browser drawing the same PNG commits nothing (putFiles skips equal files).
+  // thumb: { svg(h) → { svg, w, h }, png(drawing) → Promise<{ bytes, type, w, h } | null> }, from app.js.
+  const DRAWING_DIR = 'drawing/';
+  const drawingPaths = id => ({ index: DRAWING_DIR + id + '/preview/index.json', png: DRAWING_DIR + id + '/preview/diagram.png' });
+  async function storeDrawings(harnesses, homes, thumb, mk, errors) {
+    const done = read('drawings', {}), next = {}, byRepo = {};
+    const add = (full, f, key, val) => { const r = byRepo[full] = byRepo[full] || { files: [], keys: {} }; r.files.push(...f); r.keys[key] = val; };
+    for (const id of Object.keys(harnesses)) {
+      const h = harnesses[id], full = homes[id];
+      if (!full) continue;
+      const key = full + '|' + id, p = drawingPaths(id);
+      if (h.deleted || !h.wires.length) {
+        if (done[key]) add(full, [{ path: p.index, remove: true }, { path: p.png, remove: true }], key, null);
+        continue;
+      }
+      try {
+        const d = thumb.svg(h), src = fnv(d.svg);
+        if (done[key] === src) { next[key] = src; continue; }
+        const img = await thumb.png(d);
+        if (!img || img.type !== 'image/png') throw new Error('the picture couldn’t be drawn');
+        const index = { v: 1, tool: 'loom', id, src, hero: 'diagram', images: [{ key: 'diagram', file: 'diagram.png', type: img.type, w: img.w, h: img.h }] };
+        add(full, [{ path: p.png, bytes: img.bytes }, { path: p.index, text: stable(index) + '\n' }], key, src);
+      } catch (e) {
+        if (done[key]) next[key] = done[key];
+        errors.push({ repo: full, message: (h.title || 'A harness') + ': drawing for Signoff PL not stored (' + e.message + ')' });
+      }
+    }
+    for (const full of Object.keys(byRepo)) {
+      const r = byRepo[full];
+      try {
+        await mk(full).putFiles(r.files, { message: 'Loom: harness drawings for Signoff PL' });
+        Object.keys(r.keys).forEach(k => { if (r.keys[k]) next[k] = r.keys[k]; });
+      } catch (e) {
+        Object.keys(r.keys).forEach(k => { if (done[k]) next[k] = done[k]; });
+        errors.push({ repo: full, message: full + ': drawings for Signoff PL not stored (' + e.message + ')' });
+      }
+    }
+    write('drawings', next);
+  }
+
   // ── Sync ──
   // store: { id: harness } (the app's S.store; demo harnesses never sync). Resolves
   // { store, pushed, conflicts: [harness copies], gone: [ids], dropped: [ids], errors, pl, login,
@@ -296,6 +345,9 @@
       out[id] = h;
       nextSynced[id] = hash(h);
     });
+    // 3. Each harness's drawing as a picture for Signoff PL, in the repo it now lives in. A failure here
+    // is reported and never fails the sync.
+    if (opts.thumb) await storeDrawings(out, homes, opts.thumb, mk, errors);
     // Caches of repos nothing here uses any more are forgotten.
     const used = new Set([dataFull, ...repos, ...Object.values(homes)]);
     Object.keys(caches).forEach(r => { if (!used.has(r)) delete caches[r]; });
@@ -327,7 +379,7 @@
 
   LM.store = {
     DEMO, setNamespace: ns => { NS = ns; }, config, token, signedIn: () => !!token(), envelope, unwrap, summarize, makeMerge, slimPl, plIndex, waiting, startFromPl, adoptFromPl, hash,
-    sync, unsynced, wasSynced, forget, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
+    sync, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
     access: () => read('who', {}).access || '',
   };
 })(window.LM = window.LM || {});

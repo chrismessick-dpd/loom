@@ -229,5 +229,15 @@
     return { svg, w: W, h: H };
   }
 
-  LM.sheet = { sheet, W };
+  // The wiring diagram alone, on white paper, cropped to it: the picture Signoff PL shows for a
+  // harness (store.js storeDrawings writes it as drawing/<id>/preview/diagram.png).
+  function diagram(h) {
+    const r = LM.conn.render(h, M.analyze(h), { sheet: true }), P = 24;
+    const x = f(r.box.x0 - P), y = f(r.box.y0 - P), w = Math.ceil(r.box.x1 - r.box.x0 + P * 2), hh = Math.ceil(r.box.y1 - r.box.y0 + P * 2);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" class="lm-sheet" viewBox="${x} ${y} ${w} ${hh}" width="${w}" height="${hh}">` +
+      `<style>${STYLE}</style><rect class="paper" x="${x}" y="${y}" width="${w}" height="${hh}"/>${r.svg}</svg>`;
+    return { svg, w, h: hh };
+  }
+
+  LM.sheet = { sheet, diagram, W };
 })(window.LM = window.LM || {});
