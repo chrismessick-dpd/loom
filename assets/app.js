@@ -1,5 +1,5 @@
 // Loom UI: harnesses in the sidebar; Build (the connection diagram, its parts pane and the rail),
-// Drawing (with the editable wire list folded under the sheet), BOM and Checks tabs. Harnesses live in
+// Drawing, Wires (the editable wire list), BOM and Checks tabs. Harnesses live in
 // this browser (localStorage) and sync with Loom's private data repo (assets/store.js) when signed in;
 // a harness can also be saved as a .loom.json file.
 (function (LM) {
@@ -11,7 +11,6 @@
 
   const S = {
     store: {}, cur: null, view: 'build', sel: null, pending: null, cam: null, past: [], future: [],
-    wiresOpen: (() => { try { return localStorage.getItem(NS + 'wiresOpen') === '1'; } catch (e) { return false; } })(),
   };
   const H = () => S.store[S.cur] || null;
   let linked = '';   // a harness ?project= asked for that this browser doesn't have yet
@@ -258,8 +257,7 @@
     $('#page').hidden = build;
     if (!h) { $('#page').innerHTML = homeHtml(); return; }
     if (build) { applyFold(); renderCanvas(); renderParts(); renderRail(); renderHud(); return; }
-    if (S.view === 'wires') { S.view = 'drawing'; S.wiresOpen = true; }
-    const pages = { drawing: drawingHtml, bom: bomHtml, checks: checksHtml };
+    const pages = { drawing: drawingHtml, wires: wiresHtml, bom: bomHtml, checks: checksHtml };
     const keep = $('#main').scrollTop;
     $('#page').innerHTML = (pages[S.view] || drawingHtml)(h);
     $('#main').scrollTop = keep;
@@ -339,7 +337,7 @@
     seg.hidden = false;
     const c = M.checks(h);
     const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
-    const tabs = [['build', 'Build'], ['drawing', 'Drawing'], ['bom', 'BOM'], ['checks', 'Checks', e + w, e ? 'error' : w ? 'warn' : '']];
+    const tabs = [['build', 'Build'], ['drawing', 'Drawing'], ['wires', 'Wires', h.wires.length], ['bom', 'BOM'], ['checks', 'Checks', e + w, e ? 'error' : w ? 'warn' : '']];
     seg.innerHTML = tabs.map(([v, l, n, dot]) => `<button class="${S.view === v ? 'on' : ''}" data-view="${v}">${l}${n ? ` <span class="count">${n}</span>` : ''}${dot ? `<span class="dot ${dot}"></span>` : ''}</button>`).join('');
     $('#toolbar-actions').innerHTML =
       `<button class="icon-btn" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo"${S.past.length ? '' : ' disabled'}>${ICON.undo}</button>` +
@@ -1691,16 +1689,15 @@
     S.lastSheet = sh;
     return `<div class="page wide">` + pageHead('Drawing', esc(h.title), `${esc(h.pn || 'No part number')}<span class="sep">·</span>Rev ${esc(h.rev || '—')}<span class="sep">·</span>${sh.w} × ${sh.h} px sheet`,
       `<button class="btn" data-act="export-svg">SVG</button><button class="btn" data-act="export-png">PNG</button><button class="btn btn-primary" data-act="print">Print or PDF</button>`) +
-      `<div class="sheet-card">${sh.svg}</div>${wiresFold(h)}</div>`;
+      `<div class="sheet-card">${sh.svg}</div></div>`;
   }
-  // The wire list, editable, folded under the drawing. Whether it's open is remembered per browser.
-  function wiresFold(h) {
+  // The Wires tab: the wire list, editable.
+  function wiresHtml(h) {
     const A = M.analyze(h), rows = M.fromTo(h, A);
     const list = h.nodes.filter(n => M.isConn(n) || n.kind === 'splice').flatMap(n => (M.isConn(n) ? M.pinList(n).map(p => n.ref + '.' + p) : [n.ref]));
-    return `<details class="wires-fold" id="wires-fold"${S.wiresOpen ? ' open' : ''}><summary><span class="wf-chev"></span><span class="wf-title">Wires</span><span class="count">${rows.length}</span>` +
-      `<span class="wf-hint">Edit the wire list. Type ends as a ref and pin, like P1.3, or a splice, like S1.</span></summary>
-      <div class="wf-body"><div class="wf-acts"><button class="btn" data-act="csv-wires">${ICON.save}CSV</button></div>
-      <datalist id="ends">${list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    return `<div class="page wide wires-page">` + pageHead('Wires', esc(h.title), `${rows.length} wire${rows.length === 1 ? '' : 's'}<span class="sep">·</span>Type ends as a ref and pin, like P1.3, or a splice, like S1`,
+      `<button class="btn" data-act="csv-wires">${ICON.save}CSV</button>`) +
+      `<datalist id="ends">${list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
       <div class="card table-wrap"><table class="table compact wtable"><thead><tr><th>Wire</th><th>From</th><th>To</th><th>Signal</th><th>Color</th><th>Gauge</th><th class="num">Length</th><th>Set</th><th></th></tr></thead><tbody>
       ${rows.map(r => { const w = r.wire; return `<tr data-row="${w.id}"><td class="mono">${r.name}</td>
         <td><input class="cell-in mono" list="ends" data-f="w:${w.id}.fromText" value="${esc(r.from)}"></td>
@@ -1716,7 +1713,7 @@
       <div class="card paste-card"><div class="pc-card-title">Paste from a spreadsheet</div>
       <p class="f-hint">One wire per line: from, to, signal, color, gauge (tab or comma separated). For example <code>P1.3, P2.3, I2C_SDA, BU, 28</code>.</p>
       <textarea class="input" id="paste" rows="4" placeholder="P1.3&#9;P2.3&#9;I2C_SDA&#9;BU&#9;28"></textarea>
-      <div style="margin-top:10px"><button class="btn" data-act="paste">Add these wires</button></div></div></div></details>`;
+      <div style="margin-top:10px"><button class="btn" data-act="paste">Add these wires</button></div></div></div>`;
   }
   function bomHtml(h) {
     const rows = M.bom(h);
@@ -1936,12 +1933,6 @@
     const c = t.closest('[data-check]');
     if (c) goToCheck(+c.dataset.check);
   });
-  // `toggle` doesn't bubble, so listen while capturing.
-  document.addEventListener('toggle', e => {
-    if (e.target.id !== 'wires-fold') return;
-    S.wiresOpen = e.target.open;
-    try { localStorage.setItem(NS + 'wiresOpen', S.wiresOpen ? '1' : '0'); } catch (err) { /* storage blocked */ }
-  }, true);
   document.addEventListener('change', e => {
     const el = e.target;
     if (el.id === 'file-input') { if (el.files[0]) openFile(el.files[0]); el.value = ''; return; }
@@ -2153,7 +2144,6 @@
       },
       // The How it works card, which would cover Properties.
       help(open) { if ((fold.help !== false) === open) return; fold.help = open; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } if (H() && S.view === 'build') renderParts(); },
-      wires(open) { S.wiresOpen = open; renderAll(); },
       fit() { if (H() && S.view === 'build') fitGlide(); },
       narrow,
     } };

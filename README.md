@@ -44,8 +44,9 @@ harness).
 - **Contents:** the wiring diagram, a face view of each connector (with pin 1 and the side shown),
   the wire list, the BOM, numbered notes, and a title block.
 - **Export:** SVG, PNG, or print and PDF.
-- **Wires section:** under the sheet, it opens to the editable wire list. It has CSV export and
-  paste from a spreadsheet (`P1.3, P2.3, I2C_SDA, BU, 28`).
+
+**Wires**: the editable wire list. Ends are typed as a ref and pin (P1.3) or a splice (S1). It has
+CSV export and paste from a spreadsheet (`P1.3, P2.3, I2C_SDA, BU, 28`).
 
 **BOM**: housings, terminals per wired pin, splices, wire by gauge and color, cables, shields, and
 coverings. Lengths include an allowance (5% by default). CSV export.
