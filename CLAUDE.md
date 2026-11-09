@@ -85,8 +85,17 @@ links to it so far. Before every commit:
     when Title or Part number change, PL stamps the node's `identAt` when its Part sheet changes them,
     and the newer side wins (`adoptFromPl` here before each push; `pl.js adoptHarnesses` after PL reads
     designs). Rev stays Loom's. Chris (2026-11-07): newest-wins after each tool syncs is fine for now.
+  - **From Signoff PL (2026-11-08, Chris: new things wait in a tray in the tool they belong to).** A PL Part
+    marked "Not started yet" in Loom (`source: 'loom'`, no `ref`) is read by `slimPl` (`planned`) and listed
+    in the sidebar under *From Signoff PL* (`fromPlHtml`, dashed icon and a Start pill; the home page says how
+    many wait) until a harness here names it (`waiting`). Start (`pl-start`, `startFromPl`) makes the
+    harness with the Part's name and number, its PL project's client project (`clientProject`, else the PL
+    project's name, as PL matches), and `h.plPart = { project, node, at }` (`at`: when it was started; Duplicate and conflict copies drop it), which `summarize` writes as
+    `summary.plPart`; PL links the Part to it at PL's next sync (`signoff_pl/assets/pl.js` `claimPlanned`).
+    The rail's Project hint says so until then. The PL cache (`loom.v1.plCache`) is now `{ v, files }`:
+    bump `PL_CACHE_V` whenever `slimPl` keeps something new. Not in the demo (no PL there); tests 23.
   - **Deep link:** `?project=<harness id>` (what PL's Open in Loom uses) or `?harness=`.
-  - **Tests:** `tests/test.html` (16, title PASS/FAIL): the envelope, summary, merge (and `forget` for an edit made while a sync brought another change), `adoptFromPl`,
+  - **Tests:** `tests/test.html` (23 as of 2026-11-08, title PASS/FAIL): the envelope, summary, merge (and `forget` for an edit made while a sync brought another change), `adoptFromPl`,
     `slimPl`, and sync against `tests/fake-hub.js` (copied from PL), in storage `loom.test.*`
     (`LM.store.setNamespace`).
   - **Not done:** the live sync with a real token; PL's demo has no harness Part yet (its snapshot

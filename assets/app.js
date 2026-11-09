@@ -281,8 +281,8 @@
         <span class="proj-body"><span class="proj-name">${esc(h.title)}</span><span class="proj-sub">${esc(h.pn ? h.pn + ' · ' : '')}${ends} ends · ${h.wires.length} wires</span></span>
         <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(h.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
     };
-    $('#harness-list').innerHTML = list.length ? keys.map(k => `<div class="side-group">` + (keys.length > 1 || k ? `<div class="side-group-head lm-group-head" title="Client project"><span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></div>` : '') + groups.get(k).map(row).join('') + `</div>`).join('')
-      : '<div class="side-empty">No harnesses yet.</div>';
+    $('#harness-list').innerHTML = fromPlHtml() + (list.length ? keys.map(k => `<div class="side-group">` + (keys.length > 1 || k ? `<div class="side-group-head lm-group-head" title="Client project"><span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></div>` : '') + groups.get(k).map(row).join('') + `</div>`).join('')
+      : '<div class="side-empty">No harnesses yet.</div>');
     // The footer's sync pill, as Signoff EE's: a dot, a title, and a sub line; its tooltip carries the
     // build hash (EE keeps that off the sidebar).
     const pill = $('#sync-pill');
@@ -304,6 +304,28 @@
     $('#sync-title').textContent = title;
     $('#sync-sub').textContent = sub;
     pill.title = [tip, canSync() ? 'Click to sync (Ctrl+S)' : '', LM.VERSION ? 'Build ' + LM.VERSION : ''].filter(Boolean).join('\n');
+  }
+  // The From Signoff PL list: Parts a PL project marks "to be made in Loom" that no harness was started
+  // from yet (store.js waiting). Nothing is made until you click one (Chris, 2026-11-08: new things wait
+  // in a tray, to be added on purpose in the tool they belong to). Start makes the harness with the
+  // Part's name and number, and PL links that Part to it at its next sync (pl.js claimPlanned).
+  function plWaiting() { return !DEMO && R && R.pl() ? R.waiting(R.pl(), live()) : []; }
+  function fromPlHtml() {
+    const list = plWaiting();
+    if (!list.length) return '';
+    return `<div class="side-group lm-from-pl"><div class="side-group-head lm-group-head" title="Parts Signoff PL is waiting on: start one to draw its harness"><span class="side-group-name">From Signoff PL</span><span class="side-group-count">${list.length}</span></div>` +
+      list.map(p => `<button class="proj lm-pl-wait" data-act="pl-start" data-pl="${esc(p.project + '/' + p.node)}" title="Start this harness: Loom makes it with the Part’s name and number, and Signoff PL links it to the Part at its next sync">
+        <span class="pkg-icon lm-pl-icon">${ICON.harness}</span>
+        <span class="proj-body"><span class="proj-name">${esc(p.name || 'Unnamed Part')}</span><span class="proj-sub">${esc([p.number, p.projectName].filter(Boolean).join(' · '))}</span></span>
+        <span class="lm-pl-start">Start</span></button>`).join('') + `</div>`;
+  }
+  function startFromPl(key) {
+    const part = plWaiting().find(p => p.project + '/' + p.node === key);
+    if (!part) { toast('That Part isn’t waiting in Signoff PL any more. Sync to refresh the list.', 'error'); return; }
+    const n = R.startFromPl(M.blank(), part);
+    n.drawnBy = ''; n.identAt = '';
+    S.store[n.id] = n; S.view = 'build'; openHarness(n.id);
+    toast(`Started ${n.title}. Sync, and Signoff PL links it to its Part at PL’s next sync.`);
   }
   function ago(at) {
     const s = Math.max(0, (Date.now() - Date.parse(at)) / 1000);
@@ -332,6 +354,7 @@
       <p>Add the ends, click pin to pin to wire them, and group wires into cables. Loom draws the wiring diagram, the connector faces, the wire list, and the BOM.</p>
       <div class="actions"><button class="btn btn-primary" data-act="new">New harness</button><button class="btn" data-act="open">Open a file…</button>
       ${DEMO ? '<button class="btn" data-act="demo">Demo harness</button>' : '<a class="btn" href="?demo">Try the demo</a>'}<button class="btn" data-act="guide">Take the guide</button></div>
+      ${plWaiting().length ? `<div class="lm-home-pl"><b>${plWaiting().length === 1 ? 'A Part in Signoff PL is' : plWaiting().length + ' Parts in Signoff PL are'} waiting for a harness</b><span>They’re under From Signoff PL in the sidebar. Start one to draw it; PL links it to its Part at the next sync.</span></div>` : ''}
       <div class="drop-tiles">
         <div><b>Ends</b>Connector tables with pin labels, face views with pin 1</div>
         <div><b>Wires</b>Colors, gauges, splices, lengths</div>
@@ -1342,6 +1365,8 @@
     (pl ? pl.projects : []).forEach(p => names.add(p.clientProject || p.name));
     h.nodes.forEach(n => { if (n.board && n.board.client) names.add(n.board.client); });
     const parts = (pl && pl.links[h.id]) || [];
+    // Started from a waiting PL Part that PL hasn't linked yet.
+    const waitFor = !parts.length && h.plPart && pl ? (pl.planned || []).find(p => p.project === h.plPart.project && p.node === h.plPart.node) : null;
     const placed = parts.length ? `<div class="pl-links">${parts.map(p => `<div class="pl-link"><span class="lay-ico">${ICON.harness}</span><div><b>${esc(p.projectName)}</b><div class="f-hint">${esc(p.path.concat(p.name).join(' › '))}</div></div></div>`).join('')}</div>` : '';
     // A harness shared from Signoff PL lives in its own private repo (signoff_pl/docs/sharing.md).
     const shared = !DEMO && R && R.isShared(h.id) ? `<div class="f-hint">Shared: kept in ${esc(R.homeOf(h.id))}, with the people the product is shared with.</div>` : '';
@@ -1349,7 +1374,10 @@
     const what = 'The client project this harness is for. Once it’s set, the harness shows up in that project in Signoff PL, ready to add to the product.';
     const hint = DEMO ? what
       : !pl ? what + ' Sync to load Signoff PL’s projects.'
-      : parts.length ? 'In Signoff PL as a Part of:' : h.project ? 'Waiting in that project in Signoff PL: add it there to place it in the product.' : what;
+      : parts.length ? 'In Signoff PL as a Part of:'
+      : waitFor ? `Started from ${waitFor.projectName}’s Part in Signoff PL${waitFor.path.length ? ' (' + waitFor.path.join(' › ') + ')' : ''}. PL links it to that Part at its next sync, once this harness has synced.`
+      : h.plPart && pl && !pl.planned ? 'Started from a Part in Signoff PL. PL links it to that Part at its next sync, once this harness has synced.'
+      : h.project ?'Waiting in that project in Signoff PL: add it there to place it in the product.' : what;
     return fld('Project', `<input class="input" data-f="h.project" list="lm-projects" value="${esc(h.project || '')}" placeholder="Client project">` +
       `<datalist id="lm-projects">${[...names].sort().map(n => `<option value="${esc(n)}">`).join('')}</datalist>`, hint) + placed + shared;
   }
@@ -1765,6 +1793,7 @@
       case 'theme': { const t = isDark(readTheme()) ? 'light' : 'dark'; writeTheme(t); applyTheme(t); break; }
       case 'new': { const n = M.blank(); n.drawnBy = ''; S.store[n.id] = n; S.view = 'build'; openHarness(n.id); toast('Two ends to start. Click a pin, then a pin on the other end, to run a wire.'); break; }
       case 'demo': S.store.hdemo1 = LM.demo.harness(); openHarness('hdemo1'); break;
+      case 'pl-start': startFromPl(el.dataset.pl); break;
       // The banner's Reset demo: the demo's own storage goes back to just the demo harness, so
       // harnesses made while trying it (the suite tour has one built) go too.
       case 'demo-reset': if (!DEMO) break; S.store = { hdemo1: LM.demo.harness() }; openHarness('hdemo1'); toast('The demo is back as it started.'); break;
@@ -1798,7 +1827,7 @@
       case 'bm-add': addBoardConnector(el.dataset.ref); break;
       case 'match-wire': wireMatches(el.dataset.a, el.dataset.b); break;
       case 'delete': deleteSel(); break;
-      case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); delete c.identAt; delete c.demoVersion; S.store[c.id] = c; openHarness(c.id); break; }
+      case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); delete c.identAt; delete c.demoVersion; delete c.plPart; S.store[c.id] = c; openHarness(c.id); break; }
       case 'delete-harness': {
         // Once synced, a harness is kept as a tombstone, so the next sync deletes it everywhere (its file
         // stays in the repo, marked deleted, and its git history keeps every version).

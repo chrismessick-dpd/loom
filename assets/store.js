@@ -70,6 +70,10 @@
     try { return LM.model.normalize(h); } catch (e) { return null; }
   }
 
+  const plPartOf = h => {
+    const p = h && h.plPart;
+    return p && typeof p.project === 'string' && typeof p.node === 'string' && p.project && p.node ? { project: p.project, node: p.node, at: typeof p.at === 'string' ? p.at : '' } : undefined;
+  };
   // What Signoff PL reads (its reader keeps only meta and summary). Built from the harness alone.
   function summarize(doc) {
     const h = doc.harness, M = LM.model;
@@ -81,6 +85,8 @@
     return {
       v: 1, tool: 'loom', name: doc.meta.name, number: doc.meta.number, revision: doc.meta.revision, project: doc.meta.project,
       archived: !!h.deleted, identAt: h.identAt || '', at: doc.meta.updatedAt, by: doc.meta.updatedBy,
+      // The waiting Signoff PL Part this harness was started from; PL links that Part to it (pl.js claimPlanned).
+      plPart: plPartOf(h),
       total: 0, reviewed: 0, pct: 0, checklists: {}, issues: { open: { critical: 0, major: 0, minor: 0 }, fixed: 0, waived: 0 },
       harness: {
         ends: h.nodes.filter(M.isConn).length, splices: h.nodes.filter(n => n.kind === 'splice').length,
@@ -108,26 +114,56 @@
   }
 
   // ── Signoff PL (read only) ──
-  // Every PL project (name, client project) and every live PL Part linking a Loom harness.
+  // Every PL project (name, client project), every live PL Part linking a Loom harness, and every
+  // Part waiting to be started in Loom (`planned`: source 'loom' with no link yet).
+  // The cache holds slimmed documents by blob sha, so it carries the slim shape's version: bump
+  // PL_CACHE_V whenever slimPl keeps something new, or unchanged PL files never gain it
+  // (2: planned Parts).
+  const PL_CACHE_V = 2;
   async function readPl(cfg, tok, fetchImpl) {
     const store = new SG.GitHubStore({ owner: cfg.owner, repo: cfg.plRepo, branch: 'main', dataPath: '', token: tok }, fetchImpl);
-    const cache = read('plCache', {});
+    const stored = read('plCache', {});
+    const cache = stored && stored.v === PL_CACHE_V && stored.files ? stored.files : {};
     const snap = await store.snapshot();
-    const next = {}, projects = [], links = {};
+    const next = {};
     const files = snap.entries.filter(e => e.type === 'blob' && /^projects\/[^/]+\.json$/.test(e.path));
     for (const e of files) {
       let doc = cache[e.path] && cache[e.path].sha === e.sha ? cache[e.path].doc : null;
-      if (!doc) { try { doc = JSON.parse(await store.blob(e.sha)); } catch (err) { continue; } }
-      const slim = slimPl(doc);
-      if (!slim) continue;
-      next[e.path] = { sha: e.sha, doc: slim };
-      if (slim.archived) continue;
-      projects.push({ id: slim.id, slug: slim.slug, name: slim.name, clientProject: slim.clientProject });
-      slim.parts.forEach(n => { (links[n.ref] = links[n.ref] || []).push(Object.assign({ project: slim.id, slug: slim.slug, projectName: slim.name }, n)); });
+      if (!doc) { try { doc = slimPl(JSON.parse(await store.blob(e.sha))); } catch (err) { continue; } }
+      if (doc) next[e.path] = { sha: e.sha, doc };
     }
-    write('plCache', next);
+    write('plCache', { v: PL_CACHE_V, files: next });
+    return Object.assign({ at: new Date().toISOString() }, plIndex(Object.keys(next).map(k => next[k].doc)));
+  }
+  // The slimmed PL projects as { projects, links: { harness id: [Part] }, planned: [Part] }. Pure, for tests.
+  function plIndex(slims) {
+    const projects = [], links = {}, planned = [];
+    slims.forEach(slim => {
+      if (!slim || slim.archived) return;
+      const where = { project: slim.id, slug: slim.slug, projectName: slim.name, clientProject: slim.clientProject };
+      projects.push({ id: slim.id, slug: slim.slug, name: slim.name, clientProject: slim.clientProject });
+      slim.parts.forEach(n => { (links[n.ref] = links[n.ref] || []).push(Object.assign({}, where, n)); });
+      (slim.planned || []).forEach(n => planned.push(Object.assign({}, where, n)));
+    });
     projects.sort((a, b) => a.name.localeCompare(b.name));
-    return { at: new Date().toISOString(), projects, links };
+    planned.sort((a, b) => a.projectName.localeCompare(b.projectName) || a.path.join('/').localeCompare(b.path.join('/')) || a.name.localeCompare(b.name));
+    return { projects, links, planned };
+  }
+  // The Parts waiting in Signoff PL that no harness here was started from yet (the From Signoff PL list).
+  // A harness started from one names it (h.plPart) until PL links it, and is then in `links`. Pure.
+  function waiting(pl, harnesses) {
+    const taken = new Set();
+    (harnesses || []).forEach(h => { const p = plPartOf(h); if (p && !h.deleted) taken.add(p.project + '/' + p.node); });
+    return ((pl && pl.planned) || []).filter(n => !taken.has(n.project + '/' + n.node));
+  }
+  // A new harness for a waiting PL Part: its name and number, its PL project's client project, and the
+  // Part it was started from (summary.plPart), which PL links at its next sync.
+  function startFromPl(h, part) {
+    h.title = part.name || h.title;
+    h.pn = part.number || '';
+    h.project = part.clientProject || part.projectName || '';
+    h.plPart = { project: part.project, node: part.node, at: new Date().toISOString() };   // `at`: when it was started, PL's tie-break
+    return h;
   }
   // Only what Loom needs from a PL project: its name, and its Loom Parts with their place in the tree.
   function slimPl(doc) {
@@ -138,9 +174,14 @@
       for (let n = nodes[nodes[id] && nodes[id].parent]; n && !seen[n.id]; n = nodes[n.parent]) { seen[n.id] = 1; if (!n.deleted) out.unshift(str(n.name)); }
       return out;
     };
-    const parts = Object.keys(nodes).map(k => nodes[k]).filter(n => n && !n.deleted && n.source === 'loom' && n.ref && n.ref.tool === 'loom' && typeof n.ref.id === 'string')
+    const loomParts = Object.keys(nodes).map(k => nodes[k]).filter(n => n && !n.deleted && n.kind !== 'assembly' && n.source === 'loom');
+    const parts = loomParts.filter(n => n.ref && n.ref.tool === 'loom' && typeof n.ref.id === 'string')
       .map(n => ({ ref: n.ref.id, node: str(n.id), name: str(n.name), number: str(n.number), identAt: str(n.identAt), path: path(n.id) }));
-    return { id: str(doc.id), slug: str(doc.slug), name: str(doc.meta.name), clientProject: str(doc.meta.clientProject), archived: !!doc.meta.archived, parts };
+    const planned = loomParts.filter(n => !n.ref && n.id)
+      .map(n => ({ node: str(n.id), name: str(n.name), number: str(n.number), path: path(n.id) }));
+    // The client project as PL matches it (app.js clientProjectOf): the PL project's name when unset.
+    const clientProject = str(doc.meta.clientProject).trim() || str(doc.meta.name).trim();
+    return { id: str(doc.id), slug: str(doc.slug), name: str(doc.meta.name), clientProject, archived: !!doc.meta.archived || !!doc.meta.deleted, parts, planned };
   }
 
   // A name or part number edited in Signoff PL more recently than in Loom comes over. Returns true when
@@ -189,7 +230,8 @@
     const cfgMerge = makeMerge(isDirty, lose => {
       const h = unwrap(JSON.parse(JSON.stringify(lose)));
       if (!h) return;
-      h.id = LM.util.uid('h'); h.title = h.title + ' (conflict copy)'; h.updated = Date.now();
+      // A copy names no Signoff PL Part: only the harness started from it may take the link.
+      h.id = LM.util.uid('h'); h.title = h.title + ' (conflict copy)'; h.updated = Date.now(); delete h.plPart;
       conflicts.push(h);
     });
     // Whatever wins, meta is derived again from its harness, so a file never carries stale meta.
@@ -284,7 +326,7 @@
   const isShared = id => { const h = homeOf(id), c = config(); return !!h && h.toLowerCase() !== (c.owner + '/' + c.dataRepo).toLowerCase(); };
 
   LM.store = {
-    DEMO, setNamespace: ns => { NS = ns; }, config, token, signedIn: () => !!token(), envelope, unwrap, summarize, makeMerge, slimPl, adoptFromPl, hash,
+    DEMO, setNamespace: ns => { NS = ns; }, config, token, signedIn: () => !!token(), envelope, unwrap, summarize, makeMerge, slimPl, plIndex, waiting, startFromPl, adoptFromPl, hash,
     sync, unsynced, wasSynced, forget, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
     access: () => read('who', {}).access || '',
   };

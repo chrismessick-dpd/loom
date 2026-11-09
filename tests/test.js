@@ -94,6 +94,34 @@
     eq(s.parts, [{ ref: 'h1', node: 'n1', name: 'Main harness', number: 'H-1', identAt: 'T', path: ['Gizmo', 'Harnesses'] }]);
   });
 
+  // ── From Signoff PL: Parts waiting to be started in Loom ──
+  const waitDoc = () => ({ id: 'pl1', slug: 'x', meta: { name: 'Acme Gizmo', clientProject: '' }, nodes: {
+    top: { id: 'top', parent: '', kind: 'assembly', name: 'Gizmo' },
+    w1: { id: 'w1', parent: 'top', kind: 'part', name: 'Pump harness', number: 'H-3', source: 'loom', ref: null },
+    w2: { id: 'w2', parent: 'top', kind: 'part', name: 'Gone', source: 'loom', ref: null, deleted: true },
+    w3: { id: 'w3', parent: 'top', kind: 'part', name: 'Bought', source: 'purchased', ref: null },
+    w4: { id: 'w4', parent: 'top', kind: 'part', name: 'New board', source: 'ee', ref: null } } });
+  test('slimPl lists the live Parts waiting for Loom, with the client project PL matches by', () => {
+    const s = R.slimPl(waitDoc());
+    eq(s.planned, [{ node: 'w1', name: 'Pump harness', number: 'H-3', path: ['Gizmo'] }]);
+    eq(s.clientProject, 'Acme Gizmo', 'no client project: the PL project\'s name, as PL\'s tray matches');
+  });
+  test('waiting and startFromPl: Start makes a harness that names its Part, and the Part leaves the list', () => {
+    const pl = R.plIndex([R.slimPl(waitDoc())]);
+    eq(pl.planned.map(p => [p.project, p.node, p.projectName, p.clientProject]), [['pl1', 'w1', 'Acme Gizmo', 'Acme Gizmo']]);
+    eq(R.waiting(pl, []).length, 1);
+    const h = R.startFromPl(harness('Untitled'), pl.planned[0]);
+    eq([h.title, h.pn, h.project, h.plPart.project, h.plPart.node], ['Pump harness', 'H-3', 'Acme Gizmo', 'pl1', 'w1']);
+    ok(/^\d{4}-\d\d-\d\dT/.test(h.plPart.at), 'stamped with when it was started, for PL’s tie-break');
+    eq(R.waiting(pl, [h]), [], 'started: off the list');
+    eq(R.waiting(pl, [Object.assign({}, h, { deleted: true })]).length, 1, 'its harness deleted: back on the list');
+    const doc = JSON.parse(stable(R.envelope(h)));
+    const kept = R.unwrap(doc).plPart;
+    eq([kept.project, kept.node], ['pl1', 'w1'], 'the harness keeps it through the file');
+    eq(R.summarize(doc).plPart, { project: 'pl1', node: 'w1', at: h.plPart.at }, 'the summary names the Part, for PL to link');
+    eq(R.summarize(R.envelope(harness('Plain'))).plPart, undefined, 'a harness not started from PL names none');
+  });
+
   // ── Sync against a fake GitHub ──
   const OWNER = 'acme-test';
   function setup() {
@@ -204,6 +232,35 @@
     eq(file(hub, h.id).summary.identAt, '2026-11-07T12:00:00.000Z', 'the adopted stamp goes up, so PL sees no newer edit');
     eq(res.pl.projects, [{ id: 'pl9', slug: 'gizmo', name: 'Acme Gizmo', clientProject: 'Gizmo' }]);
     eq(res.pl.links[h.id][0].path, ['Gizmo']);
+  });
+
+  test('sync reads waiting Parts from PL, even past a cache from before they were kept', async () => {
+    const hub = setup();
+    hub.makeRepo(OWNER + '/signoff_pl_data', { ['projects/pl1.json']: stable(waitDoc()) }, ['alice']);
+    let res = await R.sync({}, opts(hub));
+    eq(res.pl.planned.map(p => p.node), ['w1']);
+    // A browser that cached PL before planned Parts were kept: the slim doc by sha, with no version.
+    const key = NSP + 'plCache', cached = JSON.parse(localStorage.getItem(key));
+    eq(cached.v, 2, 'the cache carries its shape version');
+    const old = {};
+    Object.keys(cached.files).forEach(p => { const d = Object.assign({}, cached.files[p].doc); delete d.planned; old[p] = { sha: cached.files[p].sha, doc: d }; });
+    localStorage.setItem(key, JSON.stringify(old));
+    res = await R.sync(res.store, opts(hub));
+    eq(res.pl.planned.map(p => p.node), ['w1'], 'an old cache is read again, not trusted');
+  });
+
+  test('sync: a conflict copy of a harness started from PL names no PL Part', async () => {
+    const hub = setup();
+    const h = harness('Started', { plPart: { project: 'pl1', node: 'w1', at: '2026-11-08T10:00:00.000Z' } });
+    let res = await R.sync({ [h.id]: h }, opts(hub));
+    const f = file(hub, h.id);
+    f.harness.title = 'Theirs'; f.harness.updated = Date.now() + 60000;
+    hub.push(OWNER + '/loom_data', Object.assign(hub.files(OWNER + '/loom_data'), { ['projects/' + h.id + '.json']: stable(f) }));
+    const mine = res.store[h.id];
+    mine.title = 'Mine'; mine.updated = Date.now();
+    res = await R.sync(res.store, opts(hub));
+    eq(res.store[h.id].plPart.node, 'w1', 'the winner keeps the link');
+    eq(res.conflicts.map(c => [c.title, c.plPart]), [['Mine (conflict copy)', undefined]], 'the copy drops it');
   });
 
   test('sync without access to PL still syncs harnesses', async () => {
