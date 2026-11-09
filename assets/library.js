@@ -8,9 +8,13 @@
   const FAMILIES = [
     { id: 'generic-rect', group: 'Generic', name: 'Rectangular', style: 'rect', pitch: 2.54, rows: [1, 2], pins: [1, 40], numbering: 'zigzag' },
     { id: 'generic-circ', group: 'Generic', name: 'Circular', style: 'circular', pins: [2, 19] },
+    // A type tile in Configure (Chris, 2026-11-09), so in the Generic group, though it's a series.
+    { id: 'dsub', group: 'Generic', name: 'D-sub', style: 'dsub', pitch: 2.77, rows: [2], pinsList: [9, 15, 25, 37], awg: [22, 28] },
     { id: 'flying', group: 'Generic', name: 'Flying leads', style: 'flying', pins: [1, 24] },
     { id: 'ring', group: 'Generic', name: 'Ring terminal', style: 'ring', pins: [1, 1] },
     { id: 'ferrule', group: 'Generic', name: 'Ferrule', style: 'ferrule', pins: [1, 1] },
+    // A spade connector: a female quick-disconnect onto a tab (Chris, 2026-11-09).
+    { id: 'spade', group: 'Generic', name: 'Spade connector', style: 'spade', pins: [1, 1] },
 
     { id: 'jst-sh', group: 'Wire to board', maker: 'JST', name: 'JST SH', style: 'rect', pitch: 1.0, rows: [1], pins: [2, 20], awg: [28, 32], housing: n => 'SHR-' + p2(n) + 'V-S' },
     { id: 'jst-gh', group: 'Wire to board', maker: 'JST', name: 'JST GH', style: 'rect', pitch: 1.25, rows: [1], pins: [2, 15], awg: [26, 30], housing: n => 'GHR-' + p2(n) + 'V-S' },
@@ -24,7 +28,6 @@
     { id: 'te-mta100', group: 'Wire to board', maker: 'TE', name: 'TE MTA-100 (IDC)', style: 'rect', pitch: 2.54, rows: [1], pins: [2, 15], awg: [22, 28] },
     { id: 'crimp-100', group: 'Wire to board', name: '2.54 mm (0.1 in) crimp housing', style: 'rect', pitch: 2.54, rows: [1, 2], pins: [1, 40], awg: [22, 28], numbering: 'zigzag' },
 
-    { id: 'dsub', group: 'Wire to wire', name: 'D-sub', style: 'dsub', pitch: 2.77, rows: [2], pinsList: [9, 15, 25, 37], awg: [22, 28] },
     { id: 'm8', group: 'Wire to wire', name: 'M8 circular', style: 'circular', pinsList: [3, 4, 8], awg: [22, 26] },
     { id: 'm12', group: 'Wire to wire', name: 'M12 circular', style: 'circular', pinsList: [4, 5, 8, 12], awg: [18, 26] },
 

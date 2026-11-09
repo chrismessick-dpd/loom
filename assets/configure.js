@@ -167,7 +167,7 @@
   const seg = (k, cur, choices) => `<div class="seg full">${choices.map(([v, l]) => `<button data-cfg="seg" data-k="${k}" data-v="${v}" class="${String(v) === String(cur) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   // A small face of a family, for its type tile.
   function tileFace(fam) {
-    const sample = { 'generic-rect': 4, 'generic-circ': 4, flying: 3, ring: 1, ferrule: 1 }[fam.id] || L.pinChoices(fam)[0];
+    const sample = { 'generic-rect': 4, 'generic-circ': 4, flying: 3, ring: 1, spade: 1, ferrule: 1 }[fam.id] || L.pinChoices(fam)[0];
     const tmp = { id: '_tile', kind: 'connector', family: fam.id, pins: sample, rows: 1, gender: 'receptacle' };
     const v = Sh.face({ wires: [] }, tmp, 'front');
     return `<svg class="lm-face" viewBox="${-v.ox - 4} -4 ${v.w + 8} ${v.h + 8}" preserveAspectRatio="xMidYMid meet">${v.svg}</svg>`;

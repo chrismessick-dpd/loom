@@ -309,7 +309,7 @@
   // The drawing for Signoff PL: a stub renderer (app.js draws the real PNG on a canvas).
   function stubThumb() {
     const t = { drawn: 0 };
-    t.svg = h => ({ svg: '<svg>' + h.wires.map(w => w.id + w.color).join(',') + '</svg>', w: 400, h: 100 });
+    t.svg = h => { const s = h.wires.map(w => w.id + w.color).join(','); return { svg: '<svg>' + s + '</svg>', dark: '<svg dark>' + s + '</svg>', w: 400, h: 100 }; };
     t.png = d => { t.drawn++; return Promise.resolve({ bytes: new TextEncoder().encode('PNG ' + d.svg), type: 'image/png', w: 800, h: 200 }); };
     return t;
   }
@@ -321,19 +321,19 @@
     let res = await R.sync({ [h.id]: h, [bare.id]: bare }, o);
     const D = OWNER + '/loom_data', dir = 'drawing/' + h.id + '/preview/';
     let files = hub.files(D);
-    ok(files[dir + 'diagram.png'], 'the picture is stored');
+    ok(files[dir + 'diagram.png'] && files[dir + 'diagram-dark.png'], 'the picture is stored, light and dark');
     const text = v => (typeof v === 'string' ? v : new TextDecoder().decode(v));
     const index = JSON.parse(text(files[dir + 'index.json']));
-    eq(stable([index.tool, index.id, index.hero, index.images]), stable(['loom', h.id, 'diagram', [{ key: 'diagram', file: 'diagram.png', type: 'image/png', w: 800, h: 200 }]]));
+    eq(stable([index.tool, index.id, index.hero, index.images]), stable(['loom', h.id, 'diagram', [{ key: 'diagram', file: 'diagram.png', type: 'image/png', w: 800, h: 200 }, { key: 'diagram-dark', file: 'diagram-dark.png', type: 'image/png', w: 800, h: 200 }]]));
     ok(!files['drawing/' + bare.id + '/preview/index.json'], 'a harness with no wires has no drawing');
-    eq([thumb.drawn, res.errors.length], [1, 0]);
+    eq([thumb.drawn, res.errors.length], [2, 0], 'drawn twice: light and dark');
     // Unchanged: not drawn again, nothing pushed.
     res = await R.sync(res.store, o);
-    eq([thumb.drawn, res.pushed], [1, 0]);
+    eq([thumb.drawn, res.pushed], [2, 0]);
     // A changed diagram is drawn again.
     res.store[h.id].wires[0].color = 'RD'; res.store[h.id].updated = Date.now();
     res = await R.sync(res.store, o);
-    eq(thumb.drawn, 2);
+    eq(thumb.drawn, 4);
     // Shared into its own repo: the drawing goes there too (PL only reads it next to the harness).
     const full = shareOnHub(hub, h.id, 'drawn');
     res = await R.sync(res.store, o);
@@ -341,7 +341,7 @@
     // No wires left: its drawing goes.
     res.store[h.id].wires = []; res.store[h.id].updated = Date.now();
     res = await R.sync(res.store, o);
-    ok(!hub.files(full)[dir + 'index.json'] && !hub.files(full)[dir + 'diagram.png'], 'removed with the last wire');
+    ok(!hub.files(full)[dir + 'index.json'] && !hub.files(full)[dir + 'diagram.png'] && !hub.files(full)[dir + 'diagram-dark.png'], 'removed with the last wire');
   });
 
   test('sync: a drawing that can’t be stored is reported and never fails the sync', async () => {

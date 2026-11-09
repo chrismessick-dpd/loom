@@ -201,14 +201,16 @@
   // out as Fabcheck stores a board's (ee_design_review/docs/fabcheck-link.md, "Board previews"), so PL's
   // reader shows it on the harness's tiles as it shows a board's (signoff_pl config `previews`):
   //   drawing/<id>/preview/index.json  { v, tool: 'loom', id, src, hero: 'diagram', images: [{ key, file, type, w, h }] }
-  //   drawing/<id>/preview/diagram.png
-  // `src` is a hash of the diagram's SVG. This browser remembers what it put where (`drawings`, by
+  //   drawing/<id>/preview/diagram.png       on white, for a light page
+  //   drawing/<id>/preview/diagram-dark.png  the same drawn for a dark page; PL shows the one for its theme
+  //                                          (an image keyed '<key>-dark' is <key>'s dark twin)
+  // `src` is a hash of both SVGs. This browser remembers what it put where (`drawings`, by
   // 'owner/repo|id'), so a picture is drawn again only when the diagram changed, or when the harness
   // moved to another repo (shared). With no wires, or deleted, its picture goes. index.json carries no
   // time, so a second browser drawing the same PNG commits nothing (putFiles skips equal files).
-  // thumb: { svg(h) → { svg, w, h }, png(drawing) → Promise<{ bytes, type, w, h } | null> }, from app.js.
+  // thumb: { svg(h) → { svg, dark, w, h }, png({ svg, w, h }) → Promise<{ bytes, type, w, h } | null> }, from app.js.
   const DRAWING_DIR = 'drawing/';
-  const drawingPaths = id => ({ index: DRAWING_DIR + id + '/preview/index.json', png: DRAWING_DIR + id + '/preview/diagram.png' });
+  const drawingPaths = id => ({ index: DRAWING_DIR + id + '/preview/index.json', png: DRAWING_DIR + id + '/preview/diagram.png', dark: DRAWING_DIR + id + '/preview/diagram-dark.png' });
   async function storeDrawings(harnesses, homes, thumb, mk, errors) {
     const done = read('drawings', {}), next = {}, byRepo = {};
     const add = (full, f, key, val) => { const r = byRepo[full] = byRepo[full] || { files: [], keys: {} }; r.files.push(...f); r.keys[key] = val; };
@@ -217,16 +219,18 @@
       if (!full) continue;
       const key = full + '|' + id, p = drawingPaths(id);
       if (h.deleted || !h.wires.length) {
-        if (done[key]) add(full, [{ path: p.index, remove: true }, { path: p.png, remove: true }], key, null);
+        if (done[key]) add(full, [p.index, p.png, p.dark].map(path => ({ path, remove: true })), key, null);
         continue;
       }
       try {
-        const d = thumb.svg(h), src = fnv(d.svg);
+        const d = thumb.svg(h), src = fnv(d.svg + d.dark);
         if (done[key] === src) { next[key] = src; continue; }
-        const img = await thumb.png(d);
-        if (!img || img.type !== 'image/png') throw new Error('the picture couldn’t be drawn');
-        const index = { v: 1, tool: 'loom', id, src, hero: 'diagram', images: [{ key: 'diagram', file: 'diagram.png', type: img.type, w: img.w, h: img.h }] };
-        add(full, [{ path: p.png, bytes: img.bytes }, { path: p.index, text: stable(index) + '\n' }], key, src);
+        const img = await thumb.png({ svg: d.svg, w: d.w, h: d.h }), dk = await thumb.png({ svg: d.dark, w: d.w, h: d.h });
+        if (!img || !dk || img.type !== 'image/png' || dk.type !== 'image/png') throw new Error('the picture couldn’t be drawn');
+        const index = { v: 1, tool: 'loom', id, src, hero: 'diagram', images: [
+          { key: 'diagram', file: 'diagram.png', type: img.type, w: img.w, h: img.h },
+          { key: 'diagram-dark', file: 'diagram-dark.png', type: dk.type, w: dk.w, h: dk.h }] };
+        add(full, [{ path: p.png, bytes: img.bytes }, { path: p.dark, bytes: dk.bytes }, { path: p.index, text: stable(index) + '\n' }], key, src);
       } catch (e) {
         if (done[key]) next[key] = done[key];
         errors.push({ repo: full, message: (h.title || 'A harness') + ': drawing for Signoff PL not stored (' + e.message + ')' });

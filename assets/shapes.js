@@ -99,6 +99,15 @@
       `<path class="fv-body" d="M72 25H90A14 14 0 1 1 90 35H72Z"/><circle class="fv-hole" cx="102" cy="30" r="6"/>`;
     return { svg: o, w: 124, h: 60, ox: 0 };
   }
+  // A spade connector, a female quick-disconnect (Chris), from above: its lead, the insulated barrel
+  // flaring to the receptacle, and the receptacle with its two rolled edges that grip the tab.
+  function spade(n, cols) {
+    const c = cols.get('1'), stroke = c && c.base ? c.base : '#9a9aa0';
+    const o = `<path class="fv-lead" style="stroke:${stroke}" d="M0 30H34"/><path class="fv-collar" d="M32 24H58L66 19V41L58 36H32Z"/>` +
+      `<rect class="fv-body" x="66" y="19" width="50" height="22" rx="2"/>` +
+      `<path class="fv-edge" d="M68 23.5H114M68 36.5H114"/>`;
+    return { svg: o, w: 124, h: 60, ox: 0 };
+  }
   function ferrule(n, cols) {
     const c = cols.get('1'), stroke = c && c.base ? c.base : '#9a9aa0';
     const o = `<path class="fv-lead" style="stroke:${stroke}" d="M0 30H34"/><path class="fv-collar" d="M32 20h22l6 4v12l-6 4H32z"/>` +
@@ -161,10 +170,10 @@
     return { svg: o, w: W * s + m * 2, h: Hm * s + m * 2, ox: 0 };
   }
 
-  const VIEW_NOTE = { rect: 'Mating face, latch up', dsub: 'Mating face', circular: 'Mating face, key up', flying: 'Lead ends', ring: 'Side view', ferrule: 'Side view', custom: 'Mating face, as configured' };
+  const VIEW_NOTE = { rect: 'Mating face, latch up', dsub: 'Mating face', circular: 'Mating face, key up', flying: 'Lead ends', ring: 'Side view', spade: 'Side view', ferrule: 'Side view', custom: 'Mating face, as configured' };
   const BACK_NOTE = { rect: 'Wire side, latch up', dsub: 'Wire side', circular: 'Wire side, key up', custom: 'Wire side, mirrored' };
 
-  // Housings have a wire side worth drawing; leads, rings, and ferrules are side views only.
+  // Housings have a wire side worth drawing; leads, rings, spades, and ferrules are side views only.
   const hasBack = n => !!BACK_NOTE[L.family(n.family).style];
   // Which views a connector shows (n.faceView: 'front', the default, 'back' or 'both'), on the
   // sheet and in the inspector.
@@ -176,7 +185,7 @@
   // A face view as an SVG fragment drawn from (0, 0), with its size and the side it shows.
   function face(h, n, view) {
     const fam = L.family(n.family), cols = pinColors(h, n);
-    const fn = { rect, dsub, circular, flying, ring, ferrule, custom }[fam.style] || rect;
+    const fn = { rect, dsub, circular, flying, ring, spade, ferrule, custom }[fam.style] || rect;
     const back = view === 'back' && hasBack(n);
     const v = fn(n, cols, back);
     return Object.assign(v, { view: back ? 'back' : 'front', note: (back ? BACK_NOTE : VIEW_NOTE)[fam.style] || 'Mating face' });

@@ -229,14 +229,48 @@
     return { svg, w: W, h: H };
   }
 
-  // The wiring diagram alone, on white paper, cropped to it: the picture Signoff PL shows for a
-  // harness (store.js storeDrawings writes it as drawing/<id>/preview/diagram.png).
+  // The sheet's colors for a dark page: paper dark, ink light, grays turned round (one pass, so a color
+  // already swapped isn't swapped again). Wire colors are the wires' own, outlined in the light ink.
+  const DARK = {
+    '#fff': '#1c1c1e', '#1d1d1f': '#e5e5ea', '#f2f2f4': '#2c2c2e', '#e9f3f4': '#17383c', '#6e6e73': '#98989d',
+    '#515154': '#aeaeb2', '#a1a1a6': '#6e6e73', '#86868b': '#8e8e93', '#2c2c2e': '#636366', '#e3e3e8': '#3a3a3c',
+    '#ececf0': '#2c2c2e', '#48484a': '#aeaeb2', '#d1d1d6': '#48484a', '#dcdde2': '#3a3a3c', '#c7c7cc': '#48484a',
+    '#3a3a3c': '#636366', '#e5e5ea': '#3a3a3c', '#d8dade': '#48484a', '#00727f': '#4fc3cf', '#d70015': '#ff453a',
+    'rgba(29,29,31,': 'rgba(229,229,234,',
+  };
+  // A cable's sheath, light on dark, is toned down so it doesn't glare.
+  const STYLE_DARK = STYLE.replace(/#[0-9a-f]{6}\b|#fff\b|rgba\(29,29,31,/g, c => DARK[c] || c)
+    .replace('.cv-sheath{fill:rgba(229,229,234,.38)', '.cv-sheath{fill:rgba(229,229,234,.14)')
+    .replace('.cv-sheath-face{fill:rgba(229,229,234,.17)', '.cv-sheath-face{fill:rgba(229,229,234,.08)');
+
+  // The wiring diagram alone, cropped to it: the picture Signoff PL shows for a harness, on white paper
+  // (svg) and drawn for a dark page (dark). store.js storeDrawings writes them as
+  // drawing/<id>/preview/diagram.png and diagram-dark.png.
+  // Each connector shows as its configured face, not its pin table (Chris, 2026-11-09): the table is
+  // hidden and the face (S.face, the view the drawing prints first) is fitted into its place, against
+  // the side its wires leave from, with its ref over it. A side view (leads, ring, spade, ferrule) has
+  // its lead on the left, so it's mirrored when the wires leave from the right.
+  const THUMB_STYLE = '.lm-sheet .cv-conn{display:none}.lm-sheet .th-ref{font-size:13px;font-weight:600}';
   function diagram(h) {
-    const r = LM.conn.render(h, M.analyze(h), { sheet: true }), P = 24;
-    const x = f(r.box.x0 - P), y = f(r.box.y0 - P), w = Math.ceil(r.box.x1 - r.box.x0 + P * 2), hh = Math.ceil(r.box.y1 - r.box.y0 + P * 2);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" class="lm-sheet" viewBox="${x} ${y} ${w} ${hh}" width="${w}" height="${hh}">` +
-      `<style>${STYLE}</style><rect class="paper" x="${x}" y="${y}" width="${w}" height="${hh}"/>${r.svg}</svg>`;
-    return { svg, w, h: hh };
+    const A = M.analyze(h), r = LM.conn.render(h, A, { sheet: true }), Lo = r.layout, P = 24;
+    let faces = '', top = r.box.y0;
+    Lo.items.filter(it => it.kind === 'conn' && it.n).forEach(it => {
+      const n = it.n, v = S.face(h, n, S.views(n)[0]), fam = L.family(n.family);
+      // Which side its wires leave from: toward the parts at their other ends.
+      const others = h.wires.flatMap(w => (w.from.node === n.id ? [w.to.node] : w.to.node === n.id ? [w.from.node] : []))
+        .map(id => Lo.itemOf.get(id)).filter(Boolean);
+      const cx = it.x + it.w / 2, right = others.length ? others.reduce((t, o) => t + o.x + o.w / 2, 0) / others.length >= cx : true;
+      const k = Math.min(1.6, it.w / v.w, it.h / v.h), fw = v.w * k, fh = v.h * k;
+      const tx = right ? it.x + it.w - fw : it.x, ty = it.y + (it.h - fh) / 2;
+      const flip = right && !L.hasHousing(fam);
+      faces += `<g transform="translate(${f(flip ? tx + fw : tx)} ${f(ty)}) scale(${f((flip ? -k : k) * 1000) / 1000} ${f(k * 1000) / 1000}) translate(${f(v.ox)} 0)">${v.svg}</g>` +
+        `<text class="th-ref" x="${f(tx + fw / 2)}" y="${f(ty - 6)}" text-anchor="middle">${esc(n.ref)}</text>`;
+      top = Math.min(top, ty - 22);
+    });
+    const x = f(r.box.x0 - P), y = f(top - P), w = Math.ceil(r.box.x1 - r.box.x0 + P * 2), hh = Math.ceil(r.box.y1 - top + P * 2);
+    const page = style => `<svg xmlns="http://www.w3.org/2000/svg" class="lm-sheet" viewBox="${x} ${y} ${w} ${hh}" width="${w}" height="${hh}">` +
+      `<style>${style}${THUMB_STYLE}</style><rect class="paper" x="${x}" y="${y}" width="${w}" height="${hh}"/>${r.svg}${faces}</svg>`;
+    return { svg: page(STYLE), dark: page(STYLE_DARK), w, h: hh };
   }
 
   LM.sheet = { sheet, diagram, W };

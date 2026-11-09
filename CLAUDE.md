@@ -22,6 +22,19 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Spade and D-sub types (2026-11-09, Chris; not committed):** Configure's Type tiles now include D-sub
+  (moved from the Wire to wire series into the Generic group, so it's a tile; still `dsub`) and **Spade
+  connector** (`spade`, one position: a female quick-disconnect drawn from above, lead, insulated barrel
+  flaring to the receptacle with its rolled edges; `shapes.js` `spade`). A spade is a BOM line like a ring
+  terminal or ferrule.
+- **PL drawings, dark and faces (2026-11-09, Chris: light thumbnails glared on a dark page; show connectors
+  as their configured graphic, not the pin table; not committed).** `LM.sheet.diagram` now returns `svg`
+  and `dark` (the sheet's style with its colors turned round, `STYLE_DARK`, the cable sheath toned down),
+  and hides each connector's table (`.cv-conn`) for its face (`S.face`, first view), fitted into the
+  table's place against the side its wires leave from, ref over it; side views (leads, ring, spade,
+  ferrule) mirror when the wires leave right. Only this picture changes: Build and the sheet keep tables.
+  `storeDrawings` writes `diagram-dark.png` beside `diagram.png` (index image key `diagram-dark`, the
+  dark twin PL shows on a dark page); `src` hashes both, so every stored drawing is redrawn once.
 - **Drawings in Signoff PL (2026-11-09, Chris: a harness with wires should show its drawing in PL, as EE
   boards show their pictures; pushed `6f25017`, with `signoff_pl` `edca05e`).** At each sync, every harness with one or more wires stores
   its wiring diagram (the Drawing's harness part only, `LM.sheet.diagram`: white paper, cropped) as a PNG
