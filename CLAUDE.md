@@ -23,7 +23,7 @@ links to it so far. Before every commit:
 ## Status (2026-11-06)
 
 - **Drawings in Signoff PL (2026-11-09, Chris: a harness with wires should show its drawing in PL, as EE
-  boards show their pictures; not committed).** At each sync, every harness with one or more wires stores
+  boards show their pictures; pushed `6f25017`, with `signoff_pl` `edca05e`).** At each sync, every harness with one or more wires stores
   its wiring diagram (the Drawing's harness part only, `LM.sheet.diagram`: white paper, cropped) as a PNG
   in the repo it lives in, laid out like Fabcheck's board previews: `drawing/<id>/preview/diagram.png` and
   `index.json` (`{ v, tool, id, src, hero: 'diagram', images }`). `store.js` `storeDrawings` runs after the
