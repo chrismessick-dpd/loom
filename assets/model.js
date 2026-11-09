@@ -74,6 +74,27 @@
     h.nodes.push(n);
     return n;
   }
+  // Copy and paste a part (Chris, 2026-11-09): an exact copy of a connector or splice with no wires,
+  // under the next free designator of its own prefix (J6 pastes as J7, or the next J free). Wires
+  // live in h.wires, so a copy of the node carries none; a splice's port order (n.ports) names wires
+  // and goes. Pin labels, the board it came from, its face, and its custom drawing all stay.
+  function copyPart(n) {
+    if (!n || (n.kind !== 'connector' && n.kind !== 'splice')) return null;
+    const c = JSON.parse(JSON.stringify(n));
+    delete c.id; delete c.ports;
+    return c;
+  }
+  function refPrefix(c) {
+    const m = /^([A-Za-z][A-Za-z_-]*?)\d+$/.exec(c.ref || '');
+    return m ? m[1] : c.kind === 'splice' ? 'S' : 'P';
+  }
+  function pastePart(h, c) {
+    const n = JSON.parse(JSON.stringify(c));
+    n.id = U.uid('n');
+    n.ref = nextRef(h, refPrefix(c));
+    h.nodes.push(n);
+    return n;
+  }
   function connect(h, a, b, length) {
     if (a === b) return null;
     const have = h.segments.find(s => (s.a === a && s.b === b) || (s.a === b && s.b === a));
@@ -661,7 +682,7 @@
 
   LM.model = {
     SCHEMA, COLORS, AWG, GAUGES, COVERS, FLAGS, DEFAULT_NOTES, colorInfo, gaugeText,
-    isConn, isLoose, node, seg, wire, set, other, nextRef, blank, addConnector, addNode, connect, splitSegment, removeNode, removeSegment, moveEnd,
+    isConn, isLoose, node, seg, wire, set, other, nextRef, blank, addConnector, addNode, copyPart, pastePart, connect, splitSegment, removeNode, removeSegment, moveEnd,
     addWire, removeWires, wireStraight,
     holderOf, setWord, setPrefix, setTraits, parentOf, setOfWire, roots, wiresIn, chainOf, setChain, matchSet, crossing, membersFor, whyNot, noCable,
     makeSet, setFlag, dissolveSet, tidySets, setLength, setRun, ov, reach, setEnd,

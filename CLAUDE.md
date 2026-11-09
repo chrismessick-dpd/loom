@@ -22,6 +22,16 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Copy and paste parts (2026-11-09, Chris; not committed):** a right click that doesn't move (a right
+  drag still pans) opens a menu on the canvas (`openCtx` in `app.js`, `.menu.lm-ctx`). On a connector or
+  splice it selects it (unless it's already in the selection) and offers *Copy P1* (or *Copy 3 parts* for
+  every part selected); anywhere it offers *Paste P1 here*. Ctrl+C and Ctrl+V do the same, pasting under
+  the pointer, else clear of every part (`placeClear`). A paste is an exact copy with no wires under the
+  next free designator of its own prefix (J6 → J7; `M.copyPart` drops `id` and a splice's `ports`,
+  `M.pastePart` gives a new id and `nextRef`); pin labels, board, face, and custom drawing stay. Several
+  parts keep their spacing. The clipboard is localStorage `loom.clip`, so it pastes into another harness
+  or tab. In Real proportions a paste goes to `placeClear`. One undo reverts a paste. Test: 24.
+
 - **Marquee and mixed selection (2026-11-07, Chris):** a left drag that grabs nothing on the canvas
   (empty stage, or a wire's line) draws a selection box (`drawMarquee`, `finishMarquee` in `app.js`;
   the rect goes in `#ghost`, `.cv-marquee`). Dragged right to left it's green and dashed and picks

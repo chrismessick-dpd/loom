@@ -911,3 +911,9 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
   .cfg-main.is-custom .cfg-right { order: -1; height: 58vh; min-height: 320px; border-bottom: 1px solid var(--hair); }
   .cfg-main.is-custom { grid-template-rows: auto auto; }
 }
+/* The canvas right-click menu: Copy and Paste parts (openCtx) */
+.lm-ctx { min-width: 200px; }
+.lm-ctx .lm-ctx-k { margin-left: auto; padding-left: 18px; font-size: 11.5px; color: var(--text-3); }
+.lm-ctx button:hover .lm-ctx-k, .lm-ctx button:focus-visible .lm-ctx-k { color: rgba(255, 255, 255, 0.8); }
+.lm-ctx button:disabled { opacity: 0.45; pointer-events: none; }
+.lm-ctx .lm-ctx-hint { font-size: 11.5px; color: var(--text-3); padding: 4px 10px 6px; max-width: 220px; }

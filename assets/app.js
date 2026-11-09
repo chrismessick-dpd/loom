@@ -887,6 +887,7 @@
     }
     if (g && g.item && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && !g.moved && g.button === 0) click(g.t, g.shift, g);
+    else if (g && !g.moved && g.button === 2 && !g.touch) openCtx(g);
   }
   // Marquee selection (Chris, 2026-11-07): a left drag on empty canvas draws a box. Dragged right
   // to left (green) it selects whatever it touches; left to right (blue) whatever lies wholly
@@ -1136,6 +1137,93 @@
     renderCanvas();
     if (kind === 'connector') toast('Added. Click one of its pins, then a pin on another end, to run a wire.');
   }
+
+  // ── Copy and paste parts (Chris, 2026-11-09) ──
+  // Right-click a connector or splice for Copy, and empty canvas (or a part) for Paste; Ctrl+C and
+  // Ctrl+V do the same. A paste is an exact copy without wires under the next free designator
+  // (M.copyPart, M.pastePart). Several selected parts copy together and keep their spacing. The
+  // clipboard is this browser's (localStorage), so a part pastes into another harness or tab too.
+  // A paste from the menu lands where it was opened, from Ctrl+V under the pointer, else clear of
+  // every other part (placeClear).
+  const CLIP_KEY = 'loom.clip';
+  let clip = null, hoverPt = null, ctxEl = null;
+  const isPart = n => !!n && (n.kind === 'connector' || n.kind === 'splice');
+  function readClip() {
+    let c = null;
+    try { c = JSON.parse(localStorage.getItem(CLIP_KEY) || 'null'); } catch (e) { /* storage blocked */ }
+    c = c || clip;
+    return c && c.parts && c.parts.length ? c : null;
+  }
+  function copyParts(ids) {
+    const h = H(), Lo = lastLayout, parts = ids.map(id => M.node(h, id)).filter(isPart);
+    if (!parts.length) return false;
+    const at = n => { const it = Lo && Lo.itemOf.get(n.id); return it ? { x: it.x, y: it.y } : { x: n.x || 0, y: n.y || 0 }; };
+    const o = at(parts[0]);
+    clip = { v: 1, parts: parts.map(n => { const p = at(n); return { node: M.copyPart(n), dx: Math.round(p.x - o.x), dy: Math.round(p.y - o.y) }; }) };
+    try { localStorage.setItem(CLIP_KEY, JSON.stringify(clip)); } catch (e) { /* storage blocked: kept for this page */ }
+    toast(parts.length === 1 ? `Copied ${parts[0].ref}. Right-click the canvas to paste it.` : `Copied ${parts.length} parts. Right-click the canvas to paste them.`);
+    return true;
+  }
+  function pasteParts(p) {
+    const c = readClip();
+    if (!c || !H()) return;
+    const made = change(h => {
+      const ns = c.parts.map(x => M.pastePart(h, x.node));
+      if (p && !fold.prop) {
+        const Lo = C.layout(h, M.analyze(h)), gs = gridOf(h), snap = v => (gs ? Math.round(v / gs) * gs : Math.round(v));
+        h.place = h.place || {};
+        ns.forEach((n, i) => {
+          const it = Lo.itemOf.get(n.id), port0 = (it && it.sz && it.sz.port0) || 0;
+          h.place['n:' + n.id] = { x: snap(p.x + c.parts[i].dx), y: snap(p.y + c.parts[i].dy + port0) - port0, v: 3 };
+        });
+      } else ns.forEach(n => placeClear(h, n.id));
+      S.sel = { kind: 'node', ids: new Set(ns.map(n => n.id)) };
+      return ns;
+    });
+    if (!made) return;
+    toast(made.length === 1 ? `Pasted ${made[0].ref}, a copy of ${c.parts[0].node.ref} without its wires.` : `Pasted ${made.map(n => n.ref).join(', ')}, without their wires.`);
+  }
+  function closeCtx() { if (ctxEl) { ctxEl.remove(); ctxEl = null; } }
+  // The right-click menu: a right press that didn't move (a drag pans). On a part it selects the
+  // part (unless it's already in the selection) and offers to copy it, or every part selected.
+  function openCtx(g) {
+    closeCtx();
+    const h = H();
+    if (!h || S.view !== 'build' || S.placing) return;
+    const nodeEl = g.t.closest && g.t.closest('[data-node]'), n = nodeEl ? M.node(h, nodeEl.dataset.node) : null;
+    let ids = [];
+    if (isPart(n)) {
+      const P = selParts(S.sel);
+      if (P.node.includes(n.id)) ids = P.node.filter(id => isPart(M.node(h, id)));
+      else { S.sel = { kind: 'node', ids: new Set([n.id]) }; ids = [n.id]; renderAll(); }
+    }
+    const c = readClip(), at = toWorld({ clientX: g.x, clientY: g.y });
+    const what = list => (list.length === 1 ? esc(list[0]) : list.length + ' parts');
+    const m = document.createElement('div');
+    m.className = 'menu lm-ctx';
+    m.setAttribute('role', 'menu');
+    m.innerHTML = (ids.length ? `<button data-ctx="copy" role="menuitem"><span>Copy ${what(ids.map(id => M.node(h, id).ref))}</span><span class="lm-ctx-k">Ctrl+C</span></button>` : '') +
+      `<button data-ctx="paste" role="menuitem"${c ? '' : ' disabled'}><span>${c ? 'Paste ' + what(c.parts.map(x => x.node.ref)) + ' here' : 'Paste'}</span><span class="lm-ctx-k">Ctrl+V</span></button>` +
+      (!ids.length && !c ? `<div class="lm-ctx-hint">Right-click a connector or splice to copy it.</div>` : '');
+    m.addEventListener('click', e => {
+      const b = e.target.closest('[data-ctx]');
+      if (!b || b.disabled) return;
+      closeCtx();
+      if (b.dataset.ctx === 'copy') copyParts(ids);
+      else pasteParts(at);
+    });
+    m.addEventListener('contextmenu', e => e.preventDefault());
+    document.body.appendChild(m);
+    const r = m.getBoundingClientRect();
+    m.style.left = Math.max(8, Math.min(g.x, innerWidth - r.width - 8)) + 'px';
+    m.style.top = Math.max(8, Math.min(g.y, innerHeight - r.height - 8)) + 'px';
+    ctxEl = m;
+    const first = m.querySelector('button:not([disabled])');
+    if (first) first.focus({ preventScroll: true });
+  }
+  document.addEventListener('pointerdown', e => { if (ctxEl && !ctxEl.contains(e.target)) closeCtx(); }, true);
+  window.addEventListener('blur', closeCtx);
+  window.addEventListener('resize', closeCtx);
 
   // ── Build: the right pane, with a Parts tab and a Properties tab ──
   // A new selection switches it to Properties; clearing the selection goes back to Parts. A set
@@ -1967,6 +2055,7 @@
     if (el.dataset && el.dataset.f) setField(el.dataset.f, el.value, el);
   });
   document.addEventListener('keydown', e => {
+    if (ctxEl) { if (e.key === 'Escape') { e.preventDefault(); closeCtx(); return; } if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Tab') closeCtx(); }
     if (LM.configure.isOpen()) { LM.configure.onKey(e); return; }
     if (BM.open) { if (e.key === 'Escape') closeModal(); return; }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
@@ -1980,6 +2069,8 @@
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (S.view !== 'build') return;
+    if (mod && e.key.toLowerCase() === 'c') { if (copyParts(selParts(S.sel).node)) e.preventDefault(); return; }
+    if (mod && e.key.toLowerCase() === 'v') { if (readClip()) { e.preventDefault(); pasteParts(hoverPt ? toWorld(hoverPt) : null); } return; }
     if (e.key === 'Escape' && $('#app').classList.contains('nav-open')) { $('#app').classList.remove('nav-open'); return; }
     if (e.key === 'Escape' && !S.sel && S.sheet) { S.sheet = false; $('#build-view').classList.remove('sheet-open'); return; }
     if (e.key === 'Escape' && gesture && gesture.marquee) { gesture = null; svgEl().classList.remove('marquee'); renderCanvas(); return; }
@@ -2002,10 +2093,13 @@
   });
   svg.addEventListener('pointerleave', () => { if (badgeHover) { badgeHover = null; lightBadgeSet(); } });
   svg.addEventListener('pointermove', onMove);
+  svg.addEventListener('pointermove', e => { if (e.pointerType !== 'touch') hoverPt = { clientX: e.clientX, clientY: e.clientY }; });
+  svg.addEventListener('pointerleave', () => { hoverPt = null; });
+  svg.addEventListener('wheel', closeCtx, { passive: true });
   svg.addEventListener('pointerup', onUp);
   svg.addEventListener('pointercancel', e => { if (endTouch(e) || pinch) return; const g = gesture; gesture = null; S.slide = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
   svg.addEventListener('wheel', onWheel, { passive: false });
-  svg.addEventListener('contextmenu', e => e.preventDefault()); // the right button pans
+  svg.addEventListener('contextmenu', e => e.preventDefault()); // the right button pans; a right click opens the menu (openCtx)
   // When the canvas changes size (the sidebar sliding, a panel folding, the window), the picture
   // stays where it is on screen: the camera follows the canvas's left edge, and the viewBox its
   // size, every frame of the slide. Not when it appears from hidden (another view).

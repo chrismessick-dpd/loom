@@ -344,6 +344,28 @@
     ok(err && err.status === 404, 'expected a 404, got ' + (err && (err.status || err.message)));
   });
 
+  // ── Copy and paste parts ──
+  test('a pasted part is an exact copy without wires, under the next designator of its prefix', () => {
+    const h = harness('Copy test');
+    const [a, b] = h.nodes;
+    a.ref = 'J6'; a.name = 'Main board'; a.pinLabels = { 1: 'VCC', 2: 'GND' }; a.faceView = 'both';
+    M.addWire(h, { node: a.id, pin: '1' }, { node: b.id, pin: '1' });
+    const sp = M.addNode(h, 'splice', 0, 0);
+    sp.ports = { l: [h.wires[0].id], r: [] };
+    const wires = h.wires.length, segs = h.segments.length;
+    const c = M.copyPart(a), n = M.pastePart(h, c);
+    ok(n.id && n.id !== a.id, 'a new id');
+    eq(n.ref, 'J7');
+    const strip = x => { const o = JSON.parse(JSON.stringify(x)); delete o.id; delete o.ref; return o; };
+    eq(strip(n), strip(a), 'everything else is the same');
+    eq([h.wires.length, h.segments.length], [wires, segs], 'no wires or segments added');
+    ok(!h.wires.some(w => w.from.node === n.id || w.to.node === n.id), 'nothing wired to the copy');
+    eq(M.pastePart(h, c).ref, 'J8', 'pasting again takes the next one');
+    const s2 = M.pastePart(h, M.copyPart(sp));
+    eq(s2.ref, 'S2'); ok(!s2.ports, "a splice's port order names wires and goes");
+    eq(M.copyPart(h.wires[0]), null);
+  });
+
   // ── Wire sets ──
   // Deleting a set never deletes what's inside it (Chris): a bundle holding a cable and a second
   // bundle leaves the cable and that bundle, with their wires and their own sets.
