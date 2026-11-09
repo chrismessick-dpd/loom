@@ -86,7 +86,7 @@ links to it so far. Before every commit:
     and the newer side wins (`adoptFromPl` here before each push; `pl.js adoptHarnesses` after PL reads
     designs). Rev stays Loom's. Chris (2026-11-07): newest-wins after each tool syncs is fine for now.
   - **From Signoff PL (2026-11-08, Chris: new things wait in a tray in the tool they belong to).** A PL Part
-    marked "Not started yet" in Loom (`source: 'loom'`, no `ref`) is read by `slimPl` (`planned`) and listed
+    marked as a Placeholder for Loom (`source: 'loom'`, no `ref`) is read by `slimPl` (`planned`) and listed
     in the sidebar under *From Signoff PL* (`fromPlHtml`, dashed icon and a Start pill; the home page says how
     many wait) until a harness here names it (`waiting`). Start (`pl-start`, `startFromPl`) makes the
     harness with the Part's name and number, its PL project's client project (`clientProject`, else the PL
