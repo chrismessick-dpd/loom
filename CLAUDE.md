@@ -22,7 +22,7 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
-- **Copy and paste parts (2026-11-09, Chris; not committed):** a right click that doesn't move (a right
+- **Copy and paste parts (2026-11-09, Chris; pushed `fa701d8`):** a right click that doesn't move (a right
   drag still pans) opens a menu on the canvas (`openCtx` in `app.js`, `.menu.lm-ctx`). On a connector or
   splice it selects it (unless it's already in the selection) and offers *Copy P1* (or *Copy 3 parts* for
   every part selected); anywhere it offers *Paste P1 here*. Ctrl+C and Ctrl+V do the same, pasting under
