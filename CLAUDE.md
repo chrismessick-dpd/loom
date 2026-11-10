@@ -247,6 +247,25 @@ links to it so far. Before every commit:
   - **Load demo model** (2026-11-08, Chris; pushed `da4348b` with the guide's custom connector steps): in `?demo`, beside Import a model…, it reads
     `assets/demo/S11M0-P08M.stp.gz` (a vendor's 8-position circular connector, 632 KB of STEP gzipped to
     116 KB; `DecompressionStream`, then `importFile` as a `File`). The guide's Custom connector steps use it.
+  - **Find a model** (2026-11-09, Chris: fetch connector models from online libraries inside the suite;
+    not committed). *Find a model…* beside Import (and *Find…* once a model is in) opens a search over
+    the stage (`openFind`, `findHtml`, `drawFind`, `fetchKicad`; Esc or Back closes it). It searches the
+    KiCad 3D library's connector and terminal block models, 3,497 names (about 2,800 are pin headers and
+    sockets) listed at one commit in `assets/kicad-models.json` by `python tools/kicad_index.py`
+    (`--check` says whether KiCad's master has moved; names only, no models in this repo). Every word
+    must match; models with the draft's position count (`posOf`: `1x08`, `DSUB-9`) sort first, and a
+    tick shows only those; 80 rows at most. A pick (or Enter for the top row) fetches that STEP from
+    GitLab's API at the recorded commit, which sends `Access-Control-Allow-Origin: *` (the CSP allows
+    `https://gitlab.com`), and reads it like an import. Below the list, links search TraceParts,
+    SnapMagic, DigiKey, Octopart, and 3D ContentCentral for the typed text in a new tab; download there
+    and drop the file here. KiCad's models are the board half: no cable-side crimp housings.
+    - Why no vendor API (researched 2026-11-09): TraceParts has one (`api-gateway.traceparts.com`, CORS
+      open), but it needs a key Chris applies for (days of validation, price unstated), a manufacturer
+      catalog name per lookup, and a `userEmail` per file; its terms forbid passing files on and want a
+      credit link; whether its file host allows browser reads is unknown. If added, the key would sit in
+      Settings in this browser like the GitHub token (FTE only). SnapMagic, Ultra Librarian, SamacSys,
+      PARTcommunity, and the connector makers have no public API; McMaster's needs a client certificate.
+    - Tried in the browser on the demo: JST XH search, fetch, 3D view, Make face view, Find… again, Esc.
   - Not done: pinch zoom on the stage, no tests.
 
 - **The guide (2026-11-07, Chris: an interactive getting started for new users):** `assets/guide.js`,
@@ -687,7 +706,8 @@ links to it so far. Before every commit:
 All files are classic scripts sharing `window.LM`, with no build step. JSZip and SheetJS load from
 CDNs with the same pinned integrity hashes as Fabcheck; three.js and OpenCascade (Configure's 3D tab)
 from jsDelivr with Partcheck's. GitHub (`loom_data` read and write; Signoff EE's and PL's repos read
-only) is the only other network use, and the CSP in `index.html` allows just those.
+only) and GitLab (one KiCad STEP per Find a model pick, read only) are the only other network use, and
+the CSP in `index.html` allows just those.
 
 | File | What |
 | --- | --- |
@@ -699,7 +719,8 @@ only) is the only other network use, and the CSP in `index.html` allows just tho
 | `tests/` | `test.html` (open over http) and `fake-hub.js`. |
 | `assets/library.js` | Parametric connector families. Housing part numbers are suggested only where the series names them by pin count. |
 | `assets/shapes.js` | Face views, labeled with the side shown, with a pin-1 mark; custom faces from `n.custom`. |
-| `assets/configure.js` | The Configure window: ref, name, type, and a custom face from a 3D model or a sketch with assigned positions. |
+| `assets/configure.js` | The Configure window: ref, name, type, and a custom face from a 3D model or a sketch with assigned positions; Find a model. |
+| `assets/kicad-models.json`, `tools/kicad_index.py` | The KiCad library's connector and terminal block model names at one commit, for Find a model. |
 | `assets/step.js`, `occt-worker.js` | STEP, IGES, and STL to a mesh, and a view's visible edges as one path. |
 | `assets/sheet.js` | The paper sheet, a self-contained SVG with its own `.lm-sheet` styles. |
 | `assets/app.js` | The UI. |

@@ -6,13 +6,13 @@
      signed in. Other network use: reading Signoff PL projects and a board's fab package from Signoff
      EE's private repos (GitHub, read only), with JSZip and SheetJS pinned like Fabcheck's, and the STEP
      reader (jsDelivr, in a worker) for connector faces from a 3D model. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.sheetjs.com https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://api.github.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.sheetjs.com https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://api.github.com https://cdn.jsdelivr.net https://gitlab.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light dark">
 <title>Loom · Harness drawings</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23004952'/%3E%3Cpath d='M7 11h6c4 0 4 10 8 10h4M7 21h6c4 0 4-10 8-10h4' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/suite.css?v=904982389d9f">
-<link rel="stylesheet" href="assets/styles.css?v=904982389d9f">
+<link rel="stylesheet" href="assets/suite.css?v=c024f43f9536">
+<link rel="stylesheet" href="assets/styles.css?v=c024f43f9536">
 </head>
 <body>
 <div id="demo-banner" class="demo-banner" hidden></div>
@@ -111,28 +111,28 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT" crossorigin="anonymous"></script>
-<script src="assets/vendor/ipc356.js?v=904982389d9f"></script>
-<script src="assets/vendor/assembly.js?v=904982389d9f"></script>
-<script src="assets/version.js?v=904982389d9f"></script>
-<script src="assets/util.js?v=904982389d9f"></script>
-<script src="assets/library.js?v=904982389d9f"></script>
-<script src="assets/model.js?v=904982389d9f"></script>
+<script src="assets/vendor/ipc356.js?v=c024f43f9536"></script>
+<script src="assets/vendor/assembly.js?v=c024f43f9536"></script>
+<script src="assets/version.js?v=c024f43f9536"></script>
+<script src="assets/util.js?v=c024f43f9536"></script>
+<script src="assets/library.js?v=c024f43f9536"></script>
+<script src="assets/model.js?v=c024f43f9536"></script>
 <!-- The Signoff engine's GitHub storage (vendored from Signoff EE), then Loom's sync on top of it. -->
-<script src="assets/vendor/model.js?v=904982389d9f"></script>
-<script src="assets/vendor/github.js?v=904982389d9f"></script>
-<script src="assets/store.js?v=904982389d9f"></script>
-<script src="assets/conn.js?v=904982389d9f"></script>
-<script src="assets/boards.js?v=904982389d9f"></script>
-<script src="assets/shapes.js?v=904982389d9f"></script>
-<script src="assets/sheet.js?v=904982389d9f"></script>
-<script src="assets/step.js?v=904982389d9f"></script>
-<script src="assets/configure.js?v=904982389d9f"></script>
-<script src="assets/demo.js?v=904982389d9f"></script>
-<script src="assets/app.js?v=904982389d9f"></script>
+<script src="assets/vendor/model.js?v=c024f43f9536"></script>
+<script src="assets/vendor/github.js?v=c024f43f9536"></script>
+<script src="assets/store.js?v=c024f43f9536"></script>
+<script src="assets/conn.js?v=c024f43f9536"></script>
+<script src="assets/boards.js?v=c024f43f9536"></script>
+<script src="assets/shapes.js?v=c024f43f9536"></script>
+<script src="assets/sheet.js?v=c024f43f9536"></script>
+<script src="assets/step.js?v=c024f43f9536"></script>
+<script src="assets/configure.js?v=c024f43f9536"></script>
+<script src="assets/demo.js?v=c024f43f9536"></script>
+<script src="assets/app.js?v=c024f43f9536"></script>
 <!-- Animated logo: assets/mark.js swaps the sidebar's static mark for the spinning one. -->
-<script src="assets/mark.js?v=904982389d9f"></script>
+<script src="assets/mark.js?v=c024f43f9536"></script>
 <!-- The guide, before the suite's demo tour, whose Loom step offers it. -->
-<script src="assets/guide.js?v=904982389d9f"></script>
+<script src="assets/guide.js?v=c024f43f9536"></script>
 <!-- Demo tour: signoff/assets/tour.js does nothing outside ?demo, or before the hub starts the tour. -->
 <script src="../signoff/assets/tour.js"></script>
 </body>

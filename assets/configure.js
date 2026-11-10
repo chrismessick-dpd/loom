@@ -23,6 +23,44 @@
   const DEMO = /[?&]demo\b/.test(location.search);
   const DEMO_MODEL = { url: 'assets/demo/S11M0-P08M.stp.gz', name: 'S11M0-P08M.stp' };
   const demoBtn = () => (DEMO ? '<button class="btn" data-cfg="demo-model" title="An 8-position circular connector, for trying this out">Load demo model</button>' : '');
+  // Find a model (2026-11-09, Chris: fetch connector models from online libraries inside the suite).
+  // The KiCad 3D library's connector and terminal block models are listed, names only and at one
+  // commit, in assets/kicad-models.json (tools/kicad_index.py); they're searched here and the one
+  // picked is fetched from GitLab's API, which lets any page read it. Vendors' libraries (TraceParts,
+  // SnapMagic, DigiKey, and others) have no API a page can use without a key, so they're links with
+  // the search filled in: download the STEP there and drop it here.
+  const KICAD_RAW = 'https://gitlab.com/api/v4/projects/kicad%2Flibraries%2Fkicad-packages3D/repository/files/';
+  const KICAD_WEB = 'https://gitlab.com/kicad/libraries/kicad-packages3D/-/tree/';
+  const FIND_MAX = 80;
+  const WEB = [
+    ['TraceParts', q => 'https://www.traceparts.com/en/search?Keywords=' + q],
+    ['SnapMagic', q => 'https://www.snapeda.com/search/?q=' + q],
+    ['DigiKey', q => 'https://www.digikey.com/en/products/result?keywords=' + q],
+    ['Octopart', q => 'https://octopart.com/search?q=' + q],
+    ['3D ContentCentral', q => 'https://www.3dcontentcentral.com/Search.aspx?arg=' + q],
+  ];
+  let kicad = null; // the list, a promise once asked for
+  const findKey = s => s.toLowerCase().replace(/[_\-,]+/g, ' ');
+  // Positions from a KiCad name: 1x08, 2x10, or DSUB-9.
+  function posOf(n) {
+    const m = /_(\d{1,2})x(\d{1,3})(?=[_-]|$)/i.exec(n);
+    if (m) return +m[1] * +m[2];
+    const d = /DSUB-(\d+)/i.exec(n);
+    return d ? +d[1] : 0;
+  }
+  function loadKicad() {
+    if (!kicad) {
+      kicad = fetch('assets/kicad-models.json?v=' + encodeURIComponent(LM.VERSION || ''))
+        .then(r => { if (!r.ok) throw new Error("Couldn't load the KiCad model list (" + r.status + ').'); return r.json(); })
+        .then(d => {
+          const rows = [];
+          Object.entries(d.dirs).forEach(([dir, list]) => list.forEach(name => rows.push({ dir, name, pos: posOf(name), key: findKey(dir + ' ' + name) })));
+          return { meta: d, rows };
+        });
+      kicad.catch(() => { kicad = null; });
+    }
+    return kicad;
+  }
   const ICO = {
     select: '<path d="M4 2.5l8 5.2-3.6.7 2.1 4-1.6.8-2.1-4L4 11.6z"/>',
     rect: '<rect x="2.5" y="4" width="11" height="8" rx="0.5"/>',
@@ -251,13 +289,86 @@
       return `<div class="seg cfg-views">${views}</div><button class="icon-btn" data-cfg="spin" data-v="-1" title="Turn left 90°" aria-label="Turn left">${ico('left')}</button><button class="icon-btn" data-cfg="spin" data-v="1" title="Turn right 90°" aria-label="Turn right">${ico('right')}</button>${mirrorBtns(V3 && V3.mirror || {})}` +
         `<span class="cfg-spacer"></span>${D.custom.model ? '<button class="btn" data-cfg="face-back">Cancel</button>' : ''}<button class="btn btn-primary" data-cfg="make-face">Make face view</button>`;
     }
+    if (D.find) return '';
     if (D.custom.model) {
-      const rot = `<span class="cfg-rot" title="Turn the face about the axis you're looking down ([ and ] turn 1°, with Shift 15°)"><button class="icon-btn" data-cfg="rot" data-v="-90" title="Turn left 90°" aria-label="Turn left 90°">${ico('left')}</button><button class="icon-btn" data-cfg="rot" data-v="90" title="Turn right 90°" aria-label="Turn right 90°">${ico('right')}</button><input class="input" type="number" step="1" data-cf="rot" value="${r2(D.custom.model.rot || 0)}" aria-label="Rotation in degrees">°</span>${mirrorBtns(D.custom.model.mirror || {})}` +
+      const rot =`<span class="cfg-rot" title="Turn the face about the axis you're looking down ([ and ] turn 1°, with Shift 15°)"><button class="icon-btn" data-cfg="rot" data-v="-90" title="Turn left 90°" aria-label="Turn left 90°">${ico('left')}</button><button class="icon-btn" data-cfg="rot" data-v="90" title="Turn right 90°" aria-label="Turn right 90°">${ico('right')}</button><input class="input" type="number" step="1" data-cf="rot" value="${r2(D.custom.model.rot || 0)}" aria-label="Rotation in degrees">°</span>${mirrorBtns(D.custom.model.mirror || {})}` +
         `<button class="btn${D.pointUp ? ' on' : ''}" data-cfg="point-up" title="Click a feature, like the key, to turn it to 12 o'clock">Point up</button>`;
       return `<span class="cfg-file" title="${esc(D.custom.model.name || '')}">${ico('cube')}${esc(D.custom.model.name || 'Model')}</span>` +
-        (mesh ? '<button class="btn" data-cfg="change-view">Change view</button>' : '') + `<button class="btn" data-cfg="import">${mesh ? 'Another model…' : 'Import again…'}</button>${rot}<span class="cfg-spacer"></span>${gridSel}${fit}`;
+        (mesh ? '<button class="btn" data-cfg="change-view">Change view</button>' : '') + `<button class="btn" data-cfg="import">${mesh ? 'Another model…' : 'Import again…'}</button><button class="btn" data-cfg="find">Find…</button>${rot}<span class="cfg-spacer"></span>${gridSel}${fit}`;
     }
-    return mesh ? '' : '<span class="cfg-spacer"></span>' + demoBtn() + '<button class="btn" data-cfg="import">Import a model…</button>';
+    return mesh ? '' : '<span class="cfg-spacer"></span>' + demoBtn() + '<button class="btn" data-cfg="find">Find a model…</button><button class="btn" data-cfg="import">Import a model…</button>';
+  }
+
+  // ── Find a model ──
+  function openFind() {
+    D.find = { q: (D.custom.kind || '').trim(), only: false, lib: null, err: '', rows: [] };
+    D.tab = 'model'; D.err = ''; D.assign = -1;
+    render();
+    const inp = $('#cfg-find-q');
+    if (inp) { inp.focus(); inp.select(); }
+    loadKicad().then(lib => { if (D && D.find) { D.find.lib = lib; drawFind(); } })
+      .catch(err => { if (D && D.find) { D.find.err = String(err.message || err); drawFind(); } });
+  }
+  function findHtml() {
+    const F = D.find, n = count();
+    return `<div class="cfg-find" id="cfg-find">
+      <div class="cfg-find-head"><input class="input" id="cfg-find-q" data-cf="find" value="${esc(F.q)}" placeholder="Search: JST XH, Micro-Fit, MSTB, DSUB-9…" spellcheck="false" autocomplete="off" aria-label="Search the KiCad library">
+        <label class="cfg-check" title="Only models with ${n} positions"><input type="checkbox" data-cf="find-only"${F.only ? ' checked' : ''}>${n} positions</label>
+        <button class="btn" data-cfg="find-close">Back</button></div>
+      <div class="cfg-find-list" id="cfg-find-list"></div>
+      <div class="cfg-find-foot" id="cfg-find-foot"></div></div>`;
+  }
+  function findRows() {
+    const F = D.find, toks = findKey(F.q).split(/\s+/).filter(Boolean), n = count();
+    if (!F.lib || (!toks.length && !F.only)) return { rows: [], total: 0 };
+    const hits = F.lib.rows.filter(r => (!F.only || r.pos === n) && toks.every(t => r.key.includes(t)));
+    hits.sort((a, b) => (b.pos === n) - (a.pos === n) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+    return { rows: hits.slice(0, FIND_MAX), total: hits.length };
+  }
+  // The results and the links, redrawn as the search is typed (the input keeps focus).
+  function drawFind() {
+    const F = D && D.find, list = $('#cfg-find-list'), foot = $('#cfg-find-foot');
+    if (!F || !list) return;
+    const n = count();
+    let o;
+    if (F.err) o = `<div class="cfg-find-msg err">${esc(F.err)}</div>`;
+    else if (!F.lib) o = '<div class="cfg-find-msg"><span class="spinner"></span>Loading the KiCad library list…</div>';
+    else {
+      const { rows, total } = findRows();
+      F.rows = rows;
+      if (!findKey(F.q).trim() && !F.only) o = `<div class="cfg-find-msg">Type a series or part number to search ${F.lib.rows.length.toLocaleString()} connector and terminal block models.</div>`;
+      else if (!rows.length) o = '<div class="cfg-find-msg">Nothing in the KiCad library matches. Try the vendors’ sites below.</div>';
+      else {
+        o = rows.map((r, i) => `<button class="cfg-find-row" data-cfg="kicad" data-i="${i}" title="Fetch ${esc(r.name)}.step">` +
+          `<span class="cfg-find-dir">${esc(r.dir.replace(/^Connector_?/, '') || 'Connector')}</span><span class="cfg-find-name">${esc(r.name)}</span>` +
+          (r.pos ? `<span class="cfg-find-pos${r.pos === n ? ' on' : ''}">${r.pos}</span>` : '') + '</button>').join('');
+        if (total > rows.length) o += `<div class="cfg-find-msg">${(total - rows.length).toLocaleString()} more. Add to the search to narrow it.</div>`;
+      }
+    }
+    list.innerHTML = o;
+    list.scrollTop = 0;
+    const q = encodeURIComponent(F.q.trim());
+    const meta = F.lib && F.lib.meta;
+    foot.innerHTML = `<div class="cfg-find-web"><span>Search the web${q ? '' : ' (type a part number first)'}:</span>` +
+      WEB.map(([name, url]) => q ? `<a href="${esc(url(q))}" target="_blank" rel="noopener noreferrer">${esc(name)}</a>` : `<span class="cfg-find-off">${esc(name)}</span>`).join('') + '</div>' +
+      `<div class="f-hint">Download a STEP there and drop it here. KiCad’s models are the board half (headers, sockets, terminal blocks, D-sub, and FFC); cable housings are rarely there.` +
+      (meta ? ` From the <a href="${esc(KICAD_WEB + meta.sha)}" target="_blank" rel="noopener noreferrer">KiCad 3D library</a> as of ${esc(meta.date)}, ${esc(meta.license)}.` : '') + '</div>';
+  }
+  async function fetchKicad(r) {
+    const meta = D.find.lib.meta, file = r.name + '.step';
+    D.find = null; D.err = ''; D.busy = 'Fetching ' + file + ' from the KiCad library…'; D.tab = 'model';
+    render();
+    try {
+      const res = await fetch(KICAD_RAW + encodeURIComponent(r.dir + '.3dshapes/' + file) + '/raw?ref=' + meta.sha);
+      if (!res.ok) throw new Error("Couldn't fetch " + file + ' from GitLab (' + res.status + ').');
+      const blob = await res.blob();
+      if (!D) return;
+      D.busy = '';
+      await importFile(new File([blob], file));
+    } catch (err) {
+      if (!D) return;
+      D.busy = ''; D.err = String(err.message || err); render();
+    }
   }
 
   // ── The stage ──
@@ -265,10 +376,11 @@
     const st = $('#cfg-stage');
     if (!st) return;
     if (D.tab === 'model' && D.busy) { st.innerHTML = `<div class="cfg-empty"><span class="spinner"></span>${esc(D.busy)}</div>`; return; }
+    if (D.tab === 'model' && D.find) { st.innerHTML = findHtml(); drawFind(); return; }
     if (D.tab === 'model' && D.mode3d && mesh) { st.innerHTML = '<div class="cfg-3d" id="cfg-3d"></div><svg class="cfg-ring" id="cfg-ring3"></svg><div class="cfg-tip glass" id="cfg-tip">Drag to turn · click a face to look straight at it · drag the dot to turn it in place</div>'; mount3d($('#cfg-3d')); return; }
     if (D.tab === 'model' && !D.custom.model) {
-      st.innerHTML = `<div class="cfg-empty cfg-drop" id="cfg-drop">${ico('cube', 'big')}<b>Drop a STEP, IGES, or STL file here</b><span>or</span><div class="cfg-drop-btns"><button class="btn btn-primary" data-cfg="import">Import a model…</button>${demoBtn()}</div>
-        <p class="f-hint">Turn it, or click a face to look straight at it, then make the face view. Loom keeps that drawing; the model itself stays in this tab only. Vendors’ sites and 3D ContentCentral usually have connector models.</p></div>`;
+      st.innerHTML = `<div class="cfg-empty cfg-drop" id="cfg-drop">${ico('cube', 'big')}<b>Drop a STEP, IGES, or STL file here</b><span>or</span><div class="cfg-drop-btns"><button class="btn btn-primary" data-cfg="import">Import a model…</button><button class="btn" data-cfg="find">Find a model…</button>${demoBtn()}</div>
+        <p class="f-hint">Turn it, or click a face to look straight at it, then make the face view. Loom keeps that drawing; the model itself stays in this tab only. Find a model searches the KiCad library and links to vendors’ sites.</p></div>`;
       return;
     }
     st.innerHTML = `<svg id="cfg-svg" class="cfg-svg${D.tab === 'sketch' ? ' sketching' : ''}" xmlns="http://www.w3.org/2000/svg"></svg>`;
@@ -648,6 +760,7 @@
     if (!file) return;
     if (!LM.step.kindOf(file.name)) { D.err = 'Loom reads STEP (.step, .stp), IGES (.iges, .igs), and STL files.'; refresh(); return; }
     D.err = '';
+    D.find = null;
     D.busy = LM.step.kindOf(file.name) === 'stl' ? 'Reading the model…' : 'Reading the model (the STEP reader loads the first time)…';
     D.tab = 'model';
     render();
@@ -1063,7 +1176,7 @@
         render();
         break;
       case 'seg': D[b.dataset.k] = b.dataset.k === 'rows' ? +v : v; b.parentNode.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); refresh(); break;
-      case 'tab': if (D.tab !== v) { D.tab = v; D.sel = null; D.assign = -1; D.err = ''; render(); } break;
+      case 'tab': if (D.tab !== v) { D.tab = v; D.find = null; D.sel = null; D.assign = -1; D.err = ''; render(); } break;
       case 'tool': D.tool = v; D.assign = -1; refresh(); break;
       case 'del-shape': delShape(); break;
       case 'fit': fitView(); draw2d(); break;
@@ -1072,6 +1185,9 @@
       case 'clear-marks': if (confirm('Clear every mark?')) { pushUndo(); part().pins = part().pins.map(() => null); D.assign = -1; refresh(); } break;
       case 'import': $('#cfg-file').click(); break;
       case 'demo-model': loadDemoModel(); break;
+      case 'find': openFind(); break;
+      case 'find-close': D.find = null; render(); break;
+      case 'kicad': { const r = D.find && D.find.rows[+b.dataset.i]; if (r) fetchKicad(r); break; }
       case 'view3d': view3d(v); break;
       case 'spin': spin(+v); break;
       case 'make-face': makeFace(); break;
@@ -1109,6 +1225,7 @@
     if (k === 'pins' && el.type === 'number') { setPositions(el, false); return; }
     if (k === 'ref' || k === 'name') { D[k] = el.value; refresh(); return; }
     if (k === 'kind') { D.custom.kind = el.value; refresh(); return; }
+    if (k === 'find') { if (D.find) { D.find.q = el.value; drawFind(); } return; }
     if (k === 'mark') { D.custom.mark = +el.value || 0; const lab = el.closest('.field').querySelector('label .pc-muted'); if (lab) lab.textContent = D.custom.mark ? D.custom.mark.toFixed(1) + ' mm' : 'auto, ' + r2(Sh.markSize({}, part() ? part().pins : [])).toFixed(1) + ' mm'; draw2d(); const pv = $('#cfg-preview'); if (pv) pv.innerHTML = Sh.faceSvg(api.h(), draftNode(), 520, 260); return; }
     if (k.startsWith('shape.') && e.type === 'input' && el.type !== 'checkbox') {
       const s = selShape(), f = k.slice(6);
@@ -1128,6 +1245,7 @@
     if (k === 'grid') { D.grid = +el.value; draw2d(); return; }
     if (k === 'rot') { const p = part(); if (p && isFinite(+el.value)) rotate(r2(+el.value - (p.rot || 0))); return; }
     if (k === 'trace') { D.trace = el.checked; draw2d(); return; }
+    if (k === 'find-only') { if (D.find) { D.find.only = el.checked; drawFind(); } return; }
     if (k === 'shape.fill') { const s = selShape(); if (s) { pushUndo(); s.fill = el.checked ? undefined : false; if (s.fill === undefined) delete s.fill; draw2d(); } }
   }
   function onKey(e) {
@@ -1135,6 +1253,7 @@
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName) && document.activeElement.type !== 'range' && document.activeElement.type !== 'checkbox';
     if (e.key === 'Escape') {
       e.preventDefault();
+      if (D.find && (!typing || document.activeElement.dataset.cf === 'find')) { D.find = null; render(); return true; }
       if (typing) { document.activeElement.blur(); return true; }
       if (drag) return true;
       if (D.pointUp) { D.pointUp = false; refresh(); ghost(null); return true; }
@@ -1145,6 +1264,7 @@
       return true;
     }
     // Enter in Ref, Name, or Description makes the part; in a number field it only commits it.
+    if (typing && e.key === 'Enter' && e.target.dataset.cf === 'find') { e.preventDefault(); const r = D.find && D.find.rows[0]; if (r) fetchKicad(r); return true; }
     if (typing) { if (e.key === 'Enter') { const k = e.target.dataset.cf; if (k === 'ref' || k === 'name' || k === 'kind') { e.preventDefault(); apply(); } else if (k) { e.preventDefault(); e.target.blur(); } } return true; }
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return true; }
