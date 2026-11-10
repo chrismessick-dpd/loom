@@ -248,7 +248,7 @@ links to it so far. Before every commit:
     `assets/demo/S11M0-P08M.stp.gz` (a vendor's 8-position circular connector, 632 KB of STEP gzipped to
     116 KB; `DecompressionStream`, then `importFile` as a `File`). The guide's Custom connector steps use it.
   - **Find a model** (2026-11-09, Chris: fetch connector models from online libraries inside the suite;
-    not committed). *Find a model…* beside Import (and *Find…* once a model is in) opens a search over
+    pushed `64be995`). *Find a model…* beside Import (and *Find…* once a model is in) opens a search over
     the stage (`openFind`, `findHtml`, `drawFind`, `fetchKicad`; Esc or Back closes it). It searches the
     KiCad 3D library's connector and terminal block models, 3,497 names (about 2,800 are pin headers and
     sockets) listed at one commit in `assets/kicad-models.json` by `python tools/kicad_index.py`
