@@ -41,11 +41,13 @@
   // Whether a stored route still fits its terminals: an odd count of runs (or none, when A and B
   // are level), and its first and last vertical runs at least `stub` out from A and B the way they
   // leave and arrive, so a route never doubles back into a part.
+  // A terminal may carry its own stub (A.stub, B.stub: a breakout needs less room than a part).
+  const stubOf = (T, stub) => (T.stub != null ? T.stub : stub);
   function fits(A, B, v, stub) {
     if (!Array.isArray(v) || v.some(x => !isFinite(+x))) return false;
     if (!v.length) return Math.abs(A.y - B.y) < 0.5 && (B.x - A.x) * A.out > 0 && A.out === B.in;
     if (v.length % 2 === 0) return false;
-    return (v[0] - A.x) * A.out >= stub - 0.5 && (B.x - v[v.length - 1]) * B.in >= stub - 0.5;
+    return (v[0] - A.x) * A.out >= stubOf(A, stub) - 0.5 && (B.x - v[v.length - 1]) * B.in >= stubOf(B, stub) - 0.5;
   }
   // Tidy a route after an edit: a run that has shrunk to nothing goes, and the runs either side of
   // it, now in line, become one (Chris: drag a run flush with its neighbor to remove that bend).
@@ -104,8 +106,8 @@
     // The end runs count from where they clear their own parts (a stub out), which blocks cover.
     const clear = w => fits(A, B, w, stub) && !runs(A, B, w).some(r => {
       if (r.k >= 0) return into(r.a, r.b);
-      if (r.j === 0) return into({ x: A.x + A.out * stub, y: r.a.y }, r.b);
-      return into(r.a, { x: B.x - B.in * stub, y: r.b.y });
+      if (r.j === 0) return into({ x: A.x + A.out * stubOf(A, stub), y: r.a.y }, r.b);
+      return into(r.a, { x: B.x - B.in * stubOf(B, stub), y: r.b.y });
     });
     for (let guard = 0; guard < 20; guard++) {
       const R = runs(A, B, v), short = R.find(r => r.k >= 0 && Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) > 0.5 && Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) < minJog);
@@ -130,7 +132,10 @@
   // of radius r, and a wide route's outer wires would fold round them (Chris, 2026-11-10: a kink
   // where a bundle met its corner); it's drawn as one S-curve spread along the runs either side
   // instead, as long as they have the room.
-  function shape(A, B, v, r) {
+  // need: the tightest bend the route's widest wire can take (its half-width and a little). Where the
+  // corners and S-curves above still bend tighter (a wide bundle dragged into several small steps),
+  // the line is smoothed until none does (ease), keeping its two end runs straight into the pins.
+  function shape(A, B, v, r, need) {
     const raw = corners(A, B, v), C = [];
     raw.forEach(p => { const q = C[C.length - 1]; if (!q || Math.hypot(p.x - q.x, p.y - q.y) > 0.01) C.push(p); });
     // Drop points in line with their neighbors (a zero-length run leaves two runs in line).
@@ -160,7 +165,9 @@
         // Room on the runs either side, past what's at their far ends: a corner, or a jog before
         // this one that shares the run before it.
         const before = d0.L - (jogs.has(i - 2) ? jogs.get(i - 2) : i - 1 > 0 ? Math.min(r, d0.L / 2) : 0), after = d2.L - (i + 1 < n - 2 ? Math.min(r, d2.L / 2) : 0);
-        const hs = Math.min(Math.max(r, 2 * d1.L), before, after);
+        // Only as long as it must be: a cubic S with its handles hs long turns tightest at its ends,
+        // radius 3hs²/(2L), which must clear the route's outer wire (r - 6 from its middle).
+        const hs = Math.min(Math.max(d1.L, Math.sqrt(2 * d1.L * (r - 4) / 3) + 2), before, after);
         if (hs > d1.L * 0.75) jogs.set(i, hs);
       }
       const d0 = seg(0);
@@ -199,7 +206,52 @@
     }
     let s = 0;
     pts.forEach((p, i) => { if (i) s += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y); p.s = s; });
+    if (need && tightest(pts) < need) return ease(pts, s, need, C);
     return { pts, S: s };
+  }
+  // The tightest bend along samples: the turn between points about 8 apart, over that distance.
+  function tightest(pts) {
+    const P = resample(pts, 4);
+    let r = Infinity;
+    for (let i = 2; i < P.length - 2; i++) {
+      const a = P[i - 2], o = P[i], c = P[i + 2];
+      let t = Math.atan2(c.y - o.y, c.x - o.x) - Math.atan2(o.y - a.y, o.x - a.x);
+      while (t > Math.PI) t -= 2 * Math.PI;
+      while (t < -Math.PI) t += 2 * Math.PI;
+      if (Math.abs(t) > 1e-6) r = Math.min(r, 8 / Math.abs(t));
+    }
+    return r;
+  }
+  // Points every d along samples (with s).
+  function resample(pts, d) {
+    const S = pts[pts.length - 1].s, n = Math.max(2, Math.ceil(S / d)), out = [];
+    let j = 1;
+    for (let i = 0; i <= n; i++) {
+      const s = S * i / n;
+      while (j < pts.length - 1 && pts[j].s < s) j++;
+      const a = pts[j - 1], b = pts[j], t = b.s > a.s ? (s - a.s) / (b.s - a.s) : 0;
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+    return out;
+  }
+  // Smooth a line (Laplacian steps) until it bends no tighter than need, its end runs held straight
+  // for as far as they run (up to need) so the wires still leave and reach their pins level.
+  function ease(pts, S, need, C) {
+    const d = 3, P = resample(pts, d), n = P.length;
+    const L0 = Math.min(need, Math.hypot(C[1].x - C[0].x, C[1].y - C[0].y) - 1), L1 = Math.min(need, Math.hypot(C[C.length - 1].x - C[C.length - 2].x, C[C.length - 1].y - C[C.length - 2].y) - 1);
+    const lo = Math.max(1, Math.ceil(L0 / (S / (n - 1)))), hi = n - 1 - Math.max(1, Math.ceil(L1 / (S / (n - 1))));
+    const sampled = () => { let s = 0; return P.map((p, i) => { if (i) s += Math.hypot(p.x - P[i - 1].x, p.y - P[i - 1].y); return { x: p.x, y: p.y, s }; }); };
+    for (let it = 0; it < 1500; it++) {
+      const prev = P.map(p => ({ x: p.x, y: p.y }));
+      for (let i = lo; i <= hi; i++) { P[i].x = prev[i].x + 0.5 * ((prev[i - 1].x + prev[i + 1].x) / 2 - prev[i].x); P[i].y = prev[i].y + 0.5 * ((prev[i - 1].y + prev[i + 1].y) / 2 - prev[i].y); }
+      if (it % 25 === 24 && tightest(sampled()) >= need) break;
+    }
+    const out = sampled();
+    out.forEach((p, i) => {
+      const a = out[Math.max(0, i - 1)], b = out[Math.min(out.length - 1, i + 1)], m = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      p.nx = -(b.y - a.y) / m; p.ny = (b.x - a.x) / m;
+    });
+    return { pts: out, S: out[out.length - 1].s, eased: true };
   }
 
   // ── Finding a route ──
@@ -241,7 +293,7 @@
       const j0 = Math.max(0, Math.ceil((b.y0 - G.y0) / g)), j1 = Math.min(H - 1, Math.floor((b.y1 - G.y0) / g));
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) blocked[j * W + i] = 1;
     });
-    const ta = { x: A.x + A.out * stub, y: A.y }, tb = { x: B.x - B.in * stub, y: B.y };
+    const ta = { x: A.x + A.out * stubOf(A, stub), y: A.y }, tb = { x: B.x - B.in * stubOf(B, stub), y: B.y };
     const s = cellOf(G, ta), t = cellOf(G, tb);
     blocked[s.j * W + s.i] = 0; blocked[t.j * W + t.i] = 0;
     const sd = A.out > 0 ? 0 : 2, td = B.in > 0 ? 0 : 2;

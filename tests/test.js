@@ -107,6 +107,28 @@
       });
     });
   });
+  test('routes: a wide route dragged into small steps bends no tighter than its wires can follow', () => {
+    // Chris's demo, B1 dragged down 30, up 10, and down 50 within about 100 (2026-11-10).
+    const h = LM.demo.harness(), b1 = h.sets.find(s => s.label === 'B1'), key = 'g:' + b1.id;
+    const R0 = LM.conn.layout(h, M.analyze(h), {}).boxes.find(x => x.key === key).item.path.route, x1 = R0.A.x + 380;
+    h.routes = { [key]: { v: [x1, R0.A.y + 30, x1 + 70, R0.A.y + 20, x1 + 100, R0.B.y + 10, R0.B.x - R0.stub - 10], a: R0.A.side, b: R0.B.side } };
+    [h, LM.demo.harness(), LM.fixtures.fanout(), LM.fixtures.directions()].forEach(x => {
+      const Lo = LM.conn.layout(x, M.analyze(x), {});
+      Lo.boxes.forEach(b => {
+        const P = b.item.path, half = P.route.half, pts = P.pts;
+        // The turn over each 8 units of the path, as a radius.
+        const E = [];
+        for (let s = 0; s <= P.S; s += 4) { let i = 1; while (i < pts.length - 1 && pts[i].s < s) i++; const a = pts[i - 1], c = pts[i], t = c.s > a.s ? (s - a.s) / (c.s - a.s) : 0; E.push({ x: a.x + (c.x - a.x) * t, y: a.y + (c.y - a.y) * t }); }
+        for (let i = 2; i < E.length - 2; i++) {
+          const a = E[i - 2], o = E[i], c = E[i + 2];
+          let t = Math.atan2(c.y - o.y, c.x - o.x) - Math.atan2(o.y - a.y, o.x - a.x);
+          while (t > Math.PI) t -= 2 * Math.PI;
+          while (t < -Math.PI) t += 2 * Math.PI;
+          ok(8 / Math.max(1e-6, Math.abs(t)) >= half, x.title + ': ' + b.key + ' bends tighter than its half-width ' + half + ' near ' + Math.round(o.x) + ', ' + Math.round(o.y));
+        }
+      });
+    });
+  });
   test('routes: a shaped route is kept when its parts move, and Real proportions draws boxes', () => {
     const h = LM.fixtures.fanout(), Lo = LM.conn.layout(h, M.analyze(h), {}), b = Lo.boxes[0], R0 = b.item.path.route;
     const v = R0.v.length ? R0.v.map((x, k) => (k % 2 ? x + 20 : x)) : [R0.A.x + R0.A.out * (R0.stub + 30)];
@@ -116,6 +138,21 @@
     const L2 = LM.conn.layout(h, M.analyze(h), {}), P2 = L2.boxes.find(x => x.key === b.key).item.path;
     eq(P2.route.v, v, 'the middle runs stay where they were shaped');
     ok(P2.route.kept, 'and it says so');
+    // A second wire joining a lone one between the same two parts keeps the pair's shape.
+    const lone = L2.boxes.find(x => x.kind === 'stack' && x.wires.length === 1 && x.item.path.route.A.pins && x.item.path.route.B.pins);
+    if (lone) {
+      const R1 = lone.item.path.route, w0 = lone.wires[0], v1 = [R1.A.x + R1.A.out * (R1.stub + 60)];
+      h.routes[lone.key] = { v: v1 };
+      const a = w0.from, bEnd = w0.to, na = M.node(h, a.node), nb = M.node(h, bEnd.node);
+      // On the pins next to the first wire's (a wire to pins further off gets a route of its own).
+      const used = (n, p) => h.wires.some(x => (x.from.node === n.id && x.from.pin === p) || (x.to.node === n.id && x.to.pin === p));
+      const next = (n, pin) => { const L = M.pinList(n), i = L.indexOf(pin); return [L[i + 1], L[i - 1]].find(p => p != null && !used(n, p)); };
+      M.addWire(h, { node: a.node, pin: M.isConn(na) ? next(na, a.pin) : null }, { node: bEnd.node, pin: M.isConn(nb) ? next(nb, bEnd.pin) : null });
+      const L4 = LM.conn.layout(h, M.analyze(h), {}), now = L4.boxes.find(x => x.wires.some(y => y.id === w0.id));
+      eq(now.key, lone.key, 'the pair keeps its key');
+      eq(now.wires.length, 2);
+      ok(now.item.path.route.kept, 'and its shape');
+    }
     const L3 = LM.conn.layout(h, M.analyze(h), { prop: true });
     ok(L3.boxes.every(x => !x.item.path.routed), 'Real proportions keeps its straight boxes');
   });

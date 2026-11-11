@@ -71,7 +71,11 @@
   // order. A wire alone between its two ends is a stack of one: just its label row over the wire,
   // with no badge (Chris). A wire with a loose end is in no box: it curves to its loose end's dot.
   const looseWire = (h, w) => M.isLoose(M.node(h, w.from.node)) || M.isLoose(M.node(h, w.to.node));
-  function boxesOf(h) {
+  // apart: on a route (the arranged view), the loose wires between two parts share one only while
+  // their pins sit next to each other at both ends (Chris, 2026-11-10: S1's wires to P2 pins 2 and 6
+  // made one route as wide as four rows, with big corners and long S-bends); each run of neighbors is
+  // its own group, keyed by the pair and, when the pair has more than one, its first wire.
+  function boxesOf(h, apart) {
     const out = [], taken = new Set();
     M.roots(h).forEach(st => {
       const ws = M.wiresIn(h, st).map(id => M.wire(h, id)).filter(w => w && !looseWire(h, w));
@@ -86,8 +90,28 @@
       if (!pairs.has(k)) pairs.set(k, []);
       pairs.get(k).push(w);
     });
-    pairs.forEach((ws, k) => out.push({ key: (ws.length > 1 ? 'p:' : 's:') + k, kind: 'stack', label: '', wires: ws }));
+    // Keyed by the pair alone, so a shaped route (h.routes) stays when a second wire joins a lone one.
+    pairs.forEach((ws, k) => {
+      const groups = apart ? neighbors(h, k.split('|'), ws) : [ws];
+      groups.forEach((g, i) => out.push({ key: 'p:' + k + (groups.length > 1 && i ? '~' + g[0].id : ''), kind: 'stack', label: '', wires: g }));
+    });
     return out;
+  }
+
+  // Runs of wires whose pins are neighbors at both ends: ordered by their pins on the first part, a
+  // wire joins the run before it when its pins are one away from that wire's at both ends (a splice's
+  // ports always are; they're ordered to suit).
+  function neighbors(h, nodes, ws) {
+    const at = (w, id) => { const e = w.from.node === id ? w.from : w.to, n = M.node(h, id); return M.isConn(n) ? M.pinList(n).indexOf(e.pin) : null; };
+    const list = ws.slice().sort((a, b) => (at(a, nodes[0]) ?? a.no) - (at(b, nodes[0]) ?? b.no) || (at(a, nodes[1]) ?? a.no) - (at(b, nodes[1]) ?? b.no));
+    const runs = [];
+    list.forEach(w => {
+      const run = runs[runs.length - 1], last = run && run[run.length - 1];
+      const step = id => { const p = at(last, id), q = at(w, id); return p == null || q == null ? true : Math.abs(p - q) === 1; };
+      if (run && step(nodes[0]) && step(nodes[1])) run.push(w); else runs.push([w]);
+    });
+    // The first run keeps the pair's own key; list them in wire order otherwise.
+    return runs.sort((a, b) => Math.min(...a.map(w => w.no)) - Math.min(...b.map(w => w.no)));
   }
 
   // Columns: breadth-first distance from the busiest connector orients each joined pair, then each end
@@ -289,7 +313,7 @@
   function layout(h, A, view) {
     A = A || M.analyze(h);
     const prop = !!(view && view.prop);
-    const boxes = boxesOf(h);
+    const boxes = boxesOf(h, !prop);
     const R = ranks(h, boxes);
     const items = [];
     const itemOf = new Map();
@@ -637,6 +661,12 @@
       // the route, level with the middle of the pins (Chris's harnesses: a bundle splitting to two
       // loads). dir is set so the route leaves it (A) or arrives (B) heading toward the parts.
       const as = es.map(e => anchor(e, towardX)), ys = as.map(p => p.y), xs = as.map(p => p.x);
+      const at = h.routes && h.routes[b.key] && h.routes[b.key]['split' + k];
+      // Dragged (Chris, 2026-11-10: the split point should move), it stays where it was put.
+      if (at && isFinite(+at.x) && isFinite(+at.y)) {
+        const head = towardX < +at.x ? 1 : -1;
+        return { x: +at.x, y: +at.y, dir: head, pins: false, placed: true };
+      }
       const fromLeft = towardX < xs.reduce((t, x) => t + x, 0) / xs.length;
       const x = fromLeft ? Math.min(...xs) - BREAK : Math.max(...xs) + BREAK, head = fromLeft ? 1 : -1;
       return { x, y: Math.round((Math.min(...ys) + Math.max(...ys)) / 2 / 10) * 10, dir: head, pins: false };
@@ -668,10 +698,10 @@
           // A breakout too close to the other end for two corners goes level with it, so the trunk
           // runs straight and its wires fan out from there (a bundle splitting just past X1 zigzagged).
           const room = (tB.x - tA.x) * (tA.pins ? tA.dir : -tA.dir), need = 2 * (reachOf(it) + 20) + 40;
-          if (room < need) { if (!tB.pins && tA.pins) tB.y = tA.y; else if (!tA.pins && tB.pins) tA.y = tB.y; }
+          if (room < need) { if (!tB.pins && !tB.placed && tA.pins) tB.y = tA.y; else if (!tA.pins && !tA.placed && tB.pins) tA.y = tB.y; }
           return {
-            A: { x: tA.x, y: tA.y, out: tA.pins ? tA.dir : -tA.dir, pins: tA.pins, node: tA.node, side: tA.side, conn: tA.conn, spread: tA.spread || 0 },
-            B: { x: tB.x, y: tB.y, in: tB.pins ? -tB.dir : tB.dir, pins: tB.pins, node: tB.node, side: tB.side, conn: tB.conn, spread: tB.spread || 0 },
+            A: { x: tA.x, y: tA.y, out: tA.pins ? tA.dir : -tA.dir, pins: tA.pins, node: tA.node, side: tA.side, conn: tA.conn, spread: tA.spread || 0, stub: tA.pins ? undefined : Math.round(reachOf(it) + 10) },
+            B: { x: tB.x, y: tB.y, in: tB.pins ? -tB.dir : tB.dir, pins: tB.pins, node: tB.node, side: tB.side, conn: tB.conn, spread: tB.spread || 0, stub: tB.pins ? undefined : Math.round(reachOf(it) + 10) },
           };
         };
         // As wide as its rows, or as its pins where they're spread wider (the wires keep their pins'
@@ -742,12 +772,14 @@
       const next = { whole, v: new Map(), sig: new Map() };
       all.forEach(o => { const R0 = routes.get(o.b.key); next.v.set(o.b.key, { v: R0.v, a: R0.A.side, b: R0.B.side }); next.sig.set(o.b.key, sig(o)); });
       routeCache.set(h.id, next);
+      routing = { G, rects };
     }
+    let routing = null;
     if (!prop) routeAll();
     boxes.forEach(b => {
       const it = b.item, sz = it.sz, isSet = b.kind === 'set', cy = midY(it);
       if (!prop) {
-        const R0 = routes.get(b.key), sh = RT.shape(R0.A, R0.B, R0.v, R0.r);
+        const R0 = routes.get(b.key), sh = RT.shape(R0.A, R0.B, R0.v, R0.r, R0.half + 4);
         it.path = { pts: sh.pts, S: sh.S, aL: 0, Ls: sh.S, aR: 0, cy, routed: true, route: R0, xa: R0.A.x, xb: R0.B.x };
         it.path.ease = easeSpan(it.path);
       } else {
@@ -774,6 +806,58 @@
         sz.arc.set(st.id, span(r.l / sz.k, S - r.r / sz.k, 0, S));
       });
     });
+    // A breakout's branches (Chris, 2026-11-10): each wire runs on from where it leaves the trunk to
+    // its own pin as a route of its own, at right angles round the parts like the rest, keeping clear
+    // of the routes laid so far; a connector's pin from either edge, the cheaper. R0.branches holds
+    // each wire's, by wire id: { A, B, v, r } from the pin side (A) or the trunk side (B).
+    function routeBranches() {
+      if (!routing) return;
+      const { G, rects } = routing, m = 3 + 8, blocks = rects.map(r => ({ x0: r.x0 - m, y0: r.y0 - m, x1: r.x1 + m, y1: r.y1 + m }));
+      boxes.forEach(b => {
+        const it = b.item, P = it.path, R0 = P && P.route;
+        if (!R0 || (R0.A.pins && R0.B.pins)) return;
+        R0.branches = new Map();
+        // For branches that must share a narrow gap: the wire going furthest from the trunk turns
+        // first, so none crosses another (rank, by side).
+        const rank = [0, 1].map(k => { const T = k ? R0.B : R0.A; return b.wires.slice().sort((p, q) => Math.abs(endY(leftFirst(q)[k]) - T.y) - Math.abs(endY(leftFirst(p)[k]) - T.y)).map(w => w.id); });
+        b.wires.forEach(w => {
+          [0, 1].forEach(k => {
+            const T = k ? R0.B : R0.A;
+            if (T.pins) return;
+            const e = leftFirst(w)[k], u = k ? P.S : 0, at = wpt(w, it, u, baseAt(w, it, u)), pit = itemOf.get(e.node);
+            if (!pit) return;
+            // The trunk's end: leaving it the way the trunk runs there.
+            const dirT = k ? R0.B.in : -R0.A.out;
+            const sides = pit.kind === 'conn' ? ['l', 'r'] : [null];
+            let best = null;
+            // Close to its pins, the split fans straight out to them (below); further, each branch routes.
+            const close = Math.abs(anchor(e, at.x).x - at.x) < 120;
+            if (!close) sides.forEach(sd => {
+              const q = pinAt(e, sd), right = q.x > pit.x + pit.w / 2, out = right ? 1 : -1;
+              // Route from the pin (A) to the trunk (B), or from the trunk (A) to the pin (B).
+              const pinT = { x: q.x, y: q.y, node: e.node, pins: true, side: right ? 'r' : 'l' };
+              const A2 = k ? { x: at.x, y: at.y, out: dirT, stub: 12 } : Object.assign({ out }, pinT);
+              const B2 = k ? Object.assign({ in: -out }, pinT) : { x: at.x, y: at.y, in: -dirT, stub: 12 };
+              const v = RT.auto(G, A2, B2, blocks, 23, 26);
+              if (v && RT.fits(A2, B2, v, 23) && (!best || v.cost < best.v.cost - 0.5)) best = { A: A2, B: B2, v };
+            });
+            // No room to keep clear of the others (a split close to its parts): one vertical run halfway
+            // across the gap, sharing it.
+            if (!best) sides.slice(0, 1).forEach(sd => {
+              const q = pinAt(e, sd), right = q.x > pit.x + pit.w / 2, out = right ? 1 : -1, pinT = { x: q.x, y: q.y, node: e.node, pins: true, side: right ? 'r' : 'l' };
+              const A2 = k ? { x: at.x, y: at.y, out: dirT, stub: 0 } : Object.assign({ out, stub: 0 }, pinT), B2 = k ? Object.assign({ in: -out, stub: 0 }, pinT) : { x: at.x, y: at.y, in: -dirT, stub: 0 };
+              const n = rank[k].length, i = rank[k].indexOf(w.id), f = (k ? i + 1 : n - i) / (n + 1);
+              const v = Math.abs(A2.y - B2.y) < 0.5 ? [] : [Math.round(A2.x + (B2.x - A2.x) * f)];
+              if (RT.fits(A2, B2, v, 0)) best = { A: A2, B: B2, v };
+            });
+            if (!best) return;
+            RT.occupy(G, best.A, best.B, best.v, 6);
+            if (pit.kind === 'conn') { if (!pinSides.has(e.node)) pinSides.set(e.node, new Set()); pinSides.get(e.node).add((k ? best.B : best.A).side); }
+            R0.branches.set(w.id, { A: best.A, B: best.B, v: best.v, r: 13, k });
+          });
+        });
+      });
+    }
     // Where a routed wire sits across its path (Chris, 2026-11-10: a pair whose pins are two rows
     // apart kinked where it was squeezed to its rows at a corner). It keeps its pins' spacing from the
     // A end; where the B end's pins are spaced or ordered otherwise, it changes over once, along the
@@ -878,6 +962,7 @@
     const wpt = (w, it, u, base) => { const p = pathAt(it.path, u), o = packAt(w, u, base) - it.path.cy; return { x: p.x + p.nx * o, y: p.y + p.ny * o }; };
     // A boxed wire's height in row space at u before packing: its row, or on a route, eased to its pins.
     const rowBase = (w, it, u) => (it.path && it.path.routed ? baseAt(w, it, u) : boxRowY.get(w.id));
+    routeBranches();
     const steps = (a, b, d) => { const n = Math.max(1, Math.ceil(Math.abs(b - a) / d)); return [...Array(n + 1)].map((_, i) => a + (b - a) * i / n); };
     const tanAt = (P, u) => { const p = pathAt(P, u); return { x: p.ny, y: -p.nx }; };
 
@@ -939,10 +1024,14 @@
     }
     // A routed wire's two ends past its path: at a part's pins it starts on the path itself; at a
     // breakout it curves on from the path's end to its pin, leaving along the path.
+    // At a breakout the wire runs on along its branch (routeBranches) to its pin, as points: head
+    // (pin to trunk) or tail (trunk to pin); a curve where it has none.
     function routedEnds(w, e, pts) {
       const { it, l, r } = e, P = it.path, R0 = P.route, a = pts[0], z = pts[pts.length - 1];
-      const L0 = R0.A.pins ? a : anchor(l, a.x), Z = R0.B.pins ? z : anchor(r, z.x);
-      return { L0, Z, head: R0.A.pins ? null : [L0, a, null, tanAt(P, 0)], tail: R0.B.pins ? null : [z, Z, tanAt(P, P.S), null] };
+      const br = R0.branches && R0.branches.get(w.id), bp = br && RT.shape(br.A, br.B, br.v, br.r).pts.map(p => ({ x: p.x, y: p.y }));
+      const head = R0.A.pins ? null : br && br.k === 0 && bp ? bp.slice(0, -1) : curvePts(anchor(l, a.x), a, null, tanAt(P, 0)).slice(0, -1);
+      const tail = R0.B.pins ? null : br && br.k === 1 && bp ? bp.slice(1) : curvePts(z, anchor(r, z.x), tanAt(P, P.S), null).slice(1);
+      return { L0: head ? head[0] : a, Z: tail ? tail[tail.length - 1] : z, head, tail };
     }
     const whichOf = (w, e) => (e === w.from ? 'from' : 'to');
     // A wire's path, plus its two ends (where each meets its pin, port, or loose end) for the drag
@@ -965,8 +1054,8 @@
       const { it, l, r } = e, run = runPts(w, e, true), pts = run.pts, a = pts[0], z = pts[pts.length - 1];
       const line = pts.slice(1).map(q => `L${f(q.x)} ${f(q.y)}`).join('');
       if (it.path && it.path.routed) {
-        const E = routedEnds(w, e, pts);
-        return { d: `M${f(E.L0.x)} ${f(E.L0.y)}` + (E.head ? curve(...E.head) : '') + (E.head ? `L${f(a.x)} ${f(a.y)}` : '') + line + (E.tail ? curve(...E.tail) : ''), over: overOf(pts),
+        const E = routedEnds(w, e, pts), all = (E.head || []).concat(pts, E.tail || []);
+        return { d: `M${f(all[0].x)} ${f(all[0].y)}` + all.slice(1).map(q => `L${f(q.x)} ${f(q.y)}`).join(''), over: overOf(pts),
           ends: [{ which: whichOf(w, l), at: E.L0, e: l }, { which: whichOf(w, r), at: E.Z, e: r }] };
       }
       const L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
@@ -1108,7 +1197,7 @@
         let pts;
         if (it.path && it.path.routed) {
           const E = routedEnds(w, e, mid);
-          pts = (E.head ? curvePts(...E.head).slice(0, -1) : []).concat(mid, E.tail ? curvePts(...E.tail).slice(1) : []);
+          pts = (E.head || []).concat(mid, E.tail || []);
         } else {
           const L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
           pts = curvePts(L0, mid[0]).concat(mid.slice(1, -1), curvePts(mid[mid.length - 1], R0));
@@ -1179,7 +1268,8 @@
       if (labelU.has(it)) return labelU.get(it);
       const P = it.path, F = Math.min(it.path.route.stub + 6, P.S / 3);
       // Not where its wires change spacing (P.ease), nor on packed sets and their fans.
-      const bad = packSpans(it.sz).map(sp => { const a = it.sz.arc.get(sp.s.id); return a && [a.u0 - fanLen(sp), a.u1 + fanLen(sp)]; }).filter(Boolean).concat([[P.ease.u0 - 4, P.ease.u1 + 4]]);
+      // Any set that packs or twists its wires counts, not just the outermost (TP1 runs on past B1).
+      const bad = (it.sz.spans || []).filter(sp => rides(sp.s)).map(sp => { const a = it.sz.arc.get(sp.s.id); return a && [a.u0 - fanLen(sp), a.u1 + fanLen(sp)]; }).filter(Boolean).concat([[P.ease.u0 - 4, P.ease.u1 + 4]]);
       let pieces = [];
       for (let i = 1; i < P.pts.length; i++) {
         const a = P.pts[i - 1], b = P.pts[i];
@@ -1187,7 +1277,12 @@
         const last = pieces[pieces.length - 1];
         if (last && Math.abs(last[1] - a.s) < 0.01) last[1] = b.s; else pieces.push([a.s, b.s]);
       }
-      pieces = pieces.map(([a, b]) => [Math.max(a, F), Math.min(b, P.S - F)]).filter(([a, b]) => b - a > 4);
+      // For the clear-spot search, the whole level stretches but the last few units at each end (a
+      // label's clearance from the parts is checked as such); for the fallback, clear of the ends.
+      const cut = (list, e) => list.map(([a, b]) => [Math.max(a, e), Math.min(b, P.S - e)]).filter(([a, b]) => b - a > 4);
+      const drop = list => { let out = list; bad.forEach(([a, b]) => { out = out.flatMap(([p, q]) => (b <= p || a >= q ? [[p, q]] : [[p, Math.max(p, a)], [Math.min(q, b), q]]).filter(([x, y]) => y - x > 4)); }); return out; };
+      const wide = drop(cut(pieces, 6));
+      pieces = cut(pieces, F);
       const level = pieces.slice();
       bad.forEach(([a, b]) => { pieces = pieces.flatMap(([p, q]) => (b <= p || a >= q ? [[p, q]] : [[p, Math.max(p, a)], [Math.min(q, b), q]]).filter(([x, y]) => y - x > 4)); });
       // With no clear stretch (a cable or twist the length of the route), the labels stack under the
@@ -1198,7 +1293,42 @@
         const left = pathAt(P, a).x <= pathAt(P, b).x ? a : b;
         return b - a >= it.sz.inner + 30 ? left + (left === a ? 10 : -10) : (a + b) / 2;
       };
-      if (pieces.length) u = pick(pieces);
+      // Clear of the parts (Chris, 2026-11-10: a short wire's label ran into the part at its end): try
+      // spots along each stretch, longest first, from its left end in, and take the first where no
+      // wire's label (its box's label width, over its wire) overlaps a connector or splice.
+      const cards = items.filter(i => i.kind === 'conn' || i.kind === 'splice');
+      const live = it.sz.rows.filter(r => r.w).map(r => r.w);
+      // A label sits right of its dot ('r'), else left of it ('l'), or for a lone wire beside a
+      // vertical run ('v'), whichever is clear first.
+      const inner = it.sz.inner;
+      const rectOf = (d, mode) => (mode === 'l' ? [d.x - DOT_GAP - inner - 4, d.y - 17, d.x - DOT_GAP + 4, d.y + 3]
+        : mode === 'v' ? [d.x + DOT_GAP - 4, d.y - 8, d.x + DOT_GAP + inner + 4, d.y + 12] : [d.x + DOT_GAP - 4, d.y - 17, d.x + DOT_GAP + inner + 4, d.y + 3]);
+      const clearAt = (u0, mode) => live.every(w => {
+        const [x0, y0, x1, y1] = rectOf(wpt(w, it, u0, baseAt(w, it, u0)), mode);
+        return !cards.some(c => x0 < c.x + c.w && c.x < x1 && y0 < c.y + c.h && c.y < y1);
+      });
+      const clearIn = (list, modes) => {
+        for (const [a, b] of list.slice().sort((p, q) => (q[1] - q[0]) - (p[1] - p[0]))) {
+          const leftFirst = pathAt(P, a).x <= pathAt(P, b).x, n = Math.max(1, Math.floor((b - a) / 8));
+          for (let i = 0; i <= n; i++) {
+            const t = Math.min(b, Math.max(a, leftFirst ? a + 10 + i * 8 : b - 10 - i * 8));
+            for (const mode of modes) if (clearAt(t, mode)) return { u: t, mode };
+          }
+        }
+        return null;
+      };
+      // The route's vertical stretches, for a lone wire's label.
+      const upright = [];
+      for (let i = 1; i < P.pts.length; i++) {
+        const a = P.pts[i - 1], b = P.pts[i];
+        if (Math.abs(a.x - b.x) > 0.01 || Math.abs(a.y - b.y) < 0.01) continue;
+        const last = upright[upright.length - 1];
+        if (last && Math.abs(last[1] - a.s) < 0.01) last[1] = b.s; else upright.push([a.s, b.s]);
+      }
+      const ups = upright.map(([a, b]) => [Math.max(a, F), Math.min(b, P.S - F)]).filter(([a, b]) => b - a > 20);
+      const clear = (wide.length ? clearIn(wide, ['r', 'l']) : null) || (live.length === 1 && ups.length ? clearIn(ups, ['v']) : null);
+      if (clear) { labelU.set(it, { u: clear.u, under: false, mode: clear.mode }); return labelU.get(it); }
+      else if (pieces.length) u = pick(pieces);
       else if (level.length) { u = pick(level); under = true; }
       else under = bad.some(([a, b]) => u > a && u < b);
       labelU.set(it, { u, under });
@@ -1222,7 +1352,10 @@
           }
         }
         const s = project(ln, dot), o = w.labelOff, set = o && isFinite(+o.dx) && isFinite(+o.dy);
-        return { dot, x0: set ? dot.x + +o.dx : at ? at.x0 : dot.x + DOT_GAP, ty: set ? dot.y + +o.dy : at ? at.ty : dot.y - 5, t: ln.S ? s / ln.S : 0.5, it };
+        const mode = t == null && !set && !at ? routedLabelU(it).mode : null;
+        const x0 = set ? dot.x + +o.dx : at ? at.x0 : mode === 'l' ? dot.x - DOT_GAP - it.sz.inner : dot.x + DOT_GAP;
+        const ty = set ? dot.y + +o.dy : at ? at.ty : mode === 'v' ? dot.y + 4 : dot.y - 5;
+        return { dot, x0, ty, t: ln.S ? s / ln.S : 0.5, it, left: mode === 'l' };
       }
       const x0d = labelX0(it), ry = boxRowY.get(w.id), lift = offLane.has(it) ? offLane.get(it).get(w.id) || 0 : 0;
       const t = w.labelAt == null ? null : Math.min(1, Math.max(0, +w.labelAt));
@@ -1744,7 +1877,7 @@
     const L = Lo.labelAt(w);
     if (!L) return '';
     const sz = L.it.sz, c = sz.cols, r = sz.text.get(w.id), x0 = L.x0, ty = L.ty, d = L.dot;
-    const ax = x0 - 4, ay = ty - 4, far = Math.hypot(ax - d.x, ay - d.y) > 3.5;
+    const ax = L.left ? x0 + sz.inner + 4 : x0 - 4, ay = ty - 4, far = Math.hypot(ax - d.x, ay - d.y) > 3.5;
     const lead = far ? `<path class="cv-ldot-lead" d="M${f(d.x)} ${f(d.y)}L${f(ax)} ${f(ay)}"/>` : '';
     const grab = opts.sheet ? '' : `<rect class="cv-lgrab" x="${f(x0 - 5)}" y="${f(ty - 12)}" width="${f(sz.inner + 10)}" height="15" rx="5"/>`;
     const dot = (opts.sheet ? '' : `<circle class="cv-ldot-hit" cx="${f(d.x)}" cy="${f(d.y)}" r="7" data-ldot="${w.id}"/>`) +
@@ -1805,17 +1938,26 @@
     // Each selected route's middle runs get a handle (canvas only): a small bar at the run's middle,
     // along it, to drag the run sideways (app.js). A wire's or set's line drags the run under the
     // pointer too; the handles show which runs move.
+    // They sit under the sets' grips and badges, so a set's end still drags where a run's middle meets it.
+    let runs = '';
     if (!opts.sheet && !opts.prop) Lo.boxes.forEach(b => {
       const it = b.item;
       if (!it.path || !it.path.routed || !(boxSel(it, opts) || b.wires.some(w => opts.pick.wire.has(w.id)) || it.sz.spans.some(sp => spanSel(sp, opts)))) return;
       Lo.routeRuns(b.key).forEach(r => {
         const mx = (r.a.x + r.b.x) / 2, my = (r.a.y + r.b.y) / 2, L = Math.min(18, Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) / 2), hv = r.axis === 'h';
-        dots += `<g class="cv-run ${r.axis}" data-run="${esc(b.key)}|${r.j}"><rect class="cv-run-hit" x="${f(mx - (hv ? L + 4 : 8))}" y="${f(my - (hv ? 8 : L + 4))}" width="${f(hv ? 2 * L + 8 : 16)}" height="${f(hv ? 16 : 2 * L + 8)}" rx="6"/>` +
+        runs += `<g class="cv-run ${r.axis}" data-run="${esc(b.key)}|${r.j}"><rect class="cv-run-hit" x="${f(mx - (hv ? L + 4 : 8))}" y="${f(my - (hv ? 8 : L + 4))}" width="${f(hv ? 2 * L + 8 : 16)}" height="${f(hv ? 16 : 2 * L + 8)}" rx="6"/>` +
           `<rect class="cv-run-bar" x="${f(mx - (hv ? L : 2.5))}" y="${f(my - (hv ? 2.5 : L))}" width="${f(hv ? 2 * L : 5)}" height="${f(hv ? 5 : 2 * L)}" rx="2.5"/></g>`;
+      });
+      // Where a bundle splits to several parts: a diamond to drag the split point anywhere.
+      const R0 = it.path.route;
+      [[R0.A, 0], [R0.B, 1]].forEach(([T, k]) => {
+        if (T.pins) return;
+        dots += `<g class="cv-split" data-split="${esc(b.key)}|${k}"><title>Drag to move where the wires split</title><circle class="cv-split-hit" cx="${f(T.x)}" cy="${f(T.y)}" r="11"/>` +
+          `<rect class="cv-split-dot" x="${f(T.x - 5)}" y="${f(T.y - 5)}" width="10" height="10" rx="2" transform="rotate(45 ${f(T.x)} ${f(T.y)})"/></g>`;
       });
     });
     const notes = (h.callouts || []).map(c => noteSvg(c, Lo, opts)).join('');
-    return { svg: backs + wires + overs + fronts + ends + labels + dots + notes, box: Lo.box, layout: Lo };
+    return { svg: backs + wires + overs + runs + fronts + ends + labels + dots + notes, box: Lo.box, layout: Lo };
   }
 
   // A set's badge as drawn (its spot, its dot, and where along the set that is), for dragging it.

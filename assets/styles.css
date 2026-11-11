@@ -690,6 +690,11 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-run-hit { fill: transparent; }
 .lm-canvas .cv-run-bar { fill: var(--cv-sel); stroke: var(--cv-halo); stroke-width: 1.2; opacity: 0.85; }
 .lm-canvas .cv-run:hover .cv-run-bar { opacity: 1; filter: drop-shadow(0 0 4px var(--cv-glow)); }
+/* Where a bundle splits to several parts: a diamond that drags the split point. */
+.lm-canvas .cv-split { cursor: move; }
+.lm-canvas .cv-split-hit { fill: transparent; }
+.lm-canvas .cv-split-dot { fill: var(--cv-sel); stroke: var(--cv-halo); stroke-width: 1.4; }
+.lm-canvas .cv-split:hover .cv-split-dot { filter: drop-shadow(0 0 4px var(--cv-glow)); }
 .lm-canvas .cv-setend-hit { fill: transparent; }
 .lm-canvas .cv-setend-grip { fill: var(--cv-sel); opacity: 0; transition: opacity 0.15s; pointer-events: none; }
 .lm-canvas .cv-setend:hover .cv-setend-grip, .lm-canvas .cv-setend.on .cv-setend-grip { opacity: 1; }

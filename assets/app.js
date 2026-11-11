@@ -669,8 +669,11 @@
     // the straight run of its route under the pointer sideways (dragRun). A click without moving
     // still selects, and Shift-drag from a line still draws a box. A set's area doesn't move its box.
     if (g.item && g.item.startsWith('b:') && !fold.prop) g.item = null;
-    g.run = runUnder(e, g);
-    if (g.button === 0 && !g.touch && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge && !g.run) g.marquee = true;
+    // A bundle's split point (data-split: the box key, a |, and 0 or 1 for which end) drags anywhere.
+    const splitEl = g.button === 0 && !g.touch && e.target.closest('[data-split]');
+    if (splitEl) { const d = splitEl.dataset.split, cut = d.lastIndexOf('|'); g.split = { key: d.slice(0, cut), k: +d.slice(cut + 1) }; g.item = null; }
+    g.run = g.split ? null : runUnder(e, g);
+    if (g.button === 0 && !g.touch && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge && !g.run && !g.split) g.marquee = true;
     svgEl().setPointerCapture(e.pointerId);
   }
   // Where a dragged wire end would land: a splice (the side and port slot under the pointer), a
@@ -737,6 +740,17 @@
     if (g.area) { dragArea(g, e); return; }
     if (g.setEnd) { dragSetEnd(g, e); return; }
     if (g.run) { dragRun(g, e); return; }
+    if (g.split) {
+      // Snapped to the grid (Ctrl: anywhere), kept as h.routes[key].split0 or split1 (conn.js terminal).
+      const h = H();
+      if (!g.moved) { snapshot(); svgEl().classList.add('dragging'); }
+      g.moved = true;
+      const q = toWorld(e), gs = gridOf(h), free = e.ctrlKey || e.metaKey || !gs, snap = v => (free ? Math.round(v) : Math.round(v / gs) * gs);
+      h.routes = h.routes || {};
+      h.routes[g.split.key] = Object.assign({}, h.routes[g.split.key], { ['split' + g.split.k]: { x: snap(q.x), y: snap(q.y) } });
+      renderCanvas(null, { fast: true });
+      return;
+    }
     if (g.label) { (g.ldot ? slideDot : moveLabel)(g, e); return; }
     if (g.badge) { dragBadge(g, e); return; }
     if (g.note) {
@@ -982,6 +996,7 @@
       if (g.moved) { renderCanvas(); toast('Drag a bigger box, or click a part to pin the note to it.'); return; }
     }
     if (g && g.marquee && g.moved) { finishMarquee(g); return; }
+    if (g && g.split && g.moved) { svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.run && g.moved) { const r = H().routes[g.run.key], R1 = lastLayout && lastLayout.runAt(g.run.key, { x: 0, y: 0 }); if (r && R1) { r.v = LM.route.tidy(R1.route.A, R1.route.B, r.v); r.a = R1.route.A.side; r.b = R1.route.B.side; } svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && (g.setEnd || g.note || g.badge || g.area) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
@@ -1310,7 +1325,7 @@
     const rs = rkey && h.routes && h.routes[rkey], behind = !!(rs && rs.mode === 'behind');
     const routeItems = rkey ? `<button data-ctx="around" role="menuitemradio" aria-checked="${!behind}"><span>${behind ? '' : '✓ '}Walk around parts</span></button>` +
       `<button data-ctx="behind" role="menuitemradio" aria-checked="${behind}"><span>${behind ? '✓ ' : ''}Go behind parts</span></button>` +
-      (rs && rs.v ? `<button data-ctx="reset-route" role="menuitem"><span>Reset route</span></button>` : '') + '<hr>' : '';
+      (rs && (rs.v || rs.split0 || rs.split1) ? `<button data-ctx="reset-route" role="menuitem"><span>Reset route</span></button>` : '') + '<hr>' : '';
     const m = document.createElement('div');
     m.className = 'menu lm-ctx';
     m.setAttribute('role', 'menu');
@@ -1328,7 +1343,7 @@
         if (k === 'behind') r.mode = 'behind'; else delete r.mode;
         if (r.v || r.mode) x.routes[rkey] = r; else delete x.routes[rkey];
       });
-      else if (k === 'reset-route') change(x => { const r = x.routes && x.routes[rkey]; if (r) { delete r.v; delete r.a; delete r.b; if (!r.mode) delete x.routes[rkey]; } });
+      else if (k === 'reset-route') change(x => { const r = x.routes && x.routes[rkey]; if (r) { delete r.v; delete r.a; delete r.b; delete r.split0; delete r.split1; if (!r.mode) delete x.routes[rkey]; } });
       else if (k === 'copy') copyParts(ids);
       else pasteParts(at);
     });

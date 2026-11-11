@@ -34,6 +34,8 @@ links to it so far. Before every commit:
   harness, `tests/fixture-fanout.js`. Second round the same day (Chris): either connector edge, parts
   crossed only when walking round is much longer, drags never stopped, right-click *Walk around parts* /
   *Go behind parts*, no kinks (one spacing change on the longest straight, S-curve jogs). Tests 34.
+  Third round: labels placed clear of parts, a draggable split diamond with routed branches, and a
+  pair's shape kept when a wire joins it (stacks keyed `p:<pair>`). See `docs/routing.md`.
 - **Tools switcher (2026-11-09, Chris; pushed `b960a66`):** signed in, the sidebar's Dovetail Signoff list adds Signoff
   EE, ME, FW, and PL (FTE only, `R.access() === 'fte'`) and folds to a row of icons like Signoff EE's (`renderTools`,
   `setupToolsFold` in `app.js`, a copy of the engine's); signed out it's Fabcheck and All tools as before.

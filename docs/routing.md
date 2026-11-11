@@ -34,6 +34,41 @@ otherwise"); maybe a right-click choice of walk around, push, or ignore.
 - **Demo.** S1 sat on P2 once routes ran B1 to P2's pins (it was placed at B1's right end): it's now
   two thirds of the way from P1 to P2 (demo `VERSION` 17).
 
+## Third round (2026-11-10, Chris: "functioning very well … continue with the rest")
+
+- **Labels clear of parts.** A group's labels try spots along every level stretch, longest first,
+  right of their dots and then left, and for a lone wire beside a vertical run, and take the first
+  where no label overlaps a connector or splice. Where none is clear (a label longer than the gap
+  between two parts), they go under the wires as before; they can still be dragged.
+- **Split points.** A bundle that splits to several parts has a diamond at its split point (on a
+  selected bundle) that drags anywhere, snapped to the grid (`h.routes[key].split0` or `split1`). Each
+  wire then runs on to its pin as a route of its own, at right angles round the parts (conn.js
+  `routeBranches`; the pin from either edge of a connector). Within 120 units of its pins the split
+  fans out instead, the wire going furthest turning first so none cross. Reset route forgets the split.
+- **Shapes keep.** The loose wires between two parts are one group whatever their number
+  (`p:<pair>`), so a shaped route stays when a second wire joins next to it.
+- **Groups of neighbors only** (Chris: "all the black wires on the splice" in the demo). Loose wires
+  between two parts share a route only while their pins are next to each other at both ends
+  (conn.js `neighbors`); S1's wires to P2 pins 2 and 6 used to make one route four rows wide, with
+  big corners and long S-bends. Each run of neighbors is its own group (`p:<pair>~<first wire id>`
+  after the first). S-bends are only as long as the route's width needs. Labels keep clear of every
+  set that packs or twists, not only the outermost (TP1's labels overlapped past B1).
+- **Wide routes in small steps** (Chris: B1 dragged into steps of 30, 10, and 50 within about 100
+  folded its outer wires). Where a route's corners and S-curves still bend tighter than its widest
+  wire can follow (half-width + 4), route.js `shape` smooths the whole line (`ease`: Laplacian steps
+  on samples 3 apart) until none does, its end runs held straight into the pins. The runs and their
+  handles stay where they were dragged; only the drawing eases. Sets, lacing, shields, and twists
+  ride the eased line, and a set's end grip still slides along it. Run handles now sit under set
+  grips and badges (a handle covered B1's end grip). A test drags B1 into the same steps and checks
+  that no route bends tighter than its half-width. Tests 35.
+- Still: a shaped route whose end run ends up shorter than its stub (a part moved close) turns
+  tightly into its pins.
+- A route's end may carry its own stub (route.js `stubOf`): a split point needs room for its corner
+  only, not a part's clearance.
+- Guide: the shaping step mentions the split diamond and the right-click choices. The tour's Loom
+  steps ring connectors only and are unaffected.
+- Tests 34 (the shaped-route test also adds a second wire to a shaped pair).
+
 ## What it does
 
 - **Every group of wires travels on a route.** A group is what conn.js calls a box: an outermost set
@@ -78,12 +113,10 @@ leader. Badges sit under the outermost set at its first level stretch. Both can 
 
 ## Known gaps
 
-- A short wire's label can run into the part at its end (the stretch is shorter than the label).
-- A shape is kept by group: when a pair of parts gains a second wire (`s:` becomes `p:`), or a set is
-  dissolved, its shape is forgotten.
-- Before merging: the hub's tour and Loom's guide may ring box areas that routes no longer draw.
+- A label longer than the gap between two parts still overlaps one (it goes under its wire).
+- A shape is kept by group: a set dissolved into loose wires starts fresh.
 - Wires cross near a part whose pin order differs from the group's row order (at the other end).
-- Breakout branches aren't routed.
+- Push (moving parts out of a route's way) isn't built.
 - Not tried with a real harness or by Chris yet.
 
 ## Check it
