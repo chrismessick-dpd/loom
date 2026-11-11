@@ -167,7 +167,7 @@
         spot: () => ['.checks-card'] },
       { title: 'The sheet',
         text: '{Drawing} is one sheet for the tech: the wiring diagram, the connector face views, the wire list, the BOM, the notes, and a title block. It always uses the arranged view.',
-        do: '{SVG} and {PNG} download it, and {Print or PDF} prints it on one page, at the paper size and orientation picked beside it (choose Save as PDF in the print dialog).',
+        do: '{SVG} and {PNG} download it, and {Print or PDF} prints the drawing, the connectors, and the wire list, each from a new page (choose Save as PDF in the print dialog). The paper and orientation are the print dialog’s unless you pick them beside the button.',
         setup() { G().demo(); G().view('drawing'); },
         spot: () => ['.sheet-card'] },
       { title: 'The wire list',

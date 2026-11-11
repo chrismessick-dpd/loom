@@ -124,6 +124,89 @@
     return o;
   }
 
+  // The connectors as rows of detail cells (a cell per view: Both takes two), filled row by row and
+  // each row centered across the sheet (Chris).
+  const CELL_W = 262, CELL_H = 250, CELL_GAP = 12;
+  function connRows(h) {
+    const inner = W - MG * 2, per = Math.floor((inner - 32 + CELL_GAP) / (CELL_W + CELL_GAP));
+    const conns = h.nodes.filter(M.isConn).sort((a, b) => a.ref.localeCompare(b.ref, 'en', { numeric: true }));
+    const rows = [];
+    let col = 0;
+    conns.forEach(n => {
+      const span = S.views(n).length;
+      if (!rows.length || (col && col + span > per)) { col = 0; rows.push([]); }
+      rows[rows.length - 1].push({ n, col, span });
+      col += span;
+    });
+    return rows;
+  }
+  function connRowSvg(h, cells, y) {
+    const inner = W - MG * 2, used = cells.reduce((s, c) => s + c.span, 0);
+    const x0 = MG + 16 + (inner - 32 - (used * (CELL_W + CELL_GAP) - CELL_GAP)) / 2;
+    return cells.map(c => detailCell(h, c.n, x0 + c.col * (CELL_W + CELL_GAP), y, CELL_W * c.span + CELL_GAP * (c.span - 1), CELL_H)).join('');
+  }
+  const WIRE_COLS = [
+    { label: 'Wire', w: 46, get: r => r.name, mono: true },
+    { label: 'From', w: 64, get: r => r.from, mono: true },
+    { label: 'To', w: 64, get: r => r.to, mono: true },
+    { label: 'Signal', w: 100, get: r => r.signal },
+    { label: 'Color', w: 104, get: r => r.color.name || '—', swatch: r => r.color },
+    { label: 'Gauge', w: 112, get: r => M.gaugeText(r.gauge) || '—' },
+    { label: 'Length', w: 118, get: r => U.fmtLen(r.length) },
+    { label: 'Set', w: 60, get: r => r.sets },
+  ];
+  const BOM_COLS = [
+    { label: 'Item', w: 34, get: r => r.item },
+    { label: 'Qty', w: 104, get: r => M.qtyText(r) },
+    { label: 'Description', w: 220, get: r => r.desc },
+    { label: 'Part number', w: 112, get: r => r.pn || '—', mono: true },
+    { label: 'Refs', w: 62, get: r => r.refs.join(', ') },
+  ];
+
+  // The printout (Chris, 2026-11-11): three sections, each starting on a new page. 1) The drawing,
+  // fitted to one page. 2) The connectors, each a card 58 mm wide (two for Both views; three
+  // fit across Letter or A4), wrapping across the page, so a page breaks between rows of cards.
+  // 3) The wire list as an HTML table (its header repeats on every page, a row never splits), then
+  // the BOM, notes, and title block. The sheet's own styles draw the SVG parts (printStyle).
+  function printDoc(h) {
+    const A = M.analyze(h), r = LM.conn.render(h, A, { sheet: true }), P = 20, inner = W - MG * 2;
+    const svg = (vb, body, cls) => `<svg xmlns="http://www.w3.org/2000/svg" class="lm-sheet ${cls}" viewBox="${vb}" preserveAspectRatio="xMidYMin meet">${body}</svg>`;
+    const head = (t, sub) => `<div class="pr-head"><b>${esc(t)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div>`;
+    const id = [h.title || 'Harness', h.pn || '', h.rev ? 'Rev ' + h.rev : ''].filter(Boolean).join(' · ');
+    let o = `<section class="pr-sec pr-drawing">${head('Wiring diagram · not to scale', id)}` +
+      svg(`${f(r.box.x0 - P)} ${f(r.box.y0 - P)} ${f(r.box.x1 - r.box.x0 + 2 * P)} ${f(r.box.y1 - r.box.y0 + 2 * P)}`, r.svg, 'pr-diagram') + '</section>';
+    // Each connector its own card at a fixed size, so the page decides how many fit across.
+    const conns = h.nodes.filter(M.isConn).sort((a, b) => a.ref.localeCompare(b.ref, 'en', { numeric: true }));
+    if (conns.length) {
+      o += `<section class="pr-sec pr-conns">${head('Connectors', id)}<div class="pr-cells">` + conns.map(n => {
+        const span = S.views(n).length, cw = CELL_W * span + CELL_GAP * (span - 1);
+        return `<div class="pr-cell" style="--span:${span}">` + svg(`-1 -1 ${cw + 2} ${CELL_H + 2}`, detailCell(h, n, 0, 0, cw, CELL_H), 'pr-cellsvg') + '</div>';
+      }).join('') + '</div></section>';
+    }
+    const cell = (c, row) => {
+      const sw = c.swatch && c.swatch(row);
+      const swatch = sw && sw.base ? `<i class="pr-sw" style="background:${esc(sw.base)}">${sw.stripe ? `<i style="background:${esc(sw.stripe)}"></i>` : ''}</i>` : '';
+      return `<td${c.mono ? ' class="mono"' : ''}>${swatch}${esc(c.get(row))}</td>`;
+    };
+    const tableHtml = (cols, list, empty, cls) => `<table class="pr-table ${cls}"><colgroup>${cols.map(c => `<col style="width:${c.w}%">`).join('')}</colgroup>` +
+      `<thead><tr>${cols.map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead><tbody>` +
+      (list.length ? list.map(row => `<tr>${cols.map(c => cell(c, row)).join('')}</tr>`).join('') : `<tr><td class="none" colspan="${cols.length}">${esc(empty)}</td></tr>`) + '</tbody></table>';
+    const pct = cols => { const t = cols.reduce((s, c) => s + c.w, 0); return cols.map(c => Object.assign({}, c, { w: Math.round(c.w / t * 1000) / 10 })); };
+    const notes = (h.notes || []).filter(s => s.trim());
+    const tb = [
+      [['Title', h.title, 4]],
+      [['Part number', h.pn], ['Rev', h.rev], ['Drawn', h.drawnBy], ['Date', h.date]],
+      [['Units', 'mm, not to scale'], ['Sheet', ''], ['Checked', ''], ['Approved', '']],
+    ];
+    o += `<section class="pr-sec pr-lists">${head('Wire list', id)}${tableHtml(pct(WIRE_COLS), M.fromTo(h, A), 'No wires yet.', 'pr-wires')}` +
+      `<div class="pr-keep">${head('Bill of materials')}${tableHtml(pct(BOM_COLS), M.bom(h, A), 'Nothing to buy yet.', 'pr-bom')}` +
+      `<p class="pr-note">Lengths include a ${esc(h.allowancePct || 0)}% allowance.</p></div>` +
+      (notes.length ? `<div class="pr-keep">${head('Notes')}<ol class="pr-notes">${notes.map(t => `<li>${esc(t)}</li>`).join('')}</ol></div>` : '') +
+      `<table class="pr-tb">${tb.map(row => `<tr>${row.map(([l, v, span]) => `<td${span ? ` colspan="${span}"` : ''}><small>${esc(l)}</small><span${span ? ' class="t"' : ''}>${esc(v || '—')}</span></td>`).join('')}</tr>`).join('')}</table>` +
+      `<p class="pr-brand">Drawn with Loom · Dovetail</p></section>`;
+    return o;
+  }
+
   function sheet(h, opts) {
     opts = opts || {};
     const A = M.analyze(h);
@@ -140,28 +223,12 @@
     y += bh * k + 34;
 
     // Connector details
-    const conns = h.nodes.filter(M.isConn).sort((a, b) => a.ref.localeCompare(b.ref, 'en', { numeric: true }));
-    if (conns.length) {
+    const crows = connRows(h);
+    if (crows.length) {
       o += section('CONNECTORS', y);
       y += 12;
-      const cw = 262, chh = 250, gap = 12, per = Math.floor((inner - 32 + gap) / (cw + gap));
-      // Rows first, then each row centered across the sheet (Chris).
-      const rows = [[]];
-      let col = 0;
-      conns.forEach(n => {
-        const span = S.views(n).length;
-        if (col && col + span > per) { col = 0; rows.push([]); }
-        rows[rows.length - 1].push({ n, col, span });
-        col += span;
-      });
-      rows.forEach((cells, row) => {
-        const used = cells.reduce((s, c) => s + c.span, 0);
-        const x0 = MG + 16 + (inner - 32 - (used * (cw + gap) - gap)) / 2;
-        cells.forEach(c => {
-          o += detailCell(h, c.n, x0 + c.col * (cw + gap), y + row * (chh + gap), cw * c.span + gap * (c.span - 1), chh);
-        });
-      });
-      y += rows.length * (chh + gap) + 22;
+      crows.forEach((cells, row) => { o += connRowSvg(h, cells, y + row * (CELL_H + CELL_GAP)); });
+      y += crows.length * (CELL_H + CELL_GAP) + 22;
     }
 
     // Wire list and BOM side by side
@@ -169,23 +236,8 @@
     const lw = Math.round((inner - 32) * 0.57), rw = inner - 32 - lw - 20;
     o += section('WIRE LIST', y) + `<text class="sec-t" x="${MG + 16 + lw + 20}" y="${y}">BILL OF MATERIALS</text>`;
     y += 10;
-    const t1 = table(MG + 16, y, lw, [
-      { label: 'Wire', w: 46, get: r => r.name, mono: true },
-      { label: 'From', w: 64, get: r => r.from, mono: true },
-      { label: 'To', w: 64, get: r => r.to, mono: true },
-      { label: 'Signal', w: 100, get: r => r.signal },
-      { label: 'Color', w: 104, get: r => r.color.name || '—', swatch: r => r.color },
-      { label: 'Gauge', w: 112, get: r => M.gaugeText(r.gauge) || '—' },
-      { label: 'Length', w: 118, get: r => U.fmtLen(r.length) },
-      { label: 'Set', w: 60, get: r => r.sets },
-    ], ft, 'No wires yet.');
-    const t2 = table(MG + 16 + lw + 20, y, rw, [
-      { label: 'Item', w: 34, get: r => r.item },
-      { label: 'Qty', w: 104, get: r => M.qtyText(r) },
-      { label: 'Description', w: 220, get: r => r.desc },
-      { label: 'Part number', w: 112, get: r => r.pn || '—', mono: true },
-      { label: 'Refs', w: 62, get: r => r.refs.join(', ') },
-    ], bom, 'Nothing to buy yet.');
+    const t1 = table(MG + 16, y, lw, WIRE_COLS, ft, 'No wires yet.');
+    const t2 = table(MG + 16 + lw + 20, y, rw, BOM_COLS, bom, 'Nothing to buy yet.');
     o += t1.svg + t2.svg;
     y += Math.max(t1.h, t2.h) + 18;
     o += `<text class="cell-n" x="${MG + 16 + lw + 20}" y="${y - 4}">Lengths include a ${h.allowancePct || 0}% allowance.</text>`;
@@ -273,5 +325,5 @@
     return { svg: page(STYLE, false), dark: page(STYLE_DARK, true), w, h: hh };
   }
 
-  LM.sheet = { sheet, diagram, W };
+  LM.sheet = { sheet, diagram, printDoc, printStyle: STYLE, W };
 })(window.LM = window.LM || {});

@@ -579,15 +579,47 @@ button.chip.g-chip { cursor: pointer; }
 .palette button:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12); }
 .palette button:active { transform: scale(0.95); transition-duration: 0.08s; }
 
-/* Print: just the sheet, on one page turned to its shape (printSheet sets @page's size). suite.css
-   hides every element when printing (visibility, for Signoff's report), so the sheet shows itself. */
+/* Print (LM.sheet.printDoc): the drawing, the connectors, and the wire list, each from a new page.
+   The drawing fits one page; connector rows and table rows never split, and the wire list's header
+   repeats on every page. printSheet sets @page's size only when one is picked beside the button.
+   suite.css hides every element when printing (visibility, for Signoff's report), so these show
+   themselves. */
 .print-sheet { display: none; }
 @media print {
-  @page { margin: 8mm; }
+  @page { margin: 10mm; }
+  html:has(body.printing), body.printing { background: #fff !important; }
   body.printing > :not(.print-sheet) { display: none !important; }
-  body.printing .print-sheet { display: block; position: static; }
+  body.printing .print-sheet { display: block; position: static; color: #1d1d1f; background: #fff; font: 10.5px 'Segoe UI', Inter, -apple-system, Arial, sans-serif; }
   body.printing .print-sheet, body.printing .print-sheet * { visibility: visible; }
-  .print-sheet svg { display: block; width: 100%; height: auto; max-height: 100vh; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-sheet * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-sheet .pr-sec + .pr-sec { break-before: page; }
+  .print-sheet .pr-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid #1d1d1f; break-after: avoid; }
+  .print-sheet .pr-head b { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #00727f; }
+  .print-sheet .pr-head span { font-size: 10px; color: #515154; }
+  .print-sheet svg { display: block; width: 100%; height: auto; }
+  /* The drawing: as wide as the page, and no taller than what's left of it under the heading. */
+  .print-sheet .pr-diagram { max-height: calc(100vh - 28px); }
+  .print-sheet .pr-cells { display: flex; flex-wrap: wrap; gap: 3mm; justify-content: center; }
+  .print-sheet .pr-cell { width: calc(var(--span) * 58mm + (var(--span) - 1) * 3mm); break-inside: avoid; }
+  .print-sheet .pr-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 10px; border: 1px solid #1d1d1f; }
+  .print-sheet .pr-table th { background: #f2f2f4; text-align: left; font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; color: #515154; padding: 5px 6px; border-bottom: 1px solid #1d1d1f; }
+  .print-sheet .pr-table td { padding: 3.5px 6px; border-top: 1px solid #e5e5ea; vertical-align: top; overflow-wrap: anywhere; }
+  .print-sheet .pr-table td.mono { font-family: Consolas, ui-monospace, monospace; }
+  .print-sheet .pr-table td.none { color: #86868b; }
+  .print-sheet .pr-table thead { display: table-header-group; }
+  .print-sheet .pr-table tr { break-inside: avoid; }
+  .print-sheet .pr-sw { display: inline-block; position: relative; width: 14px; height: 8px; margin-right: 5px; border: 0.6px solid #1d1d1f; border-radius: 2px; vertical-align: -0.5px; overflow: hidden; }
+  .print-sheet .pr-sw i { position: absolute; left: 5px; top: 0; bottom: 0; width: 3.5px; }
+  .print-sheet .pr-keep { break-inside: avoid; margin-top: 8px; }
+  .print-sheet .pr-note { margin: -4px 0 10px; color: #86868b; font-size: 9.5px; }
+  .print-sheet .pr-notes { margin: 0 0 10px; padding-left: 18px; }
+  .print-sheet .pr-notes li { margin: 0 0 3px; break-inside: avoid; }
+  .print-sheet .pr-tb { margin: 14px 0 0 auto; width: 62%; border-collapse: collapse; break-inside: avoid; }
+  .print-sheet .pr-tb td { border: 1px solid #1d1d1f; padding: 3px 6px 5px; vertical-align: top; }
+  .print-sheet .pr-tb small { display: block; font-size: 7.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: #86868b; }
+  .print-sheet .pr-tb span { font-size: 11px; }
+  .print-sheet .pr-tb span.t { font-size: 15px; font-weight: 700; }
+  .print-sheet .pr-brand { margin: 4px 0 0; text-align: right; font-size: 8px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #00727f; break-before: avoid; }
 }
 
 @media (max-width: 1100px) { .build-view:not(.fold-rail) { --rail-w: 300px; } .build-view:not(.fold-parts) { --parts-w: 270px; } }

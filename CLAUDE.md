@@ -22,6 +22,20 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Printing (2026-11-11, Chris: three sections, each from a new page).** Print or PDF prints
+  `LM.sheet.printDoc`, not the sheet's one SVG: 1) the wiring diagram, fitted to one page (`.pr-diagram`,
+  `max-height` the page); 2) the connectors, each its own card 58 mm wide (two for Both views; three across
+  Letter or A4), wrapping, so pages break between rows; 3) the wire list as an HTML table (its header
+  repeats on every page, rows never split), then the BOM, notes, and title block. Each section starts a
+  new page (`break-before`), and each heading names the harness. The sheet's `STYLE` draws the SVG parts
+  (`printStyle`); print CSS is in `styles.css` (`.print-sheet .pr-*`), which also turns the suite's
+  `visibility: hidden` print rule back on for the printout and makes the page white. The Paper and
+  Orientation pickers beside the button default to "set in the print dialog", and then Loom sets no
+  `@page` size, so the dialog keeps its Layout (landscape) choice; a page that sets a size hides it. The
+  SVG and PNG exports and the Drawing view still use the one sheet (`sheet`; `connRows`, `connRowSvg`,
+  `WIRE_COLS`, and `BOM_COLS` are shared). Checked by printing to PDF with headless Edge (Letter
+  portrait and 11 × 17 landscape, with the wire list and connectors repeated to run over pages).
+
 - **Tables (2026-11-11, Chris: place a table like a note).** Add › Table, then a click puts a 2 × 2 table's
   top-left there, on the grid (`placeTable`). A table is a note (`h.callouts`, ref T1…) with `c.table =
   { w, minH, cols, cells }`: its width, a least height, each column's share of the width (summing to 1),

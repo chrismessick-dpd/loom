@@ -2021,28 +2021,27 @@
     return `<div class="page-head lm-head"><div class="page-head-text"><div class="eyebrow">${eyebrow}</div><h1 class="page-title">${title}</h1>${sub ? `<div class="page-sub">${sub}</div>` : ''}</div>${actions ? `<div class="lm-actions">${actions}</div>` : ''}</div>`;
   }
   // Print page (Chris, 2026-11-11: 11 × 17 and landscape). A page that sets @page's size hides the
-  // print dialog's Layout, so Loom picks it: the paper (or the dialog's own), and the orientation
-  // (Auto turns it to the sheet's shape). Kept in this browser.
-  const PAPER = [['', 'Paper from the print dialog'], ['a4', 'A4 (210 × 297 mm)', '210mm 297mm'], ['a3', 'A3 (297 × 420 mm)', '297mm 420mm'],
+  // print dialog's Layout, so Loom sets it only when one is picked here: by default the dialog
+  // chooses both. Kept in this browser.
+  const PAPER = [['', 'Paper: set in the print dialog'], ['a4', 'A4 (210 × 297 mm)', '210mm 297mm'], ['a3', 'A3 (297 × 420 mm)', '297mm 420mm'],
     ['letter', 'Letter (8.5 × 11 in)', '8.5in 11in'], ['tabloid', 'Tabloid (11 × 17 in)', '11in 17in']];
-  const ORIENT = [['', 'Auto'], ['portrait', 'Portrait'], ['landscape', 'Landscape']];
-  function printOrient(sh) { return fold.printOrient || (sh.h > sh.w ? 'portrait' : 'landscape'); }
-  function pageSize(sh) {
-    const o = printOrient(sh), p = PAPER.find(x => x[0] && x[0] === fold.printPaper);
-    if (!p) return o;
+  const ORIENT = [['', 'Orientation: set in the print dialog'], ['portrait', 'Portrait'], ['landscape', 'Landscape']];
+  function pageSize() {
+    const o = fold.printOrient, p = PAPER.find(x => x[0] && x[0] === fold.printPaper);
+    if (!p) return o || null;
     const [a, b] = p[2].split(' ');
     return o === 'landscape' ? `${b} ${a}` : `${a} ${b}`;
   }
-  function printPicks(sh) {
+  function printPicks() {
     const opt = (list, v) => list.map(([k, t]) => `<option value="${k}"${(v || '') === k ? ' selected' : ''}>${t}</option>`).join('');
     return `<select class="input lm-print-pick" data-print="paper" title="Paper size" aria-label="Paper size">${opt(PAPER, fold.printPaper)}</select>` +
-      `<select class="input lm-print-pick" data-print="orient" title="Orientation (Auto turns the page to the sheet’s shape)" aria-label="Orientation">${opt(ORIENT.map(([k, t]) => [k, k ? t : `Auto (${sh.h > sh.w ? 'portrait' : 'landscape'})`]), fold.printOrient)}</select>`;
+      `<select class="input lm-print-pick" data-print="orient" title="Orientation" aria-label="Orientation">${opt(ORIENT, fold.printOrient)}</select>`;
   }
   function drawingHtml(h) {
     const sh = LM.sheet.sheet(h);
     S.lastSheet = sh;
     return `<div class="page wide">` + pageHead('Drawing', esc(h.title), `${esc(h.pn || 'No part number')}<span class="sep">·</span>Rev ${esc(h.rev || '—')}<span class="sep">·</span>${sh.w} × ${sh.h} px sheet`,
-      `<button class="btn" data-act="export-svg">SVG</button><button class="btn" data-act="export-png">PNG</button>${printPicks(sh)}<button class="btn btn-primary" data-act="print">Print or PDF</button>`) +
+      `<button class="btn" data-act="export-svg">SVG</button><button class="btn" data-act="export-png">PNG</button>${printPicks()}<button class="btn btn-primary" data-act="print" title="Prints the drawing, the connectors, and the wire list, each from a new page">Print or PDF</button>`) +
       `<div class="sheet-card">${sh.svg}</div></div>`;
   }
   // The Wires tab: the wire list, editable.
@@ -2123,10 +2122,11 @@
   function printSheet(sh) {
     const div = document.createElement('div');
     div.className = 'print-sheet';
-    div.innerHTML = sh.svg;
-    // The paper and orientation picked beside the button (printPicks); the sheet fits on one page.
-    const page = document.createElement('style');
-    page.textContent = `@page { size: ${pageSize(sh)}; }`;
+    // Three sections, each from a new page (LM.sheet.printDoc), drawn with the sheet's styles.
+    div.innerHTML = `<style>${LM.sheet.printStyle}</style>` + LM.sheet.printDoc(H());
+    // The paper and orientation picked beside the button (printPicks), if any.
+    const page = document.createElement('style'), size = pageSize();
+    page.textContent = size ? `@page { size: ${size}; }` : '';
     document.head.appendChild(page);
     document.body.appendChild(div);
     document.body.classList.add('printing');
