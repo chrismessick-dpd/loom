@@ -377,6 +377,7 @@ button.chip.g-chip { cursor: pointer; }
 /* Pages */
 .lm-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
 .lm-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.lm-actions .lm-print-pick { width: auto; padding: 6px 28px 6px 10px; font-size: 13px; }
 .page-sub .sep { margin: 0 7px; opacity: 0.5; }
 .sheet-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; padding: 6px; }
 .sheet-card svg { display: block; width: 100%; height: auto; }
@@ -574,13 +575,15 @@ button.chip.g-chip { cursor: pointer; }
 .palette button:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12); }
 .palette button:active { transform: scale(0.95); transition-duration: 0.08s; }
 
-/* Print: just the sheet, landscape */
+/* Print: just the sheet, on one page turned to its shape (printSheet sets @page's size). suite.css
+   hides every element when printing (visibility, for Signoff's report), so the sheet shows itself. */
 .print-sheet { display: none; }
 @media print {
-  @page { size: landscape; margin: 8mm; }
+  @page { margin: 8mm; }
   body.printing > :not(.print-sheet) { display: none !important; }
-  body.printing .print-sheet { display: block; }
-  .print-sheet svg { width: 100%; height: auto; }
+  body.printing .print-sheet { display: block; position: static; }
+  body.printing .print-sheet, body.printing .print-sheet * { visibility: visible; }
+  .print-sheet svg { display: block; width: 100%; height: auto; max-height: 100vh; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 @media (max-width: 1100px) { .build-view:not(.fold-rail) { --rail-w: 300px; } .build-view:not(.fold-parts) { --parts-w: 270px; } }
