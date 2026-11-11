@@ -359,8 +359,6 @@
     write('caches', caches); write('homes', homes); write('roster', roster);
     write('who', Object.assign(who, { access }));
     write('synced', nextSynced);
-    // Each harness as the repo has it now, for Discard changes (base).
-    write('base', out);
     write('lastSync', { at: new Date().toISOString(), commitUrl: commitUrl || '', errors });
     return { store: out, before, pushed, conflicts, gone, dropped, errors, adopted, pl, login: who.login, access, homes: Object.assign({}, homes), commitUrl };
   }
@@ -375,15 +373,9 @@
   // them as edited here. For a harness edited while a sync brought in someone else's change: without
   // this, the next sync would see an unchanged file and push the local edit over that change.
   function forget(ids) {
-    const c = read('caches', {}), s = read('synced', {}), b = read('base', {});
-    ids.forEach(id => { Object.keys(c).forEach(r => { delete c[r]['projects/' + id + '.json']; }); delete s[id]; delete b[id]; });
-    write('caches', c); write('synced', s); write('base', b);
-  }
-  // A harness as the last sync left it (Chris, 2026-11-10: Discard changes), or null when this browser
-  // has no copy that matches what that sync recorded.
-  function base(id) {
-    const b = read('base', {})[id], s = read('synced', {})[id];
-    return b && s && hash(b) === s ? JSON.parse(JSON.stringify(b)) : null;
+    const c = read('caches', {}), s = read('synced', {});
+    ids.forEach(id => { Object.keys(c).forEach(r => { delete c[r]['projects/' + id + '.json']; }); delete s[id]; });
+    write('caches', c); write('synced', s);
   }
   // The repo a harness lives in ('owner/repo'), and whether it is a shared one.
   const homeOf = id => { const r = read('roster', null); return (r && SGM().sharedRepo(r, id)) || read('homes', {})[id] || ''; };
@@ -391,7 +383,7 @@
 
   LM.store = {
     DEMO, setNamespace: ns => { NS = ns; }, config, token, signedIn: () => !!token(), envelope, unwrap, summarize, makeMerge, slimPl, plIndex, waiting, startFromPl, adoptFromPl, hash,
-    sync, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, base, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
+    sync, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
     access: () => read('who', {}).access || '',
   };
 })(window.LM = window.LM || {});

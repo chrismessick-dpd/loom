@@ -197,21 +197,6 @@
     eq(res.conflicts.map(c => c.title), ['Bob (conflict copy)'], 'Bob’s change is kept, not pushed over');
   });
 
-  test('base() is the harness as the last sync left it, for Discard changes', async () => {
-    const hub = setup();
-    const h = harness('Kept');
-    eq(R.base(h.id), null, 'never synced: nothing to go back to');
-    const res = await R.sync({ [h.id]: h }, opts(hub));
-    const edited = res.store[h.id];
-    edited.title = 'Edited here'; edited.updated = Date.now();
-    eq(R.unsynced({ [h.id]: edited }), [h.id]);
-    const b = R.base(h.id);
-    eq(b.title, 'Kept');
-    eq(R.unsynced({ [h.id]: b }), [], 'the copy counts as synced');
-    R.forget([h.id]);
-    eq(R.base(h.id), null, 'forget() drops it too');
-  });
-
   test('sync: a deleted harness goes up as a tombstone', async () => {
     const hub = setup();
     const h = harness('Doomed');

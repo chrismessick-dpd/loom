@@ -389,19 +389,6 @@
     return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : new Date(at).toLocaleDateString('en-US');
   }
 
-  // Discard changes (Chris, 2026-11-10): shown when the open harness has changes since the last sync
-  // and this browser kept that sync's copy (R.base). Never in the demo (Reset demo does that there).
-  const canDiscard = h => canSync() && !!R.unsynced({ [h.id]: h }).length && !!R.base(h.id);
-  function discardChanges() {
-    const b = R.base(S.cur);
-    if (!b) return;
-    snapshot();
-    S.store[S.cur] = b;
-    S.sel = null; S.pending = null;
-    persist();
-    renderAll();
-    toast('Back to the last sync. Ctrl+Z brings your changes back.');
-  }
   function renderToolbar() {
     const h = H();
     const seg = $('#view-seg');
@@ -414,7 +401,6 @@
     $('#toolbar-actions').innerHTML =
       `<button class="icon-btn" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo"${S.past.length ? '' : ' disabled'}>${ICON.undo}</button>` +
       `<button class="icon-btn" data-act="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${S.future.length ? '' : ' disabled'}>${ICON.redo}</button>` +
-      (canDiscard(h) ? `<button class="btn" data-act="discard" title="Put this harness back as it was at the last sync (Ctrl+Z brings the changes back)">Discard changes</button>` : '') +
       `<button class="btn btn-primary" data-act="save" title="Download this harness as a .loom.json file${canSync() ? '' : ' (Ctrl+S)'}">${ICON.save}<span class="btn-label">Save file</span></button>`;
   }
 
@@ -667,16 +653,6 @@
     // A left drag that grabs nothing (empty canvas, or a wire's line) draws a selection box
     // (marquee). A finger pans instead.
     const g = gesture;
-    // A loose wire's line drags its nearer anchor along the curve (Chris, 2026-11-10: the dots were
-    // hard to hit); the anchor follows the pointer's movement from where the line was grabbed, and a
-    // click without movement still selects the wire. Shift-drag from a line still draws a box.
-    const lineEl = g.button === 0 && !g.touch && !g.shift && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge
-      && e.target.classList.contains('w-hit') && e.target.closest('[data-wire]');
-    const an = lineEl && lastLayout && lastLayout.anchorsOf(M.wire(H(), lineEl.dataset.wire) || {});
-    if (an) {
-      const p = toWorld(e), near = an.reduce((m, a) => (Math.hypot(a.x - p.x, a.y - p.y) < Math.hypot(m.x - p.x, m.y - p.y) ? a : m));
-      g.setEnd = { wire: lineEl.dataset.wire, side: near.side };
-    }
     if (g.button === 0 && !g.touch && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge) g.marquee = true;
     svgEl().setPointerCapture(e.pointerId);
   }
@@ -1985,7 +1961,6 @@
       // harnesses made while trying it (the suite tour has one built) go too.
       case 'demo-reset': if (!DEMO) break; S.store = { hdemo1: LM.demo.harness() }; openHarness('hdemo1'); toast('The demo is back as it started.'); break;
       case 'open': $('#file-input').click(); break;
-      case 'discard': discardChanges(); break;
       case 'save': if (h) U.download(baseName(h) + '.loom.json', JSON.stringify(h, null, 2), 'application/json'); break;
       case 'sync': syncNow(false); break;
       case 'undo': undo(); break;
