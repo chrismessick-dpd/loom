@@ -75,7 +75,11 @@
   const remote = { busy: false, error: '', unsynced: 0 };
   const canSync = () => !DEMO && R && R.signedIn();
   async function syncNow(quiet) {
-    if (!canSync() || remote.busy) { if (!quiet && !DEMO && !R.signedIn()) toast('Sign in to Signoff EE in this browser to sync harnesses.', 'error'); return; }
+    if (!canSync() || remote.busy) {
+      // Signed out, a click on Sync opens the suite's Settings to sign in (signoff/assets/sidefoot.js).
+      if (!quiet && !DEMO && !R.signedIn()) { if (window.SignoffFoot) window.SignoffFoot.settings(); else toast('Sign in to GitHub in this browser to sync harnesses.', 'error'); }
+      return;
+    }
     remote.busy = true; remote.error = '';
     renderSidebar();
     clearTimeout(saveTimer);
@@ -111,7 +115,7 @@
       else if (!quiet) toast(res.pushed ? 'Synced.' : 'Up to date.');
     } catch (e) {
       remote.error = e.status === 404 ? `Can't reach ${R.config().owner}/${R.config().dataRepo}, and no harness is shared with you. Ask for access, or create the repo.`
-        : e.status === 401 ? 'GitHub refused the token. Sign in to Signoff EE again.' : (e.message || String(e));
+        : e.status === 401 ? 'GitHub refused the token. Sign in again in Settings.' : (e.message || String(e));
       if (!quiet || e.status !== 404) toast("Couldn't sync: " + remote.error, 'error');
     } finally {
       remote.busy = false;
@@ -273,8 +277,9 @@
     if (!tools) return;
     const signed = R.signedIn(), fte = R.access() === 'fte';
     tools.querySelectorAll('[data-signed]').forEach(a => { a.hidden = !signed || (a.hasAttribute('data-internal') && !fte); });
-    if (signed && !tools.foldCtl) tools.foldCtl = setupToolsFold(tools);
-    if (tools.foldCtl) tools.foldCtl.enable(signed);
+    // Folded to icons signed in or out, as in every tool (Chris, 2026-11-10).
+    if (!tools.foldCtl) tools.foldCtl = setupToolsFold(tools);
+    tools.foldCtl.enable(true);
   }
   // Folded, the switcher is one row of tool icons; its chevron opens the full list, which folds again
   // 10 s after the pointer and keyboard focus have left it.
@@ -340,7 +345,7 @@
     const last = R && R.lastSync(), login = R && R.login();
     let tone, title, sub, tip, who = false;
     if (DEMO) { tone = 'idle'; title = 'Demo mode'; sub = 'Changes stay in this browser'; tip = 'Demo harnesses never leave this browser.'; }
-    else if (!canSync()) { tone = 'idle'; title = 'Local only'; sub = 'Sign in to Signoff EE to sync'; tip = 'Sign in to Signoff EE in this browser to keep harnesses in Loom’s private repo.'; }
+    else if (!canSync()) { tone = 'idle'; title = 'Local only'; sub = 'Click to sign in'; tip = 'Sign in to GitHub to keep harnesses in Loom’s private repo.'; }
     else if (remote.busy) { tone = 'busy'; title = 'Syncing…'; sub = login ? '@' + login : R.config().owner; who = !!login; tip = ''; }
     else if (remote.error) { tone = 'error'; title = 'Sync failed'; sub = remote.error; tip = remote.error; }
     else if (dirty.size) { tone = 'warn'; title = `${dirty.size} unsynced change${dirty.size === 1 ? '' : 's'}`; sub = login ? '@' + login : 'Click to sync'; who = !!login; tip = 'Changed since the last sync.'; }
@@ -413,7 +418,7 @@
         <div><b>Cables</b>Cables, twisted pairs, and shields</div>
         <div><b>Drawing</b>Wiring diagram, wire list, BOM, notes, title block</div>
       </div>
-      <div class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>${canSync() ? `Harnesses sync with Loom’s private repo, ${esc(R.config().dataRepo)}, and show in Signoff PL by their client project.` : 'Harnesses stay in this browser until you sign in to Signoff EE (they then sync with Loom’s private repo) or save a file.'}</div>
+      <div class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>${canSync() ? `Harnesses sync with Loom’s private repo, ${esc(R.config().dataRepo)}, and show in Signoff PL by their client project.` : 'Harnesses stay in this browser until you sign in to GitHub in Settings (they then sync with Loom’s private repo) or save a file.'}</div>
     </div></div>`;
   }
 
@@ -1371,7 +1376,7 @@
     if (BM.step === 'loading') o = head('Signoff EE boards') + `<div class="lm-modal-body"><div class="bm-busy"><span class="spinner"></span>${esc(BM.busy)}</div></div>`;
     else if (BM.step === 'error') {
       const signin = BM.code === 'signin';
-      o = head(signin ? 'Sign in to Signoff first' : "Couldn't read it", '', !!BM.boards) + `<div class="lm-modal-body"><p>${signin ? 'Loom reads board packages with the GitHub sign-in Signoff EE keeps in this browser. Open Signoff EE, sign in with GitHub in Settings, then come back.' : esc(BM.error)}</p>
+      o = head(signin ? 'Sign in to GitHub first' : "Couldn't read it", '', !!BM.boards) + `<div class="lm-modal-body"><p>${signin ? 'Loom reads board packages with the GitHub sign-in every Signoff tool in this browser shares. Sign in from Settings (the gear at the bottom of the menu), then try again.' : esc(BM.error)}</p>
         <div class="inline gap">${signin ? '<a class="btn btn-primary" href="../ee_design_review/index.html">Open Signoff EE</a>' : ''}<button class="btn" data-act="bm-retry">Try again</button></div></div>`;
     } else if (BM.step === 'boards') {
       const groups = new Map();
@@ -2289,6 +2294,13 @@
       if (canSync()) syncNow(true);
     });
   }
+  // Settings and People & access, shared with the suite (signoff/assets/sidefoot.js); the sync pill stays Loom's.
+  if (window.SignoffFoot) window.SignoffFoot.mount({
+    settings: '[data-foot-settings]', people: '#people-link',
+    theme: readTheme, setTheme: t => { writeTheme(t); applyTheme(t); },
+    intro: 'Harnesses sync with Loom’s private repository through the GitHub sign-in every Signoff tool in this browser shares.',
+    changed: () => { renderSidebar(); if (canSync()) syncNow(true); }
+  });
   // guide: what assets/guide.js needs to set the page up for each of its steps.
   LM.app = { state: S, renderAll, H, demo: DEMO,
     guide: {
