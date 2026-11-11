@@ -20,7 +20,8 @@
 .pkg-icon { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
 .proj.active .pkg-icon { background: rgba(255, 255, 255, 0.2); color: #fff; }
 .pkg-icon svg { width: 16px; height: 16px; }
-/* The sidebar's client-project groups (the footer's sync pill is EE's, from suite.css). */
+/* The sidebar's client-project groups fold as Signoff EE's (suite.css .side-group-head); From Signoff
+   PL's heading doesn't. The footer's sync pill is EE's too. */
 .lm-group-head { cursor: default; }
 .lm-group-head:hover { color: var(--text-3); }
 /* From Signoff PL: Parts waiting for a harness. Told apart by shape, not hue: a dashed, empty icon

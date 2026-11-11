@@ -337,8 +337,28 @@
         <span class="proj-body"><span class="proj-name">${esc(h.title)}</span><span class="proj-sub">${esc(h.pn ? h.pn + ' · ' : '')}${ends} ends · ${h.wires.length} wires</span></span>
         <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(h.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
     };
-    $('#harness-list').innerHTML = fromPlHtml() + (list.length ? keys.map(k => `<div class="side-group">` + (keys.length > 1 || k ? `<div class="side-group-head lm-group-head" title="Client project"><span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></div>` : '') + groups.get(k).map(row).join('') + `</div>`).join('')
+    // Groups fold as Signoff EE's do (Chris, 2026-11-11): a click on a group's heading, kept in this
+    // browser (fold.closedGroups, by lowercase name). The group holding the open harness stays open,
+    // and folding it closes the harness (home).
+    const grouped = keys.length > 1 || !!keys[0], closed = fold.closedGroups || {};
+    const gkey = k => k.toLowerCase();
+    $('#harness-list').innerHTML = fromPlHtml() + (list.length ? (grouped ? keys.map(k => {
+      const holds = groups.get(k).some(h => h.id === S.cur), open = !closed[gkey(k)] || holds;
+      return `<div class="side-group"><button class="side-group-head" data-act="toggle-group" data-group="${esc(gkey(k))}"${holds ? ' data-holds-open' : ''} aria-expanded="${open}" title="Client project">` +
+        `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>` +
+        `<span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></button>` +
+        (open ? groups.get(k).map(row).join('') : '') + `</div>`;
+    }).join('') : list.map(row).join(''))
       : '<div class="side-empty">No harnesses yet.</div>');
+    // Fold or unfold every group: the button in the Harnesses heading, beside New.
+    const foldBtn = $('[data-act="fold-groups"]');
+    if (foldBtn) {
+      const allClosed = grouped && keys.every(k => closed[gkey(k)]), tip = (allClosed ? 'Expand' : 'Collapse') + ' all projects';
+      foldBtn.hidden = !grouped;
+      foldBtn.title = tip; foldBtn.setAttribute('aria-label', tip);
+      foldBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        (allClosed ? '<path d="M5 6l3-3 3 3M5 10l3 3 3-3"/>' : '<path d="M5 3l3 3 3-3M5 13l3-3 3 3"/>') + '</svg>';
+    }
     // The footer's sync pill, as Signoff EE's: a dot, a title, and a sub line; its tooltip carries the
     // build hash (EE keeps that off the sidebar).
     const pill = $('#sync-pill');
@@ -2164,6 +2184,22 @@
     const h = H();
     switch (act) {
       case 'home': S.cur = null; persist(); renderAll(); break;
+      // Project groups fold as in Signoff EE: folding the group that holds the open harness goes home.
+      case 'toggle-group': {
+        const cg = Object.assign({}, fold.closedGroups), k = el.dataset.group;
+        if (el.getAttribute('aria-expanded') === 'true') cg[k] = true; else delete cg[k];
+        fold.closedGroups = cg; saveFold();
+        if (cg[k] && el.hasAttribute('data-holds-open')) { S.cur = null; persist(); renderAll(); } else renderSidebar();
+        break;
+      }
+      case 'fold-groups': {
+        const ks = [...new Set(live().map(h => String(h.project || '').trim().toLowerCase()))];
+        const cg = Object.assign({}, fold.closedGroups), unfold = ks.every(k => cg[k]);
+        ks.forEach(k => { if (unfold) delete cg[k]; else cg[k] = true; });
+        fold.closedGroups = cg; saveFold();
+        if (unfold || !S.cur) renderSidebar(); else { S.cur = null; persist(); renderAll(); }
+        break;
+      }
       case 'theme': { const t = isDark(readTheme()) ? 'light' : 'dark'; writeTheme(t); applyTheme(t); break; }
       case 'new': { const n = M.blank(); n.drawnBy = ''; S.store[n.id] = n; S.view = 'build'; openHarness(n.id); toast('Two ends to start. Click a pin, then a pin on the other end, to run a wire.'); break; }
       case 'demo': S.store.hdemo1 = LM.demo.harness(); openHarness('hdemo1'); break;

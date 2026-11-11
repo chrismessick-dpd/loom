@@ -22,6 +22,13 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Project groups fold (2026-11-11, Chris: as in Signoff EE).** The sidebar's client-project groups
+  have EE's heading buttons (`toggle-group`: chevron, name, count; suite.css `.side-group-head`),
+  closed ones kept in this browser (`fold.closedGroups`, by lowercase name). The group holding the open
+  harness stays open, and folding it goes home. The Harnesses heading has EE's fold-all button
+  (`fold-groups`, `.side-fold`, beside New; Collapse or Expand all projects; collapsing all goes home),
+  shown only when the list is grouped. From Signoff PL's heading doesn't fold (`.lm-group-head`).
+
 - **Printing (2026-11-11, Chris: three sections, each from a new page).** Print or PDF prints
   `LM.sheet.printDoc`, not the sheet's one SVG: 1) the wiring diagram, fitted to one page (`.pr-diagram`,
   `max-height` the page); 2) the connectors, each its own card 58 mm wide (two for Both views; three across
