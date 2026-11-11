@@ -428,7 +428,13 @@ links to it so far. Before every commit:
       for set ends on tight curves); a curve tighter than `need + 4` for its wires gives no lead. In
       the arranged view a stack's wire rides its path only between its anchors, straight part
       included, and leaves it at them (`runPts`); an anchor on the straight used to do nothing while
-      the wire ran on past it (Chris: "it popped out a straight section").
+      the wire ran on past it (Chris: "it popped out a straight section"). An anchor at the box's edge
+      on a side with no lead leaves with no forced tangent, as before. The curve from an anchor to its
+      pin (`ctl`) gives a tangent pointing away from the other end a short handle (half the height
+      between them, 18 or more), so a pin behind the anchor gets a round hook, not a long overshoot
+      that folds back (Chris, 2026-11-10: it looked like swapped anchors). Over 360 non-overlapping
+      placements and anchor settings of the demo's S1 → P2 wires, loops (turning over 360°) went from
+      152 before these changes to 63, and kinks under radius 5 from 160 to 33.
       The anchor's grab circle keeps 14 px on screen at any zoom (`.cv-anchor-hit`), and a left drag on
       a loose wire's line (its `.w-hit`, no Shift) drags its nearer anchor by the pointer's movement
       (`g.setEnd` set in `onDown`; Chris, 2026-11-10); a click still selects the wire, and Shift-drag

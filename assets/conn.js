@@ -879,9 +879,15 @@
     }
     // A wire's curve from p to q, leaving p along tp and reaching q along tq (level, toward the other
     // end, when not given): as an SVG command, and as points for its label's lane.
+    // A tangent pointing away from the other end (a wire leaving its anchor along the path with its pin
+    // behind it) gets a short handle, about half the height between them, so it turns back in a round
+    // hook instead of shooting out half the run and folding back (Chris, 2026-11-10: it looked like a
+    // dead-end straight). Tangents toward the other end, and the defaults, keep the long handle.
     const ctl = (p, q, tp, tq) => {
-      const d = Math.max(30, Math.abs(q.x - p.x) * 0.5), s = q.x > p.x ? 1 : -1, a = tp || { x: s, y: 0 }, b = tq || { x: s, y: 0 };
-      return [{ x: p.x + a.x * d, y: p.y + a.y * d }, { x: q.x - b.x * d, y: q.y - b.y * d }];
+      const dx = q.x - p.x, dy = q.y - p.y, s = q.x > p.x ? 1 : -1, a = tp || { x: s, y: 0 }, b = tq || { x: s, y: 0 };
+      const far = Math.max(30, Math.abs(dx) * 0.5), back = Math.min(far, Math.max(18, Math.abs(dy) * 0.5));
+      const da = a.x * dx + a.y * dy < 0 ? back : far, db = b.x * dx + b.y * dy < 0 ? back : far;
+      return [{ x: p.x + a.x * da, y: p.y + a.y * da }, { x: q.x - b.x * db, y: q.y - b.y * db }];
     };
     const curve = (p, q, tp, tq) => { const [a, b] = ctl(p, q, tp, tq); return `C${f(a.x)} ${f(a.y)} ${f(b.x)} ${f(b.y)} ${f(q.x)} ${f(q.y)}`; };
     const curvePts = (p, q, tp, tq) => {
@@ -901,7 +907,10 @@
       // straight part included, and leaves it there for its pins (Chris, 2026-11-10: an anchor on the
       // straight did nothing, and the wire ran on past it). Unset, they sit at the box's edges.
       const own = (chainOf.get(w.id) || [])[0];
-      if (own && own.own && !prop) return { pts: steps(own.a.u0, own.a.u1, 3).map(u => wpt(w, it, u, y0)), J: { l: own.a.u0, r: own.a.u1 } };
+      // An anchor at the box's edge on a side with no lead leaves as it always did (J null: the curve
+      // to its pin picks its own direction).
+      if (own && own.own && !prop) return { pts: steps(own.a.u0, own.a.u1, 3).map(u => wpt(w, it, u, y0)),
+        J: { l: P.lL || own.a.u0 > P.aL + 0.5 ? own.a.u0 : null, r: P.lR || own.a.u1 < P.aL + P.Ls - 0.5 ? own.a.u1 : null } };
       const J = joins(w, it), out = [];
       // The twist runs by distance along the path, leads included, so it follows the curves.
       const tsp = twisty ? twistSpan(w) : null, hx = tsp && helix(tsp, y0), dir = rIn.x >= lIn.x ? 1 : -1;
