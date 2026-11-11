@@ -209,10 +209,38 @@
     return c;
   }
   const note = (h, id) => (h.callouts || []).find(c => c.id === id);
-  // Notes pinned to a part that's gone go with it.
+  // Notes pinned to a part that's gone go with it (areas and tables stay).
   function tidyNotes(h) {
     if (!Array.isArray(h.callouts)) { h.callouts = []; return; }
-    h.callouts = h.callouts.filter(c => c && c.at && (c.at.kind === 'area' || (c.at.kind === 'node' ? node(h, c.at.id) : c.at.kind === 'set' ? set(h, c.at.id) : wire(h, c.at.id))));
+    h.callouts = h.callouts.filter(c => c && c.at && (c.at.kind === 'area' || c.at.kind === 'table' || (c.at.kind === 'node' ? node(h, c.at.id) : c.at.kind === 'set' ? set(h, c.at.id) : wire(h, c.at.id))));
+  }
+  // A table (Chris, 2026-11-11) is a note with no bubble: at: { kind: 'table', node, x, y } places
+  // its top-left from the connector or splice nearest it, as an area note's, and c.table holds
+  // { w, minH, cols, cells }: its width, a least height (the corner drag; rows share what's over
+  // their text), each column's share of w (summing to 1), and the cells' text by row. Rows are as
+  // tall as their most wrapped cell (conn.js tableGeom).
+  const TABLE_COL_W = 100;
+  function addTable(h, at, rows, cols) {
+    rows = rows || 2; cols = cols || 2;
+    return addNote(h, at, { ref: nextRef(h, 'T'), dx: 0, dy: 0,
+      table: { w: TABLE_COL_W * cols, minH: 0, cols: Array(cols).fill(1 / cols), cells: [...Array(rows)].map(() => Array(cols).fill('')) } });
+  }
+  // Change a table's row or column count, keeping the text of the cells that stay; new columns
+  // take an even share and the old ones keep their proportions.
+  function sizeTable(c, rows, cols) {
+    const t = c && c.table;
+    if (!t) return;
+    rows = Math.max(1, Math.min(50, Math.round(+rows) || 1));
+    cols = Math.max(1, Math.min(20, Math.round(+cols) || 1));
+    const n0 = t.cols.length;
+    if (cols !== n0) {
+      const kept = t.cols.slice(0, cols), add = cols - kept.length, share = 1 / cols;
+      const sum = kept.reduce((a, b) => a + b, 0) || 1, room = add > 0 ? 1 - add * share : 1;
+      t.cols = kept.map(x => (x / sum) * room).concat(Array(Math.max(0, add)).fill(share));
+      // A table keeps each column about as wide as it was: wider for more columns, narrower for fewer.
+      t.w = Math.max(40, Math.round(t.w * cols / n0));
+    }
+    t.cells = [...Array(rows)].map((_, r) => [...Array(cols)].map((__, k) => (t.cells[r] && t.cells[r][k]) || ''));
   }
 
   // ── Sets ──────────────────────────────────────────────────────────────────
@@ -686,7 +714,7 @@
     addWire, removeWires, wireStraight,
     holderOf, setWord, setPrefix, setTraits, parentOf, setOfWire, roots, wiresIn, chainOf, setChain, matchSet, crossing, membersFor, whyNot, noCable,
     makeSet, setFlag, dissolveSet, tidySets, setLength, setRun, ov, reach, setEnd,
-    addNote, note, tidyNotes, setRun, ov, pinList, label, wireName, endText, parseEnd,
+    addNote, addTable, sizeTable, note, tidyNotes, setRun, ov, pinList, label, wireName, endText, parseEnd,
     analyze, spanLength, checks, fromTo, bom, qtyText, normalize,
   };
 })(window.LM = window.LM || {});

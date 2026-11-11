@@ -32,6 +32,7 @@
   if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', () => applyTheme(readTheme()));
 
   const ICON = {
+    table: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M3 8.5h14M3 12.3h14M10 4v12"/></svg>',
     note: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4.5h14v8.5H9.5L6 16v-3H3z"/><path d="M6.5 8h7M6.5 10.5h4.5"/></svg>',
     pencil: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M10.5 3.5l2 2L6 12H4v-2z"/></svg>',
     close: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
@@ -489,7 +490,8 @@
     svg.classList.toggle('placing', !!S.placing);
     if (S.placing) {
       tip.style.display = 'flex';
-      tip.innerHTML = `<span class="tip-dot"></span><span>Click a wire, a set, or a connector to pin a note to it, or drag to draw an area for it. <span class="tip-k">Esc</span> cancels.</span>`;
+      tip.innerHTML = S.placing === 'table' ? `<span class="tip-dot"></span><span>Click where the table's top-left corner goes. <span class="tip-k">Esc</span> cancels.</span>`
+        : `<span class="tip-dot"></span><span>Click a wire, a set, or a connector to pin a note to it, or drag to draw an area for it. <span class="tip-k">Esc</span> cancels.</span>`;
     } else if (S.pending) {
       tip.style.display = 'flex';
       tip.innerHTML = `<span class="tip-dot"></span><span>Wiring from <b>${esc(M.endText(h, S.pending))}</b>. Click a glowing pin or a splice. <span class="tip-k">Esc</span> cancels.</span>`;
@@ -636,6 +638,21 @@
       svgEl().setPointerCapture(e.pointerId);
       return;
     }
+    // Add › Table: a click places one (click(), placeTable).
+    if (e.button === 0 && S.placing === 'table') {
+      gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: 0, touch: e.pointerType === 'touch', shift: false, cam0: Object.assign({}, S.cam) };
+      svgEl().setPointerCapture(e.pointerId);
+      return;
+    }
+    // A table drags by its body, an inner column rule drags sideways, and its corner resizes it.
+    const tblEl = e.button === 0 && !S.pending && !S.placing ? e.target.closest('[data-tblcol], [data-tblcorner], [data-tbl]') : null;
+    if (tblEl) {
+      const d = tblEl.dataset, col = d.tblcol ? d.tblcol.split('|') : null;
+      gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: 0, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam),
+        table: col ? { id: col[0], part: 'col', i: +col[1] } : { id: d.tblcorner || d.tbl, part: d.tblcorner ? 'corner' : 'move' } };
+      svgEl().setPointerCapture(e.pointerId);
+      return;
+    }
     // An area note's edge moves it, a corner resizes it, and its dot slides along the edge.
     const areaEl = e.button === 0 && !S.pending && !S.placing && e.target.closest('[data-areaedge], [data-areah], [data-areapin]');
     if (areaEl) {
@@ -738,6 +755,7 @@
     if (g.draw) { drawArea(g, e); return; }
     if (g.marquee) { drawMarquee(g, e); return; }
     if (g.area) { dragArea(g, e); return; }
+    if (g.table) { dragTable(g, e); return; }
     if (g.setEnd) { dragSetEnd(g, e); return; }
     if (g.run) { dragRun(g, e); return; }
     if (g.split) {
@@ -998,7 +1016,7 @@
     if (g && g.marquee && g.moved) { finishMarquee(g); return; }
     if (g && g.split && g.moved) { svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.run && g.moved) { const r = H().routes[g.run.key], R1 = lastLayout && lastLayout.runAt(g.run.key, { x: 0, y: 0 }); if (r && R1) { r.v = LM.route.tidy(R1.route.A, R1.route.B, r.v); r.a = R1.route.A.side; r.b = R1.route.B.side; } svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
-    if (g && (g.setEnd || g.note || g.badge || g.area) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
+    if (g && (g.setEnd || g.note || g.badge || g.area || g.table) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
       renderAll();
@@ -1034,7 +1052,7 @@
     });
     const notes = [];
     svg.querySelectorAll('#world .cv-note[data-note]').forEach(gn => {
-      const rects = [...gn.querySelectorAll('rect.cv-note-box, rect.cv-area')].map(r => ({ x: +r.getAttribute('x'), y: +r.getAttribute('y'), w: +r.getAttribute('width'), h: +r.getAttribute('height') }));
+      const rects = [...gn.querySelectorAll('rect.cv-note-box, rect.cv-area, rect.cv-table-box')].map(r => ({ x: +r.getAttribute('x'), y: +r.getAttribute('y'), w: +r.getAttribute('width'), h: +r.getAttribute('height') }));
       if (rects.length) notes.push({ id: gn.dataset.note, rects });
     });
     return { nodes, wires, notes };
@@ -1134,6 +1152,60 @@
     }
     renderCanvas();
   }
+  // Add › Table (Chris, 2026-11-11): a 2 × 2 table with its top-left where the click landed (on
+  // the grid), kept from the top-left of the nearest connector or splice like an area note.
+  function nearestPart(x, y) {
+    let best = null, bd = Infinity;
+    (lastLayout ? lastLayout.items : []).forEach(it => {
+      if (it.kind !== 'conn' && it.kind !== 'splice') return;
+      const d = Math.hypot(it.x + it.w / 2 - x, it.y + it.h / 2 - y);
+      if (d < bd) { bd = d; best = it; }
+    });
+    return best;
+  }
+  function placeTable(g) {
+    const p = toWorld({ clientX: g.x, clientY: g.y }), gs = gridOf(H()), snap = v => (gs ? Math.round(v / gs) * gs : Math.round(v));
+    const x = snap(p.x), y = snap(p.y), best = nearestPart(x + 100, y + 30);
+    const at = { kind: 'table', node: best ? best.n.id : null, x: Math.round(x - (best ? best.x : 0)), y: Math.round(y - (best ? best.y : 0)) };
+    S.placing = null;
+    change(h => { const c = M.addTable(h, at, 2, 2); S.sel = { kind: 'note', ids: new Set([c.id]) }; });
+  }
+  // Drag a table: its body moves it (on the grid; Ctrl anywhere), an inner column rule moves that
+  // rule between its neighbors, and its corner sets the width (every column keeps its share) and a
+  // least height. One snapshot, so one undo puts it back.
+  function dragTable(g, e) {
+    const c = M.note(H(), g.table.id), Lo = lastLayout;
+    if (!c || !c.table || !Lo) { gesture = null; return; }
+    const a = c.at, t = c.table;
+    if (!g.moved) {
+      snapshot();
+      g.a0 = { x: +a.x || 0, y: +a.y || 0 };
+      g.g0 = Lo.tableGeom(c);
+      S.sel = { kind: 'note', ids: new Set([c.id]) };
+      svgEl().classList.add('dragging');
+    }
+    g.moved = true;
+    const dx = (e.clientX - g.x) / S.cam.k, dy = (e.clientY - g.y) / S.cam.k, g0 = g.g0, MIN = C.TBL_MIN;
+    if (g.table.part === 'move') {
+      const gs = gridOf(H()), free = e.ctrlKey || e.metaKey || !gs;
+      // The table's corner snaps, wherever its part is.
+      const ox = g0.x - g.a0.x, oy = g0.y - g.a0.y, snap = v => (free ? Math.round(v) : Math.round(v / gs) * gs);
+      a.x = snap(g0.x + dx) - ox; a.y = snap(g0.y + dy) - oy;
+    } else if (g.table.part === 'col') {
+      const i = g.table.i, L = g0.cols[i - 1], R = g0.cols[i], left = L.x, right = R.x + R.w;
+      const bx = Math.min(right - MIN, Math.max(left + MIN, R.x + dx));
+      t.cols = t.cols.slice();
+      t.cols[i - 1] = (bx - left) / g0.w;
+      t.cols[i] = (right - bx) / g0.w;
+    } else {
+      t.w = Math.round(Math.max(MIN * t.cols.length, g0.w + dx));
+      // Height: only what's dragged past the rows' text counts, so a sideways drag sets none.
+      t.minH = 0;
+      const textH = Lo.tableGeom(c).h, want = g0.h + dy;
+      t.minH = want > textH + 2 ? Math.round(want) : 0;
+    }
+    renderCanvas();
+  }
   // Pin a note where the click landed: on a connector or splice, a set, or a wire.
   function placeNote(t, g) {
     const h = H(), Lo = lastLayout, p = toWorld({ clientX: g.x, clientY: g.y });
@@ -1153,6 +1225,7 @@
   }
   function click(t, shift, g) {
     const h = H();
+    if (S.placing === 'table') { placeTable(g); return; }
     if (S.placing) { placeNote(t, g); return; }
     const noteEl = t.closest('[data-note]');
     if (noteEl) { shift ? toggleSel('note', noteEl.dataset.note) : select('note', noteEl.dataset.note); return; }
@@ -1424,7 +1497,8 @@
       <button data-act="add-conn">${ICON.conn}<span>Connector</span></button>
       <button data-act="from-board" title="A board connector from Signoff EE, with its pins and nets">${ICON.board}<span>From a board</span></button>
       <button data-act="add-splice">${ICON.splice}<span>Splice</span></button>
-      <button data-act="add-note" title="A note or part pinned to a wire, set, or connector">${ICON.note}<span>Note</span></button></div>`;
+      <button data-act="add-note" title="A note or part pinned to a wire, set, or connector">${ICON.note}<span>Note</span></button>
+      <button data-act="add-table" title="A table of text, placed anywhere on the drawing">${ICON.table}<span>Table</span></button></div>`;
     return o;
   }
 
@@ -1696,8 +1770,24 @@
       </div><div class="rail-actions">${resetRouteBtn(h, [w])}<button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${M.wireName(w)}</button></div></div>`;
   }
   // A note: its text, and a part number and quantity when it stands for a part (the BOM lists it).
+  // A table's Properties: its row and column counts, and every cell's text in a grid like the table.
+  function railTable(h, c) {
+    const t = c.table, nR = t.cells.length, nC = t.cols.length;
+    const grid = `<div class="tbl-grid" style="--cols:${t.cols.map(fr => `minmax(0, ${Math.max(0.5, fr * nC).toFixed(3)}fr)`).join(' ')}">` +
+      t.cells.map((row, r) => row.map((v, k) => `<textarea class="input tbl-cell" rows="2" data-f="tbl.cell.${r}.${k}" aria-label="Row ${r + 1}, column ${k + 1}">${esc(v)}</textarea>`).join('')).join('') + '</div>';
+    return railHead('Table', `<span class="mono-ref">${esc(c.ref)}</span> · ${nR} × ${nC}`) +
+      `<div class="rail-list"><div class="rail-sec">
+      <div class="f-label">Size</div>
+      <div class="row2">${fld('Rows', inp('tbl.rows', nR, ' type="number" min="1" max="50" step="1"'))}${fld('Columns', inp('tbl.cols', nC, ' type="number" min="1" max="20" step="1"'))}</div>
+      <p class="f-hint">Fewer rows or columns drops the last ones and their text.</p>
+      </div><div class="rail-sec">
+      <div class="f-label">Cells</div>${grid}
+      <p class="f-hint">Text wraps in its column, and each row grows to fit. On the canvas, drag the table to move it, an inner column line to resize those columns, and its bottom-right corner to resize it. Double-click a cell to edit it here.</p>
+      </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${esc(c.ref)}</button></div></div>`;
+  }
   function railNote(h, c) {
     if (!c) return '';
+    if (c.table) return railTable(h, c);
     const a = c.at || {}, area = a.kind === 'area';
     const on = area ? 'an area' : a.kind === 'node' ? M.label(M.node(h, a.id)) : a.kind === 'set' ? (M.set(h, a.id) || {}).label : M.wire(h, a.id) ? M.wireName(M.wire(h, a.id)) : '?';
     return railHead('Note', `<span class="mono-ref">${esc(c.ref)}</span> on ${esc(on || '?')}`) +
@@ -1892,6 +1982,12 @@
       } else if (f.startsWith('s.')) {
         const s = M.seg(h, one()), k = f.slice(2);
         s[k] = k === 'length' ? (v === '' ? null : Math.max(0, Math.round(+v))) : v;
+      } else if (f.startsWith('tbl.')) {
+        const c = M.note(h, one()), k = f.slice(4);
+        if (!c || !c.table) return;
+        if (k === 'rows') M.sizeTable(c, v, c.table.cols.length);
+        else if (k === 'cols') M.sizeTable(c, c.table.cells.length, v);
+        else { const [, r, col] = k.split('.'); if (c.table.cells[r]) c.table.cells[r][col] = v; }
       } else if (f.startsWith('note.')) {
         const c = M.note(h, one()), k = f.slice(5);
         if (!c) return;
@@ -2096,6 +2192,7 @@
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
       case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;
+      case 'add-table': S.placing = 'table'; S.pending = null; S.view = 'build'; renderAll(); break;
       case 'help': fold.help = fold.help === false; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } renderParts(); break;
       case 'from-board': openBoards(); break;
       case 'configure': { const n = S.sel && S.sel.kind === 'node' && M.node(h, [...S.sel.ids][0]); if (n && M.isConn(n)) LM.configure.open({ h: H, nodeId: n.id, apply: fn => change(fn) }); break; }
@@ -2301,6 +2398,17 @@
   // 2026-11-10), a jog of no length to drag out; one undo takes it back.
   svg.addEventListener('dblclick', e => {
     const Lo = lastLayout, h = H();
+    // A table's cell: select the table and put the cursor in that cell's box in Properties.
+    const tbl = Lo && h && e.target.closest && e.target.closest('[data-tbl]');
+    if (tbl) {
+      const c = M.note(h, tbl.dataset.tbl), g = c && Lo.tableGeom(c), p = toWorld(e);
+      if (!g) return;
+      const r = Math.max(0, g.rows.findIndex(x => p.y < x.y + x.h)), k = Math.max(0, g.cols.findIndex(x => p.x < x.x + x.w));
+      select('note', c.id);
+      const el = document.querySelector(`[data-f="tbl.cell.${r}.${k}"]`);
+      if (el) { el.focus(); el.select(); }
+      return;
+    }
     if (!Lo || fold.prop || !h) return;
     const key = e.target.classList.contains('w-hit') ? Lo.boxOfWire(e.target.closest('[data-wire]').dataset.wire) : e.target.classList.contains('cv-setarea') ? Lo.boxOfSet(e.target.dataset.set) : null;
     const r = key && Lo.runAt(key, toWorld(e));

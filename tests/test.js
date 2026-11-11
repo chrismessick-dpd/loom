@@ -583,6 +583,39 @@
     ok(L('C1').cable && M.set(h, b2.id).bundle, 'they keep what they are');
   });
 
+  // Tables (Chris, 2026-11-11): counts change without losing the text that stays, the columns'
+  // shares still sum to 1, and a row grows to its most wrapped cell.
+  test('table: rows and columns change, keeping text and column shares', () => {
+    const h = LM.demo.harness(), c = M.addTable(h, { kind: 'table', node: null, x: 0, y: 0 });
+    eq([c.table.cells.length, c.table.cols.length, c.ref], [2, 2, 'T1'], 'a new table is 2 by 2');
+    c.table.cells[1][1] = 'kept'; c.table.cols = [0.25, 0.75];
+    M.sizeTable(c, 3, 3);
+    eq(c.table.cells.map(r => r.length), [3, 3, 3], 'three rows of three');
+    eq(c.table.cells[1][1], 'kept', 'text stays');
+    ok(Math.abs(c.table.cols.reduce((a, b) => a + b, 0) - 1) < 1e-9, 'shares sum to 1');
+    ok(c.table.cols[1] > c.table.cols[0], 'the old columns keep their proportions');
+    M.sizeTable(c, 1, 1);
+    eq(c.table.cells, [['']], 'shrinking drops the last rows and columns');
+    eq(c.table.cols, [1], 'one column has it all');
+    M.tidyNotes(h);
+    ok(M.note(h, c.id), 'a table stays through tidyNotes');
+  });
+  test('table: text wraps in its column, a long word breaks, and rows grow to fit', () => {
+    const C = LM.conn;
+    ok(C.wrapCell('a b c d e f g h i j k l m n o p', 40).length > 1, 'words wrap');
+    const long = C.wrapCell('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 60);
+    ok(long.length > 1 && long.join('') === 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 'a long word breaks without losing characters');
+    eq(C.wrapCell('one' + String.fromCharCode(10) + 'two', 200), ['one', 'two'], 'line breaks stay');
+    const h = LM.demo.harness(), c = M.addTable(h, { kind: 'table', node: null, x: 0, y: 0 });
+    const g0 = C.layout(h, M.analyze(h)).tableGeom(c);
+    c.table.cells[0][1] = 'a much longer piece of text that has to wrap over several lines';
+    const g1 = C.layout(h, M.analyze(h)).tableGeom(c);
+    ok(g1.rows[0].h > g0.rows[0].h && g1.rows[1].h === g0.rows[1].h, 'only the wrapped row grows');
+    c.table.minH = g1.h + 40;
+    const g2 = C.layout(h, M.analyze(h)).tableGeom(c);
+    ok(Math.abs(g2.h - (g1.h + 40)) < 1e-6, 'a least height from the corner shares out over the rows');
+  });
+
   (async () => {
     let failed = 0;
     for (const t of tests) {

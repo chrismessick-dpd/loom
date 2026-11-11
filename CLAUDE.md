@@ -22,6 +22,22 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Tables (2026-11-11, Chris: place a table like a note).** Add › Table, then a click puts a 2 × 2 table's
+  top-left there, on the grid (`placeTable`). A table is a note (`h.callouts`, ref T1…) with `c.table =
+  { w, minH, cols, cells }`: its width, a least height, each column's share of the width (summing to 1),
+  and the cells' text by row; `at: { kind: 'table', node, x, y }` keeps it from the nearest connector or
+  splice's top-left like an area note (it stays when that part goes, shifted). So selection, the marquee,
+  Delete, and undo work as for notes; it has no part number, so no BOM line. `conn.js` `tableGeom` lays it
+  out: text wraps to its column (`wrapCell`, measured in the sheet's font on a canvas, 6% to spare; a
+  word wider than the column breaks), each row as tall as its most wrapped cell, and what `minH` adds
+  over the text shared by the rows. On the canvas (`dragTable`) the body drags it (grid, Ctrl free), an
+  inner column line (`data-tblcol`) moves between its neighbors (`TBL_MIN` 24 each), and the selected
+  table's bottom-right corner (`data-tblcorner`) sets the width (columns keep their shares) and, only past
+  the text's height, `minH`. Properties (`railTable`): Rows and Columns (`M.sizeTable`: the last ones go
+  with their text; new columns take an even share), and every cell as a box in a grid shaped like the
+  table (`tbl.cell.<r>.<c>`, saved on change). Double-clicking a cell selects the table and puts the cursor
+  in its box. The sheet prints tables (`.cv-table-*` in `sheet.js`). Tests 37.
+
 - **Wire routing (2026-11-10, Chris; built on branch `routing`, merged to `main` and pushed).** Every
   group of wires (an outermost set, or the loose wires joining two parts whose pins are neighbors at
   both ends) rides a route from one end's pins to the other's, at right angles with rounded corners,
@@ -32,7 +48,7 @@ links to it so far. Before every commit:
   and `b`, `mode`, a bundle's dragged split `split0`/`split1`); *Reset route* and *Auto layout* forget
   it. Labels sit clear of parts; wide routes ease where their wires can't take a corner. Real
   proportions is unchanged. Leads, anchors, and the arranged view's box are gone. Everything, with the
-  known gaps, is in `docs/routing.md`. Tests 35, with made-up harnesses in `tests/fixture-fanout.js`.
+  known gaps, is in `docs/routing.md`. Tests 35 then (37 with tables), with made-up harnesses in `tests/fixture-fanout.js`.
 - **Tools switcher (2026-11-09, Chris; pushed `b960a66`):** signed in, the sidebar's Dovetail Signoff list adds Signoff
   EE, ME, FW, and PL (FTE only, `R.access() === 'fte'`) and folds to a row of icons like Signoff EE's (`renderTools`,
   `setupToolsFold` in `app.js`, a copy of the engine's); signed out it's Fabcheck and All tools as before.

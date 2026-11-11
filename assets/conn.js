@@ -1388,8 +1388,26 @@
       const a = c.at || {}, it = a.node && itemOf.get(a.node);
       return { x: (it ? it.x : 0) + (+a.x || 0), y: (it ? it.y : 0) + (+a.y || 0), w: Math.max(AREA_MIN, +a.w || 0), h: Math.max(AREA_MIN, +a.h || 0) };
     }
+    // A table as drawn: its frame, each column's x and width, and each row's y, height, and lines.
+    function tableGeom(c) {
+      const t = c.table, a = c.at || {}, it = a.node && itemOf.get(a.node);
+      if (!t) return null;
+      const x = (it ? it.x : 0) + (+a.x || 0), y = (it ? it.y : 0) + (+a.y || 0), w = Math.max(TBL_MIN * t.cols.length, +t.w || 0);
+      let cx = x;
+      const cols = t.cols.map(fr => { const c0 = { x: cx, w: w * fr }; cx += c0.w; return c0; });
+      const rows = t.cells.map(row => {
+        const lines = cols.map((col, k) => wrapCell(row[k], col.w - 2 * TBL_PX));
+        return { lines, h: Math.max(1, ...lines.map(l => l.length)) * TBL_LH + 2 * TBL_PY };
+      });
+      // The corner's least height: what's over the rows' text, shared evenly.
+      const textH = rows.reduce((s, r) => s + r.h, 0), extra = Math.max(0, (+t.minH || 0) - textH) / (rows.length || 1);
+      let ry = y;
+      rows.forEach(r => { r.h += extra; r.y = ry; ry += r.h; });
+      return { x, y, w, h: ry - y, cols, rows };
+    }
     function noteAt(c) {
       const a = c.at || {};
+      if (a.kind === 'table') { const g = tableGeom(c); return g && { x: g.x, y: g.y }; }
       if (a.kind === 'area') return edgeAt(areaRect(c), a.e);
       if (a.kind === 'node') { const it = itemOf.get(a.id); return it && { x: it.x + (a.fx || 0) * it.w, y: it.y + (a.fy || 0) * it.h }; }
       if (a.kind === 'set') { const g = setGeom(a.id); return g && { x: g.x + (a.fx || 0) * g.w, y: g.y + (a.fy || 0) * g.h }; }
@@ -1408,11 +1426,12 @@
     }
     // The diagram's bounds take in the notes' bubbles.
     (h.callouts || []).forEach(c => {
+      if (c.table) { const g = tableGeom(c); if (g) { box.x0 = Math.min(box.x0, g.x); box.x1 = Math.max(box.x1, g.x + g.w); box.y0 = Math.min(box.y0, g.y); box.y1 = Math.max(box.y1, g.y + g.h); } return; }
       const p = noteAt(c); if (!p) return; const s = noteSize(c);
       box.x0 = Math.min(box.x0, p.x + c.dx - s.w / 2); box.x1 = Math.max(box.x1, p.x + c.dx + s.w / 2); box.y0 = Math.min(box.y0, p.y + c.dy - s.h / 2); box.y1 = Math.max(box.y1, p.y + c.dy + s.h / 2);
       if (c.at.kind === 'area') { const r = areaRect(c); box.x0 = Math.min(box.x0, r.x); box.x1 = Math.max(box.x1, r.x + r.w); box.y0 = Math.min(box.y0, r.y); box.y1 = Math.max(box.y1, r.y + r.h); }
     });
-    return { items, itemOf, boxes, wirePath, twistStart, twistEnd, wireAt, lane, labelAt, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom, setEndAt, areaRect, routeRuns, runAt, boxOfWire, boxOfSet, pinSides: id => pinSides.get(id) || null };
+    return { items, itemOf, boxes, wirePath, twistStart, twistEnd, wireAt, lane, labelAt, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom, setEndAt, areaRect, tableGeom, routeRuns, runAt, boxOfWire, boxOfSet, pinSides: id => pinSides.get(id) || null };
   }
 
   // A lane (layout's lane: points with arc length s): the point at s along it, and how far along it
@@ -1715,6 +1734,63 @@
     const lines = noteLines(c), pn = c.pn ? `${c.pn}${c.qty > 1 ? ' × ' + c.qty : ''}` : '';
     return { lines, pn, w: Math.max(64, ...lines.map(l => tw(l, 11.5)), pn ? tw(pn, 10.5) + 18 : 0) + 20, h: lines.length * 15 + (pn ? 14 : 0) + 12 };
   }
+  // Tables (Chris, 2026-11-11): cell text wraps to its column, a word wider than the column breaks
+  // where it must, and a row is as tall as its most wrapped cell.
+  const TBL_FS = 11, TBL_LH = 14, TBL_PX = 6, TBL_PY = 4, TBL_MIN = 24;
+  // Measured in the sheet's font (the canvas's is near it), with a little to spare for either;
+  // U.textW's estimate where there's no canvas.
+  let tblCtx;
+  const TBL_FONT = `${TBL_FS}px 'Segoe UI', Inter, -apple-system, Arial, sans-serif`;
+  function cellW(s) {
+    if (tblCtx === undefined) { try { tblCtx = document.createElement('canvas').getContext('2d'); tblCtx.font = TBL_FONT; } catch (e) { tblCtx = null; } }
+    return tblCtx ? tblCtx.measureText(s).width * 1.06 : tw(s, TBL_FS) * 1.15;
+  }
+  function wrapCell(text, width) {
+    const out = [], fits = s => cellW(s) <= width;
+    String(text || '').split('\n').forEach(par => {
+      let line = '';
+      par.split(/\s+/).filter(Boolean).forEach(word => {
+        const t = line ? line + ' ' + word : word;
+        if (fits(t)) { line = t; return; }
+        if (line) out.push(line);
+        line = '';
+        // A word wider than the column: as many characters per line as fit.
+        let rest = word;
+        while (rest && !fits(rest)) {
+          let n = 1;
+          while (n < rest.length && fits(rest.slice(0, n + 1))) n++;
+          out.push(rest.slice(0, n)); rest = rest.slice(n);
+        }
+        line = rest;
+      });
+      out.push(line);
+    });
+    while (out.length > 1 && out[out.length - 1] === '') out.pop();
+    return out.length ? out : [''];
+  }
+  // A table: its frame and rules, its text, and on the canvas a grab area over it (data-tbl, so it
+  // drags and selects), a strip on each inner column rule to drag it (data-tblcol), and when
+  // selected a corner handle to resize it (data-tblcorner).
+  function tableSvg(c, Lo, opts) {
+    const g = Lo.tableGeom(c);
+    if (!g) return '';
+    const on = !!opts.pick && opts.pick.note.has(c.id), id = esc(c.id);
+    let o = `<g class="cv-note cv-table${on ? ' sel' : ''}" data-note="${id}"><title>${esc(c.ref)}</title>` +
+      `<rect class="cv-table-box" x="${f(g.x)}" y="${f(g.y)}" width="${f(g.w)}" height="${f(g.h)}"/>`;
+    if (!opts.sheet) o += `<rect class="cv-table-grab" x="${f(g.x)}" y="${f(g.y)}" width="${f(g.w)}" height="${f(g.h)}" data-tbl="${id}"/>`;
+    let rules = '';
+    g.rows.slice(1).forEach(r => { rules += `M${f(g.x)} ${f(r.y)}H${f(g.x + g.w)}`; });
+    g.cols.slice(1).forEach(k => { rules += `M${f(k.x)} ${f(g.y)}V${f(g.y + g.h)}`; });
+    if (rules) o += `<path class="cv-table-rule" d="${rules}"/>`;
+    g.rows.forEach(r => r.lines.forEach((lines, k) => lines.forEach((l, i) => {
+      if (l) o += `<text class="cv-table-t" x="${f(g.cols[k].x + TBL_PX)}" y="${f(r.y + TBL_PY + 10.5 + i * TBL_LH)}">${esc(l)}</text>`;
+    })));
+    if (!opts.sheet) {
+      g.cols.slice(1).forEach((k, i) => { o += `<rect class="cv-table-col" x="${f(k.x - 4)}" y="${f(g.y)}" width="8" height="${f(g.h)}" data-tblcol="${id}|${i + 1}"/>`; });
+      if (on) o += `<rect class="cv-table-h" x="${f(g.x + g.w - 4)}" y="${f(g.y + g.h - 4)}" width="8" height="8" rx="1.5" data-tblcorner="${id}"/>`;
+    }
+    return o + '</g>';
+  }
   // An area note's rectangle (Chris): a dashed, rounded box drawn on the canvas, with the note's
   // dot on its edge. edgeAt: the point e (0 to 1) of the way round the edge, clockwise from the
   // top-left corner, on the rounded corners as drawn; edgeT: the reverse, for the point on the edge
@@ -1751,6 +1827,7 @@
   // A note: a dot where it's pinned, a leader to its bubble, and the bubble (drags by data-notebox).
   // An area note's dot slides along the area's edge (data-areapin).
   function noteSvg(c, Lo, opts) {
+    if (c.table) return tableSvg(c, Lo, opts);
     const p = Lo.noteAt(c);
     if (!p) return '';
     const s = noteSize(c), cx = p.x + (+c.dx || 0), cy = p.y + (+c.dy || 0), x = cx - s.w / 2, y = cy - s.h / 2;
@@ -1964,5 +2041,5 @@
 
   // A set's badge as drawn (its spot, its dot, and where along the set that is), for dragging it.
   const badgeOf = (it, id) => badgeRow(it).find(b => b.sp.s.id === id) || null;
-  LM.conn = { G, layout, render, boxesOf, pinLabel, project, pathAt, badgeOf, edgeAt, edgeT };
+  LM.conn = { G, layout, render, boxesOf, pinLabel, project, pathAt, badgeOf, edgeAt, edgeT, wrapCell, TBL_MIN };
 })(window.LM = window.LM || {});

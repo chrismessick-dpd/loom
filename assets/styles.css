@@ -377,6 +377,10 @@ button.chip.g-chip { cursor: pointer; }
 /* Pages */
 .lm-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
 .lm-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* A table's cells in its Properties, laid out like the table. */
+.tbl-grid { display: grid; grid-template-columns: var(--cols); gap: 4px; }
+.tbl-grid .tbl-cell { min-height: 0; padding: 5px 7px; font-size: 12.5px; resize: vertical; }
+.tbl-grid .tbl-cell:focus { position: relative; z-index: 1; }
 .lm-actions .lm-print-pick { width: auto; padding: 6px 28px 6px 10px; font-size: 13px; }
 .page-sub .sep { margin: 0 7px; opacity: 0.5; }
 .sheet-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; padding: 6px; }
@@ -736,6 +740,17 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-area-h { fill: var(--cv-paper); stroke: var(--cv-sel); stroke-width: 1.2; cursor: nwse-resize; }
 .lm-canvas .cv-area-h.ne, .lm-canvas .cv-area-h.sw { cursor: nesw-resize; }
 .lm-canvas .cv-note-pinhit { fill: transparent; cursor: grab; }
+/* A table: a card with rules; it drags by its body, its inner column rules drag sideways, and its
+   corner resizes it when selected. */
+.lm-canvas .cv-table-box { fill: var(--cv-paper); stroke: var(--cv-card-edge); stroke-width: 1; filter: var(--cv-card-shadow); }
+.lm-canvas .cv-table-rule { fill: none; stroke: var(--cv-card-edge); stroke-width: 0.8; pointer-events: none; }
+.lm-canvas .cv-table-t { fill: var(--cv-ink); font: 11px var(--sans); pointer-events: none; }
+.lm-canvas .cv-table-grab { fill: transparent; cursor: grab; }
+.lm-canvas .cv-table-col { fill: transparent; cursor: ew-resize; }
+.lm-canvas .cv-table-col:hover { fill: var(--cv-sel); fill-opacity: 0.25; }
+.lm-canvas .cv-table-h { fill: var(--cv-paper); stroke: var(--cv-sel); stroke-width: 1.2; cursor: nwse-resize; }
+.lm-canvas .cv-table:hover .cv-table-box { stroke: var(--cv-sel); stroke-opacity: 0.6; }
+.lm-canvas .cv-table.sel .cv-table-box, .lm-canvas .cv-table.mq .cv-table-box { stroke: var(--cv-sel); stroke-width: 1.8; stroke-opacity: 1; filter: drop-shadow(0 0 5px var(--cv-glow)); }
 .lm-canvas.placing, .lm-canvas.placing * { cursor: crosshair !important; }
 /* How it works: a ? button in the parts pane's bottom-right corner, and a card it pops up over the
    bottom of the pane. */
