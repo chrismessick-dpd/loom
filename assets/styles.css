@@ -684,13 +684,17 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-badge.sel rect { stroke: var(--cv-sel); stroke-width: 1.8; filter: drop-shadow(0 0 5px var(--cv-glow)); }
 /* A nested set's end grips: drag to run the end past its parent's or in from it. */
 .lm-canvas .cv-setend { cursor: ew-resize; }
-/* A loose wire's anchors: small dots ringed in its color that slide along its curve. */
-.lm-canvas .cv-anchor { cursor: grab; }
-/* The grab circle keeps at least 14 px on screen however far out the zoom is (--k, as .w-hit). */
-.lm-canvas .cv-anchor-hit { fill: transparent; r: max(8px, calc(14px / var(--k, 1))); }
-.lm-canvas .cv-anchor-dot { stroke-width: 1.2; transition: r 0.15s; }
-.lm-canvas .cv-anchor:hover .cv-anchor-dot, .lm-canvas.dragging .cv-anchor-dot { r: 4; }
-.lm-canvas .cv-anchor.dim { opacity: 0.6; }
+/* A selected route's middle runs: a bar at each run's middle, along it, to drag the run sideways. */
+.lm-canvas .cv-run.v { cursor: ew-resize; }
+.lm-canvas .cv-run.h { cursor: ns-resize; }
+.lm-canvas .cv-run-hit { fill: transparent; }
+.lm-canvas .cv-run-bar { fill: var(--cv-sel); stroke: var(--cv-halo); stroke-width: 1.2; opacity: 0.85; }
+.lm-canvas .cv-run:hover .cv-run-bar { opacity: 1; filter: drop-shadow(0 0 4px var(--cv-glow)); }
+/* Where a bundle splits to several parts: a diamond that drags the split point. */
+.lm-canvas .cv-split { cursor: move; }
+.lm-canvas .cv-split-hit { fill: transparent; }
+.lm-canvas .cv-split-dot { fill: var(--cv-sel); stroke: var(--cv-halo); stroke-width: 1.4; }
+.lm-canvas .cv-split:hover .cv-split-dot { filter: drop-shadow(0 0 4px var(--cv-glow)); }
 .lm-canvas .cv-setend-hit { fill: transparent; }
 .lm-canvas .cv-setend-grip { fill: var(--cv-sel); opacity: 0; transition: opacity 0.15s; pointer-events: none; }
 .lm-canvas .cv-setend:hover .cv-setend-grip, .lm-canvas .cv-setend.on .cv-setend-grip { opacity: 1; }
@@ -934,6 +938,7 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
 }
 /* The canvas right-click menu: Copy and Paste parts (openCtx) */
 .lm-ctx { min-width: 200px; }
+.lm-ctx hr { border: 0; border-top: 1px solid var(--hair); margin: 4px 0; }
 .lm-ctx .lm-ctx-k { margin-left: auto; padding-left: 18px; font-size: 11.5px; color: var(--text-3); }
 .lm-ctx button:hover .lm-ctx-k, .lm-ctx button:focus-visible .lm-ctx-k { color: rgba(255, 255, 255, 0.8); }
 .lm-ctx button:disabled { opacity: 0.45; pointer-events: none; }

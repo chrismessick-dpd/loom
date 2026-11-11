@@ -22,6 +22,20 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Wire routing (2026-11-10, Chris; branch `routing`, worktree `../_loom-routing`, not merged).** Every
+  group of wires (an outermost set, or the loose wires joining two parts) rides a route from one end's
+  pins to the other's, at right angles with rounded corners, round every connector and splice
+  (`assets/route.js`, `LM.route`; conn.js `routeAll`, `it.path.routed`). A drag on a wire's or set's
+  straight run moves it (`runUnder`, `dragRun` in app.js; handles `.cv-run` on a selection), a
+  double-click adds a bend, and the shape is kept in `h.routes[box key].v`; *Reset route* and *Auto
+  layout* forget it. Real proportions is unchanged. Leads, anchors, and the arranged view's box are
+  gone. `main` was put back to the morning's drawing (`f4eff7c`, the same tree as `72f9253`) while
+  this is tried. Everything is in `docs/routing.md`. Tests 33 (routing 6), with a made-up fan-out
+  harness, `tests/fixture-fanout.js`. Second round the same day (Chris): either connector edge, parts
+  crossed only when walking round is much longer, drags never stopped, right-click *Walk around parts* /
+  *Go behind parts*, no kinks (one spacing change on the longest straight, S-curve jogs). Tests 34.
+  Third round: labels placed clear of parts, a draggable split diamond with routed branches, and a
+  pair's shape kept when a wire joins it (stacks keyed `p:<pair>`). See `docs/routing.md`.
 - **Tools switcher (2026-11-09, Chris; pushed `b960a66`):** signed in, the sidebar's Dovetail Signoff list adds Signoff
   EE, ME, FW, and PL (FTE only, `R.access() === 'fte'`) and folds to a row of icons like Signoff EE's (`renderTools`,
   `setupToolsFold` in `app.js`, a copy of the engine's); signed out it's Fabcheck and All tools as before.
@@ -411,35 +425,8 @@ links to it so far. Before every commit:
     cable, shield, bundle, or twist has no leads. In Real proportions the path is the box.
     - Twists ride leads too (branch `wire-ends`, Chris): a twist packs its wires like a shield, and
       its helix runs by distance along the path (`twistSpan`: `ua`, `ub`), so it follows the curves.
-    - **Anchors on loose wires** (Chris: drag individual wires like cables). A stack (wires in no
-      set) gets a path and leads too, and each of its wires a left and a right anchor
-      (`w.anchors`: mm in from that side's wire end; `sz.warc`), a small dot in its wire's color
-      (`.cv-anchor`, canvas only; Chris): a darker shade with a darker ring on a light wire, its own
-      color with a light ring on a dark one (`dotFill`, `dotRing`). The wire rides the path between its anchors and fans to its pins
-      from them. Unset, an anchor sits at the box's edge, so a wire curves to its pin as before
-      until its anchor is dragged out along the curve (`dragAnchor` in `app.js`, as a set's end,
-      snapped to 5 mm). A drawing handle, not a length. A stack's side where no two-arc lead fits
-      (its part above or below and not far enough out to the side) used to get no lead, pinning the
-      anchor at the box's edge; since 2026-11-10 (Chris: only connections and a clean drawing matter
-      in the arranged view) it gets `curveLead`, a free curve from the box's edge to its pins (on the
-      side wirePath draws them to), `MIN_BRK` short of them: an S (cubic) when both ends point the same
-      way, straight to a U-turn and back when the part is behind the box's edge, and out, back, and in
-      (two U-turns) when a splice port faces away. Set boxes get it too (Chris, 2026-11-10: the same
-      for set ends on tight curves); a curve tighter than `need + 4` for its wires gives no lead. In
-      the arranged view a stack's wire rides its path only between its anchors, straight part
-      included, and leaves it at them (`runPts`); an anchor on the straight used to do nothing while
-      the wire ran on past it (Chris: "it popped out a straight section"). An anchor at the box's edge
-      on a side with no lead leaves with no forced tangent, as before. The curve from an anchor to its
-      pin (`ctl`) gives a tangent pointing away from the other end a short handle (half the height
-      between them, 18 or more), so a pin behind the anchor gets a round hook, not a long overshoot
-      that folds back (Chris, 2026-11-10: it looked like swapped anchors). Over 360 non-overlapping
-      placements and anchor settings of the demo's S1 → P2 wires, loops (turning over 360°) went from
-      152 before these changes to 63, and kinks under radius 5 from 160 to 33.
-      The anchor's grab circle keeps 14 px on screen at any zoom (`.cv-anchor-hit`), and a left drag on
-      a loose wire's line (its `.w-hit`, no Shift) drags its nearer anchor by the pointer's movement
-      (`g.setEnd` set in `onDown`; Chris, 2026-11-10); a click still selects the wire, and Shift-drag
-      from a line still draws a marquee. Later: a length between a cable's end and
-      its wires' ends could build on them.
+    - **Anchors on loose wires** (2026-11-10) and the leads above are gone on branch `routing`: groups
+      ride routes there (see *Wire routing* at the top).
     - Lessons from `sets` (Chris: glitchy once ends crossed or parts moved): only packed wires ride
       a lead; there's no fixed breakout point the wires must meet; a lead is two circular arcs
       level at both ends, with a straight between when it climbs further than it runs (`biarc`),
