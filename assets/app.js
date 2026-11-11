@@ -389,6 +389,19 @@
     return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : new Date(at).toLocaleDateString('en-US');
   }
 
+  // Discard changes (Chris, 2026-11-10): shown when the open harness has changes since the last sync
+  // and this browser kept that sync's copy (R.base). Never in the demo (Reset demo does that there).
+  const canDiscard = h => canSync() && !!R.unsynced({ [h.id]: h }).length && !!R.base(h.id);
+  function discardChanges() {
+    const b = R.base(S.cur);
+    if (!b) return;
+    snapshot();
+    S.store[S.cur] = b;
+    S.sel = null; S.pending = null;
+    persist();
+    renderAll();
+    toast('Back to the last sync. Ctrl+Z brings your changes back.');
+  }
   function renderToolbar() {
     const h = H();
     const seg = $('#view-seg');
@@ -401,6 +414,7 @@
     $('#toolbar-actions').innerHTML =
       `<button class="icon-btn" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo"${S.past.length ? '' : ' disabled'}>${ICON.undo}</button>` +
       `<button class="icon-btn" data-act="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${S.future.length ? '' : ' disabled'}>${ICON.redo}</button>` +
+      (canDiscard(h) ? `<button class="btn" data-act="discard" title="Put this harness back as it was at the last sync (Ctrl+Z brings the changes back)">Discard changes</button>` : '') +
       `<button class="btn btn-primary" data-act="save" title="Download this harness as a .loom.json file${canSync() ? '' : ' (Ctrl+S)'}">${ICON.save}<span class="btn-label">Save file</span></button>`;
   }
 
@@ -1971,6 +1985,7 @@
       // harnesses made while trying it (the suite tour has one built) go too.
       case 'demo-reset': if (!DEMO) break; S.store = { hdemo1: LM.demo.harness() }; openHarness('hdemo1'); toast('The demo is back as it started.'); break;
       case 'open': $('#file-input').click(); break;
+      case 'discard': discardChanges(); break;
       case 'save': if (h) U.download(baseName(h) + '.loom.json', JSON.stringify(h, null, 2), 'application/json'); break;
       case 'sync': syncNow(false); break;
       case 'undo': undo(); break;

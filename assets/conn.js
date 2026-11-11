@@ -678,35 +678,68 @@
           const L = k ? biarc(E, B) : biarc(B, E);
           if (L.r >= need + 4) return L;
         }
-        if (b <= MIN_BRK) return it.b.kind === 'set' ? null : curveLead(it, E, as, by, k);
+        if (b <= MIN_BRK) return curveLead(it, E, es, pit, by, k, need);
       }
     }
-    // A stack's wires don't pack, so any turn will do (Chris: an anchor should slide all the way round
-    // the curve in the arranged view; only connections matter there). Where no two-arc lead fits (the
-    // part is above or below and not far enough out to the side), the lead is the curve the wires are
-    // drawn on anyway, from the pins (facing the box) to the box's edge, leaving the box level, and
-    // stopping MIN_BRK short of the pins so the wire still fans in to them.
-    function curveLead(it, E, as, by, k) {
-      const cx = it.x + it.w / 2, near = as.reduce((m, p) => (Math.abs(p.x - cx) < Math.abs(m.x - cx) ? p : m), as[0]);
-      const B = { x: near.x, y: by }, s = k ? (B.x >= E.x ? 1 : -1) : (E.x >= B.x ? 1 : -1);
-      const p = k ? E : B, q = k ? B : E, tp = k ? { x: 1, y: 0 } : { x: s, y: 0 }, tq = k ? { x: s, y: 0 } : { x: 1, y: 0 };
-      const d = Math.max(30, Math.abs(q.x - p.x) * 0.5), a = { x: p.x + tp.x * d, y: p.y + tp.y * d }, c = { x: q.x - tq.x * d, y: q.y - tq.y * d };
-      const N = 64, pts = [];
-      for (let i = 0; i <= N; i++) {
-        const t = i / N, u = 1 - t;
-        const x = u * u * u * p.x + 3 * u * u * t * a.x + 3 * u * t * t * c.x + t * t * t * q.x, y = u * u * u * p.y + 3 * u * u * t * a.y + 3 * u * t * t * c.y + t * t * t * q.y;
-        let tx = 3 * u * u * (a.x - p.x) + 6 * u * t * (c.x - a.x) + 3 * t * t * (q.x - c.x), ty = 3 * u * u * (a.y - p.y) + 6 * u * t * (c.y - a.y) + 3 * t * t * (q.y - c.y);
-        const m = Math.hypot(tx, ty) || 1; tx /= m; ty /= m;
-        pts.push({ x, y, nx: -ty, ny: tx });
+    // Where no two-arc lead fits (the part above or below and not far enough out to the side, or
+    // behind the box's edge), the lead is a free curve (Chris, 2026-11-10: anchors and set ends should
+    // slide all the way round in the arranged view; only connections and a clean drawing matter
+    // there). It leaves the box level and reaches the pins on the side the wires are drawn to (as
+    // wirePath's anchor, facing the box), stopping MIN_BRK short of them so the wires still fan in.
+    // Pointing the same way at both ends it's an S (a cubic); pointing opposite ways (the part is
+    // behind the box's edge) it runs straight to a U-turn of the height between them and back, so it
+    // never folds into a hairpin. Too tight for its wires (radius under need + 4), there's no lead.
+    function curveLead(it, E, es, pit, by, k, need) {
+      const cx = it.x + it.w / 2, bs = es.map(e => anchor(e, cx));
+      const near = bs.reduce((m, p) => (Math.abs(p.x - E.x) < Math.abs(m.x - E.x) ? p : m), bs[0]);
+      const B = { x: near.x, y: by }, dB = near.x > pit.x + pit.w / 2 ? 1 : -1;
+      // In travel order (left to right along the path): from p heading tp to q heading tq.
+      const p = k ? E : B, q = k ? B : E, tp = k ? 1 : dB, tq = k ? -dB : 1;
+      const raw = [], line = (a, b) => { const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 4)); for (let i = 1; i <= n; i++) raw.push({ x: a.x + (b.x - a.x) * i / n, y: a.y + (b.y - a.y) * i / n }); };
+      const cubic = (a, c1, c2, b) => { for (let i = 1; i <= 48; i++) { const t = i / 48, u = 1 - t; raw.push({ x: u * u * u * a.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * b.x, y: u * u * u * a.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * b.y }); } };
+      raw.push({ x: p.x, y: p.y });
+      const uTurn = (a, b, t) => { const d = Math.abs(b.y - a.y) * 2 / 3; cubic(a, { x: a.x + t * d, y: a.y }, { x: b.x + t * d, y: b.y }, b); };
+      if (tp === tq && (q.x - p.x) * tp < 30) {
+        // Pointing the same way with q behind p (a splice port facing away): out past p, a U-turn to
+        // halfway, back past q, and a U-turn into it.
+        const X1 = tp > 0 ? Math.max(p.x, q.x) : Math.min(p.x, q.x), X2 = tp > 0 ? Math.min(p.x, q.x) : Math.max(p.x, q.x), ym = (p.y + q.y) / 2;
+        if (Math.abs(q.y - p.y) < 2) return null;
+        line(p, { x: X1, y: p.y }); uTurn({ x: X1, y: p.y }, { x: X1, y: ym }, tp);
+        line({ x: X1, y: ym }, { x: X2, y: ym }); uTurn({ x: X2, y: ym }, { x: X2, y: q.y }, -tp);
+        line({ x: X2, y: q.y }, q);
+      } else if (tp === tq) {
+        const d = Math.max(30, Math.abs(q.x - p.x) * 0.5, Math.abs(q.y - p.y) * 0.5);
+        cubic(p, { x: p.x + tp * d, y: p.y }, { x: q.x - tq * d, y: q.y }, q);
+      } else {
+        // The U-turn: a cubic close to a half circle of the height between them, past whichever is further out.
+        const X = tp > 0 ? Math.max(p.x, q.x) : Math.min(p.x, q.x), h = Math.abs(q.y - p.y), d = h * 2 / 3;
+        if (h < 1) return null;
+        line(p, { x: X, y: p.y });
+        cubic({ x: X, y: p.y }, { x: X + tp * d, y: p.y }, { x: X + tp * d, y: q.y }, { x: X, y: q.y });
+        line({ x: X, y: q.y }, q);
       }
-      let S = 0;
-      pts.forEach((pt, i) => { if (i) S += Math.hypot(pt.x - pts[i - 1].x, pt.y - pts[i - 1].y); pt.s = S; });
-      if (S < MIN_BRK + 8) return null;
+      const pts = raw.filter((pt, i) => !i || Math.hypot(pt.x - raw[i - 1].x, pt.y - raw[i - 1].y) > 0.01);
+      if (pts.length < 3) return null;
+      let S = 0, rMin = Infinity;
+      pts.forEach((pt, i) => {
+        if (i) S += Math.hypot(pt.x - pts[i - 1].x, pt.y - pts[i - 1].y);
+        pt.s = S;
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], m = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        pt.nx = -(b.y - a.y) / m; pt.ny = (b.x - a.x) / m;
+      });
+      // The tightest turn: the angle between neighboring steps over their length.
+      for (let i = 1; i < pts.length - 1; i++) {
+        const a = pts[i - 1], o = pts[i], b = pts[i + 1];
+        const t1 = Math.atan2(o.y - a.y, o.x - a.x), t2 = Math.atan2(b.y - o.y, b.x - o.x);
+        let th = Math.abs(t2 - t1); if (th > Math.PI) th = 2 * Math.PI - th;
+        if (th > 1e-4) rMin = Math.min(rMin, ((Math.hypot(o.x - a.x, o.y - a.y) + Math.hypot(b.x - o.x, b.y - o.y)) / 2) / th);
+      }
+      if (rMin < need + 4 || S < MIN_BRK + 8) return null;
       // Trim MIN_BRK off the pin end, and measure from the lead's start again.
       const kept = k ? pts.filter(pt => pt.s <= S - MIN_BRK) : pts.filter(pt => pt.s >= MIN_BRK);
       const s0 = kept[0].s;
       kept.forEach(pt => { pt.s -= s0; });
-      return { pts: kept, S: kept[kept.length - 1].s, r: 0 };
+      return { pts: kept, S: kept[kept.length - 1].s, r: rMin };
     }
     // Every box's path (it.path) and where each of its sets reaches along it (sz.arc: u0, u1). Sets
     // that pack (cables, shields, bundles, twists) ride the leads; any other stays on the straight
@@ -864,6 +897,11 @@
     function runPts(w, e, twisty) {
       const { it, lIn, rIn } = e, P = it.path, y0 = boxRowY.get(w.id);
       if (!P) return { pts: [{ x: lIn.x, y: lIn.y }, { x: rIn.x, y: rIn.y }], J: { l: null, r: null } };
+      // A stack's wire (arranged view) rides its path only between its anchors, wherever they are,
+      // straight part included, and leaves it there for its pins (Chris, 2026-11-10: an anchor on the
+      // straight did nothing, and the wire ran on past it). Unset, they sit at the box's edges.
+      const own = (chainOf.get(w.id) || [])[0];
+      if (own && own.own && !prop) return { pts: steps(own.a.u0, own.a.u1, 3).map(u => wpt(w, it, u, y0)), J: { l: own.a.u0, r: own.a.u1 } };
       const J = joins(w, it), out = [];
       // The twist runs by distance along the path, leads included, so it follows the curves.
       const tsp = twisty ? twistSpan(w) : null, hx = tsp && helix(tsp, y0), dir = rIn.x >= lIn.x ? 1 : -1;

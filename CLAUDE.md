@@ -129,6 +129,12 @@ links to it so far. Before every commit:
     harness, shown under Project ("In Signoff PL as a Part of"). A token that can't read PL skips it.
     Chris (2026-11-07): keep the tray; adding a harness to a PL project should be deliberate, so PL never
     adds one by itself.
+  - **Discard changes** (2026-11-10, Chris): each sync keeps the harnesses as the repo has them
+    (`loom.v1.base`; `R.base(id)` returns a copy only when it matches the hash that sync recorded, and
+    `forget` drops it). The toolbar shows *Discard changes* before Save file when the open harness has
+    unsynced changes and such a copy exists (`canDiscard`); it puts that copy back as one undoable
+    step (`discardChanges`). Never in the demo, where Reset demo does it, and not for a harness never
+    synced. Test 27. Not yet seen on screen (it needs a sign-in).
   - **Name and part number both ways**, with no tool writing the other's repo: Loom stamps `h.identAt`
     when Title or Part number change, PL stamps the node's `identAt` when its Part sheet changes them,
     and the newer side wins (`adoptFromPl` here before each push; `pl.js adoptHarnesses` after PL reads
@@ -415,8 +421,14 @@ links to it so far. Before every commit:
       snapped to 5 mm). A drawing handle, not a length. A stack's side where no two-arc lead fits
       (its part above or below and not far enough out to the side) used to get no lead, pinning the
       anchor at the box's edge; since 2026-11-10 (Chris: only connections and a clean drawing matter
-      in the arranged view) it gets `curveLead`, the wire's own curve from the box's edge to its pins,
-      `MIN_BRK` short of them. Set boxes keep the stricter rule (packed wires fold on tight turns).
+      in the arranged view) it gets `curveLead`, a free curve from the box's edge to its pins (on the
+      side wirePath draws them to), `MIN_BRK` short of them: an S (cubic) when both ends point the same
+      way, straight to a U-turn and back when the part is behind the box's edge, and out, back, and in
+      (two U-turns) when a splice port faces away. Set boxes get it too (Chris, 2026-11-10: the same
+      for set ends on tight curves); a curve tighter than `need + 4` for its wires gives no lead. In
+      the arranged view a stack's wire rides its path only between its anchors, straight part
+      included, and leaves it at them (`runPts`); an anchor on the straight used to do nothing while
+      the wire ran on past it (Chris: "it popped out a straight section").
       The anchor's grab circle keeps 14 px on screen at any zoom (`.cv-anchor-hit`), and a left drag on
       a loose wire's line (its `.w-hit`, no Shift) drags its nearer anchor by the pointer's movement
       (`g.setEnd` set in `onDown`; Chris, 2026-11-10); a click still selects the wire, and Shift-drag
