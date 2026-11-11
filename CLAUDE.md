@@ -22,20 +22,17 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
-- **Wire routing (2026-11-10, Chris; branch `routing`, worktree `../_loom-routing`, not merged).** Every
-  group of wires (an outermost set, or the loose wires joining two parts) rides a route from one end's
-  pins to the other's, at right angles with rounded corners, round every connector and splice
-  (`assets/route.js`, `LM.route`; conn.js `routeAll`, `it.path.routed`). A drag on a wire's or set's
-  straight run moves it (`runUnder`, `dragRun` in app.js; handles `.cv-run` on a selection), a
-  double-click adds a bend, and the shape is kept in `h.routes[box key].v`; *Reset route* and *Auto
-  layout* forget it. Real proportions is unchanged. Leads, anchors, and the arranged view's box are
-  gone. `main` was put back to the morning's drawing (`f4eff7c`, the same tree as `72f9253`) while
-  this is tried. Everything is in `docs/routing.md`. Tests 33 (routing 6), with a made-up fan-out
-  harness, `tests/fixture-fanout.js`. Second round the same day (Chris): either connector edge, parts
-  crossed only when walking round is much longer, drags never stopped, right-click *Walk around parts* /
-  *Go behind parts*, no kinks (one spacing change on the longest straight, S-curve jogs). Tests 34.
-  Third round: labels placed clear of parts, a draggable split diamond with routed branches, and a
-  pair's shape kept when a wire joins it (stacks keyed `p:<pair>`). See `docs/routing.md`.
+- **Wire routing (2026-11-10, Chris; built on branch `routing`, merged to `main` and pushed).** Every
+  group of wires (an outermost set, or the loose wires joining two parts whose pins are neighbors at
+  both ends) rides a route from one end's pins to the other's, at right angles with rounded corners,
+  round every connector and splice, from either edge of a connector (`assets/route.js`, `LM.route`;
+  conn.js `routeAll`, `it.path.routed`). A drag on a wire's or set's straight run moves it (`runUnder`,
+  `dragRun` in app.js; handles `.cv-run` on a selection), a double-click adds a bend, right-click offers
+  *Walk around parts* / *Go behind parts*, and the shape is kept in `h.routes[box key]` (`v`, edges `a`
+  and `b`, `mode`, a bundle's dragged split `split0`/`split1`); *Reset route* and *Auto layout* forget
+  it. Labels sit clear of parts; wide routes ease where their wires can't take a corner. Real
+  proportions is unchanged. Leads, anchors, and the arranged view's box are gone. Everything, with the
+  known gaps, is in `docs/routing.md`. Tests 35, with made-up harnesses in `tests/fixture-fanout.js`.
 - **Tools switcher (2026-11-09, Chris; pushed `b960a66`):** signed in, the sidebar's Dovetail Signoff list adds Signoff
   EE, ME, FW, and PL (FTE only, `R.access() === 'fte'`) and folds to a row of icons like Signoff EE's (`renderTools`,
   `setupToolsFold` in `app.js`, a copy of the engine's); signed out it's Fabcheck and All tools as before.
