@@ -22,6 +22,7 @@
 .lm-sheet .cv-leader path{fill:none;stroke:#1d1d1f;stroke-width:.8}.lm-sheet .cv-leader circle{fill:#1d1d1f}
 .lm-sheet .cv-note-lead{fill:none;stroke:#1d1d1f;stroke-width:.9}.lm-sheet .cv-note-pin{fill:#1d1d1f}.lm-sheet .cv-note-box{fill:#fff;stroke:#1d1d1f;stroke-width:1}
 .lm-sheet .cv-note-t{font-size:11.5px}.lm-sheet .cv-note-pn{font:600 10.5px ${MONO};fill:#515154}.lm-sheet .cv-note title{display:none}
+.lm-sheet .cv-area{fill:none;stroke:#1d1d1f;stroke-opacity:.6;stroke-width:1.2;stroke-dasharray:6 4}
 .lm-sheet .cv-table-box{fill:#fff;stroke:#1d1d1f;stroke-width:1}.lm-sheet .cv-table-rule{fill:none;stroke:#1d1d1f;stroke-width:.7}.lm-sheet .cv-table-t{font-size:11px;fill:#1d1d1f}
 .lm-sheet .cv-braid path,.lm-sheet .cv-braid ellipse{stroke:#1d1d1f;stroke-width:.8;stroke-opacity:.75}.lm-sheet .cv-braid-line{fill:none;stroke:#1d1d1f;stroke-width:.7;stroke-opacity:.6}
 .lm-sheet .cv-sp-line{fill:none;stroke:#1d1d1f;stroke-width:1.3;stroke-linecap:round}.lm-sheet .cv-port{fill:#fff;stroke:#1d1d1f;stroke-width:1.4}
