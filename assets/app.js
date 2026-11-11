@@ -1371,7 +1371,7 @@
     if (BM.step === 'loading') o = head('Signoff EE boards') + `<div class="lm-modal-body"><div class="bm-busy"><span class="spinner"></span>${esc(BM.busy)}</div></div>`;
     else if (BM.step === 'error') {
       const signin = BM.code === 'signin';
-      o = head(signin ? 'Sign in to Signoff first' : "Couldn't read it", '', !!BM.boards) + `<div class="lm-modal-body"><p>${signin ? 'Loom reads board packages with the GitHub access Signoff EE keeps in this browser. Open Signoff EE, connect GitHub in Settings, then come back.' : esc(BM.error)}</p>
+      o = head(signin ? 'Sign in to Signoff first' : "Couldn't read it", '', !!BM.boards) + `<div class="lm-modal-body"><p>${signin ? 'Loom reads board packages with the GitHub sign-in Signoff EE keeps in this browser. Open Signoff EE, sign in with GitHub in Settings, then come back.' : esc(BM.error)}</p>
         <div class="inline gap">${signin ? '<a class="btn btn-primary" href="../ee_design_review/index.html">Open Signoff EE</a>' : ''}<button class="btn" data-act="bm-retry">Try again</button></div></div>`;
     } else if (BM.step === 'boards') {
       const groups = new Map();
@@ -2275,6 +2275,20 @@
   // Sync once on opening, so names and part numbers edited in Signoff PL come over (quietly: no toast
   // unless something happened or it failed for a reason other than a missing repo).
   if (canSync()) setTimeout(() => syncNow(true), 400);
+  // Signed in or out in another tab (Signoff EE, say): show it, and sync once signed in. A sign-in's
+  // refresh replaces the token but not who it is (the engine's tokenTag), so it changes nothing here.
+  if (!DEMO) {
+    const whoTag = () => { const t = R ? R.token() : ''; return t && window.Signoff && window.Signoff.model ? window.Signoff.model.tokenTag(t) : t ? 'x' : ''; };
+    let seenTag = whoTag();
+    window.addEventListener('storage', e => {
+      if (e.key !== 'signoff.token' && e.key !== 'signoff.login') return;
+      const tag = whoTag();
+      if (tag === seenTag) return;
+      seenTag = tag;
+      renderSidebar();
+      if (canSync()) syncNow(true);
+    });
+  }
   // guide: what assets/guide.js needs to set the page up for each of its steps.
   LM.app = { state: S, renderAll, H, demo: DEMO,
     guide: {

@@ -23,8 +23,13 @@
     try { s = JSON.parse(localStorage.getItem('signoff.v1.settings') || '{}') || {}; } catch (e) { /* storage blocked */ }
     return { owner: s.owner || EE.owner, dataRepo: s.dataRepo || EE.dataRepo, prefix: s.prefix || EE.prefix };
   }
+  // A token from Sign in with GitHub (the engine's auth.js) is refreshed when due, and once more on a 401.
   async function gh(path) {
-    const r = await fetch('https://api.github.com' + path, { headers: { Authorization: 'token ' + token(), Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+    const A = window.SignoffAuth, mine = A && A.owns(token());
+    const get = tok => fetch('https://api.github.com' + path, { headers: { Authorization: 'token ' + tok, Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+    let tok = mine ? (await A.token()) || token() : token();
+    let r = await get(tok);
+    if (r.status === 401 && mine) { const t2 = await A.refresh(tok); if (t2) r = await get(t2); }
     if (!r.ok) { const e = new Error(`GitHub said ${r.status} for ${path.split('?')[0]}`); e.status = r.status; throw e; }
     return r.json();
   }

@@ -19,7 +19,7 @@ FAB_HEADER = ("/* Vendored from pcb_dfm/assets/{name} (Fabcheck). Do not edit he
               "window.Fab = window.Fab || {{}};\n")
 EE_HEADER = "/* Vendored from ee_design_review/assets/{name} (the Signoff engine). Do not edit here: re-copy with tools/sync_vendor.py. */\n"
 FILES = [(FAB, "ipc356.js", FAB_HEADER), (FAB, "assembly.js", FAB_HEADER),
-         (EE, "model.js", EE_HEADER), (EE, "github.js", EE_HEADER)]
+         (EE, "model.js", EE_HEADER), (EE, "github.js", EE_HEADER), (EE, "auth.js", EE_HEADER)]
 
 stale = []
 for src, name, header in FILES:
