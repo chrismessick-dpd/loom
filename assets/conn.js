@@ -1464,7 +1464,7 @@
       (fx ? `<path class="w-shade" d="${d}"/>` : '') + `<path class="w-edge"${pl} d="${d}"/>` +
       `<path class="w-base"${pl} style="stroke:${c.base || '#9a9aa0'}" d="${d}"/>` +
       (c.stripe ? `<path class="w-stripe" style="stroke:${c.stripe}" d="${d}"/>` : '') +
-      (fx ? `<path class="w-gloss"${pl} d="${d}"/>` + (cls && /\s(sel|carry)\b/.test(cls) ? `<path class="w-pulse${ink}" pathLength="1" d="${d}"/>` : cls && /\ssetsel\b/.test(cls) ? `<path class="w-pulse soft${ink}" pathLength="1" d="${d}"/>` : '') : '') + '</g>';
+      (fx ? `<path class="w-gloss"${pl} d="${d}"/>` + (cls && /\s(sel|carry)\b/.test(cls) ? `<path class="w-pulse${ink}" pathLength="1" d="${d}"/>` : cls && /\s(setsel|nodesel)\b/.test(cls) ? `<path class="w-pulse soft${ink}" pathLength="1" d="${d}"/>` : '') : '') + '</g>';
   }
   // Canvas-only ids, kept apart from anything a sheet or print SVG defines.
   const fxId = (kind, id) => 'lmfx-' + kind + '-' + String(id).replace(/[^\w-]/g, '_');
@@ -1921,9 +1921,11 @@
       const dim = dimIf(opts.focus && !opts.focus.wires.has(w.id));
       const fresh = fx && (opts.intro || opts.fresh === w.id);
       // `carry`: the wire whose end is being dragged (canvas only), lit like a selection.
-      // A selected set's wires carry a softer pulse (setsel).
+      // A selected set's wires carry a softer pulse (setsel), and so do the wires of a selected
+      // connector or splice (nodesel; Chris, 2026-11-11).
       const inSet = opts.pick.setWires.has(w.id);
-      const cls = (opts.pick.wire.has(w.id) ? ' sel' : '') + (inSet ? ' setsel' : '') + dim + (fresh ? ' fresh' : '') + (fx && opts.carry === w.id ? ' carry' : '');
+      const onNode = fx && (opts.pick.node.has(w.from.node) || opts.pick.node.has(w.to.node));
+      const cls = (opts.pick.wire.has(w.id) ? ' sel' : '') + (inSet ? ' setsel' : '') + (onNode ? ' nodesel' : '') + dim + (fresh ? ' fresh' : '') + (fx && opts.carry === w.id ? ' carry' : '');
       wires += wireSvg(w, p.d, cls, fx, fresh, opts.intro ? i : null);
       labels += labelSvg(w, Lo, opts);
       overs += overSvg(w, p.over, cls, fx);
