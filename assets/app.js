@@ -338,21 +338,23 @@
     const pill = $('#sync-pill');
     if (!pill) return;
     const last = R && R.lastSync(), login = R && R.login();
-    let tone, title, sub, tip;
+    let tone, title, sub, tip, who = false;
     if (DEMO) { tone = 'idle'; title = 'Demo mode'; sub = 'Changes stay in this browser'; tip = 'Demo harnesses never leave this browser.'; }
     else if (!canSync()) { tone = 'idle'; title = 'Local only'; sub = 'Sign in to Signoff EE to sync'; tip = 'Sign in to Signoff EE in this browser to keep harnesses in Loom’s private repo.'; }
-    else if (remote.busy) { tone = 'busy'; title = 'Syncing…'; sub = R.config().owner; tip = ''; }
+    else if (remote.busy) { tone = 'busy'; title = 'Syncing…'; sub = login ? '@' + login : R.config().owner; who = !!login; tip = ''; }
     else if (remote.error) { tone = 'error'; title = 'Sync failed'; sub = remote.error; tip = remote.error; }
-    else if (dirty.size) { tone = 'warn'; title = `${dirty.size} unsynced change${dirty.size === 1 ? '' : 's'}`; sub = 'Click to sync'; tip = 'Changed since the last sync.'; }
+    else if (dirty.size) { tone = 'warn'; title = `${dirty.size} unsynced change${dirty.size === 1 ? '' : 's'}`; sub = login ? '@' + login : 'Click to sync'; who = !!login; tip = 'Changed since the last sync.'; }
     else if (last && last.errors && last.errors.length) { tone = 'warn'; title = 'Synced with problems'; sub = last.errors[0].message; tip = last.errors.map(e => e.message).join('\n'); }
     else {
       const shared = live().filter(h => R.isShared(h.id)).length;
-      tone = 'ok'; title = 'Synced'; sub = (last ? ago(last.at) : 'Ready') + (login ? ' · ' + login : '');
+      // Line 1 is the sync state and when; line 2 the GitHub account (Chris, 2026-11-10).
+      tone = 'ok'; title = last ? 'Synced ' + ago(last.at) : 'Ready'; sub = login ? '@' + login : 'Click to sync'; who = !!login;
       tip = R.access() === 'contractor' ? `Harnesses shared with you, each in its own private repo` : `Kept in ${R.config().owner}/${R.config().dataRepo}` + (shared ? `; ${shared} shared in ${shared === 1 ? 'its own private repo' : 'their own private repos'}` : '');
     }
     $('#sync-dot').dataset.tone = tone;
     $('#sync-title').textContent = title;
     $('#sync-sub').textContent = sub;
+    $('#sync-sub').classList.toggle('sync-who', who);
     pill.title = [tip, canSync() ? 'Click to sync (Ctrl+S)' : '', LM.VERSION ? 'Build ' + LM.VERSION : ''].filter(Boolean).join('\n');
   }
   // The From Signoff PL list: Parts a PL project marks "to be made in Loom" that no harness was started
