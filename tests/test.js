@@ -88,6 +88,25 @@
       });
     });
   });
+  test('routes: no wire kinks (turns tighter than radius 6) on the demo or the routing checks', () => {
+    [LM.demo.harness(), LM.fixtures.fanout(), LM.fixtures.directions()].forEach(h => {
+      const Lo = LM.conn.layout(h, M.analyze(h), {});
+      h.wires.forEach(w => {
+        const ln = Lo.lane(w);
+        if (!ln) return;
+        // Even samples 2 apart along the wire, then the turn over each 8.
+        const P = [];
+        for (let s = 0; s <= ln.S; s += 2) { let i = 1; while (i < ln.pts.length - 1 && ln.pts[i].s < s) i++; const a = ln.pts[i - 1], b = ln.pts[i], t = b.s > a.s ? (s - a.s) / (b.s - a.s) : 0; P.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }); }
+        for (let i = 2; i < P.length - 2; i++) {
+          const a = P[i - 2], o = P[i], c = P[i + 2];
+          let t = Math.atan2(c.y - o.y, c.x - o.x) - Math.atan2(o.y - a.y, o.x - a.x);
+          while (t > Math.PI) t -= 2 * Math.PI;
+          while (t < -Math.PI) t += 2 * Math.PI;
+          ok(4 / Math.max(1e-6, Math.abs(t)) >= 6, h.title + ': ' + M.wireName(w) + ' kinks near ' + Math.round(o.x) + ', ' + Math.round(o.y));
+        }
+      });
+    });
+  });
   test('routes: a shaped route is kept when its parts move, and Real proportions draws boxes', () => {
     const h = LM.fixtures.fanout(), Lo = LM.conn.layout(h, M.analyze(h), {}), b = Lo.boxes[0], R0 = b.item.path.route;
     const v = R0.v.length ? R0.v.map((x, k) => (k % 2 ? x + 20 : x)) : [R0.A.x + R0.A.out * (R0.stub + 30)];

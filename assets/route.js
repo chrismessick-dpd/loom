@@ -92,9 +92,44 @@
     return { v, k: j + 1 };
   }
 
+  // A run shorter than minJog between two others is too short to round for a wide route (its outer
+  // wires fold; Chris, 2026-11-10, a kink where a bundle met its corner). Line up the runs either
+  // side of it, moving the shorter of them, when that keeps the route out of the blocks and clear of
+  // its terminals; else leave it.
+  function straighten(A, B, v, minJog, blocks, stub) {
+    if (!minJog) return v;
+    const into = (p, q) => blocks.some(r => (Math.abs(p.y - q.y) < 0.01
+      ? p.y > r.y0 && p.y < r.y1 && Math.max(p.x, q.x) > r.x0 && Math.min(p.x, q.x) < r.x1
+      : p.x > r.x0 && p.x < r.x1 && Math.max(p.y, q.y) > r.y0 && Math.min(p.y, q.y) < r.y1));
+    // The end runs count from where they clear their own parts (a stub out), which blocks cover.
+    const clear = w => fits(A, B, w, stub) && !runs(A, B, w).some(r => {
+      if (r.k >= 0) return into(r.a, r.b);
+      if (r.j === 0) return into({ x: A.x + A.out * stub, y: r.a.y }, r.b);
+      return into(r.a, { x: B.x - B.in * stub, y: r.b.y });
+    });
+    for (let guard = 0; guard < 20; guard++) {
+      const R = runs(A, B, v), short = R.find(r => r.k >= 0 && Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) > 0.5 && Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) < minJog);
+      if (!short) break;
+      // The runs either side are set by v[k - 1] and v[k + 1]; past either end of v they're the
+      // terminals' own runs (A.y, B.y), which can't move but can be lined up with.
+      const k = short.k, m = v.length, len = r => (r ? Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) : Infinity);
+      const before = k - 1 >= 0 ? v[k - 1] : A.y, after = k + 1 < m ? v[k + 1] : B.y, tries = [];
+      if (k - 1 >= 0) tries.push({ len: len(R[short.j - 1]), w: v.map((x, i) => (i === k - 1 ? after : x)) });
+      if (k + 1 < m) tries.push({ len: len(R[short.j + 1]), w: v.map((x, i) => (i === k + 1 ? before : x)) });
+      const ok = tries.sort((a, b) => a.len - b.len).map(t => tidy(A, B, t.w)).find(clear);
+      if (!ok) break;
+      v = ok;
+    }
+    return v;
+  }
+
   // ── Drawing a route ──
   // Samples along the route with rounded corners. Each corner's radius is r, less where its runs
   // are short: up to half a middle run, or all of an end run (a terminal has no corner of its own).
+  // A jog (a run shorter than 2r between two runs heading the same way) is too short for two corners
+  // of radius r, and a wide route's outer wires would fold round them (Chris, 2026-11-10: a kink
+  // where a bundle met its corner); it's drawn as one S-curve spread along the runs either side
+  // instead, as long as they have the room.
   function shape(A, B, v, r) {
     const raw = corners(A, B, v), C = [];
     raw.forEach(p => { const q = C[C.length - 1]; if (!q || Math.hypot(p.x - q.x, p.y - q.y) > 0.01) C.push(p); });
@@ -107,30 +142,59 @@
     const push = (x, y, tx, ty) => {
       const q = pts[pts.length - 1];
       if (q && Math.hypot(x - q.x, y - q.y) < 0.01) return;
-      pts.push({ x, y, nx: -ty, ny: tx });
+      const m = Math.hypot(tx, ty) || 1;
+      pts.push({ x, y, nx: -ty / m, ny: tx / m });
     };
     const dirOf = (a, b) => { const L = Math.hypot(b.x - a.x, b.y - a.y) || 1; return { x: (b.x - a.x) / L, y: (b.y - a.y) / L, L }; };
-    if (C.length < 2) { const d = { x: A.out || 1, y: 0 }; push(A.x, A.y, d.x, d.y); push(A.x + d.x, A.y, d.x, d.y); }
+    const n = C.length;
+    if (n < 2) { const d = { x: A.out || 1, y: 0 }; push(A.x, A.y, d.x, d.y); push(A.x + d.x, A.y, d.x, d.y); }
     else {
-      const d0 = dirOf(C[0], C[1]);
+      const seg = i => dirOf(C[i], C[i + 1]);
+      // How much of segment i a plain corner at its start or end may take: all of an end run,
+      // else half of it.
+      const share = i => (i === 0 || i === n - 2 ? 1 : 0.5);
+      const jogs = new Map();
+      for (let i = 1; i <= n - 3; i++) {
+        const d0 = seg(i - 1), d1 = seg(i), d2 = seg(i + 1);
+        if (d1.L >= 2 * r || d0.x * d2.x + d0.y * d2.y < 0.99 || jogs.has(i - 1)) continue;
+        // Room on the runs either side, past what's at their far ends: a corner, or a jog before
+        // this one that shares the run before it.
+        const before = d0.L - (jogs.has(i - 2) ? jogs.get(i - 2) : i - 1 > 0 ? Math.min(r, d0.L / 2) : 0), after = d2.L - (i + 1 < n - 2 ? Math.min(r, d2.L / 2) : 0);
+        const hs = Math.min(Math.max(r, 2 * d1.L), before, after);
+        if (hs > d1.L * 0.75) jogs.set(i, hs);
+      }
+      const d0 = seg(0);
       push(C[0].x, C[0].y, d0.x, d0.y);
-      for (let i = 1; i < C.length - 1; i++) {
+      for (let i = 1; i < n - 1; i++) {
+        if (jogs.has(i)) {
+          // The S: from hs before the jog along the run before it, to hs past it along the run after.
+          const hs = jogs.get(i), da = seg(i - 1), db = seg(i + 1);
+          const P = { x: C[i].x - da.x * hs, y: C[i].y - da.y * hs }, Q = { x: C[i + 1].x + db.x * hs, y: C[i + 1].y + db.y * hs };
+          const c1 = { x: P.x + da.x * hs, y: P.y + da.y * hs }, c2 = { x: Q.x - db.x * hs, y: Q.y - db.y * hs }, N = 24;
+          for (let k = 0; k <= N; k++) {
+            const t = k / N, u = 1 - t;
+            const x = u * u * u * P.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * Q.x, y = u * u * u * P.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * Q.y;
+            const tx = 3 * u * u * (c1.x - P.x) + 6 * u * t * (c2.x - c1.x) + 3 * t * t * (Q.x - c2.x), ty = 3 * u * u * (c1.y - P.y) + 6 * u * t * (c2.y - c1.y) + 3 * t * t * (Q.y - c2.y);
+            push(x, y, tx, ty);
+          }
+          i++;
+          continue;
+        }
         const a = C[i - 1], c = C[i], b = C[i + 1], d1 = dirOf(a, c), d2 = dirOf(c, b);
-        const rr = Math.max(0, Math.min(r, d1.L * (i === 1 ? 1 : 0.5), d2.L * (i === C.length - 2 ? 1 : 0.5)));
+        const rr = Math.max(0, Math.min(r, d1.L * share(i - 1) - (jogs.has(i - 2) ? jogs.get(i - 2) : 0), d2.L * share(i) - (jogs.has(i + 1) ? jogs.get(i + 1) : 0)));
         const turn = d1.x * d2.y - d1.y * d2.x, dot = d1.x * d2.x + d1.y * d2.y;
         if (rr < 0.5 || Math.abs(turn) < 1e-6) { push(c.x, c.y, d1.x, d1.y); push(c.x, c.y, d2.x, d2.y); continue; }
         // An arc from S (rr before the corner) to E (rr after it), about O.
         const S = { x: c.x - d1.x * rr, y: c.y - d1.y * rr }, O = { x: S.x + d2.x * rr, y: S.y + d2.y * rr };
         const a0 = Math.atan2(S.y - O.y, S.x - O.x), sweep = Math.sign(turn) * Math.acos(Math.max(-1, Math.min(1, dot)));
-        const n = Math.max(4, Math.ceil(Math.abs(sweep) / (Math.PI / 16)));
-        for (let s = 0; s <= n; s++) {
-          const t = a0 + sweep * s / n, px = O.x + rr * Math.cos(t), py = O.y + rr * Math.sin(t);
+        const m = Math.max(4, Math.ceil(Math.abs(sweep) / (Math.PI / 16)));
+        for (let s = 0; s <= m; s++) {
+          const t = a0 + sweep * s / m, px = O.x + rr * Math.cos(t), py = O.y + rr * Math.sin(t);
           // The tangent turns with the arc: d1 at the start, d2 at the end.
-          const tx = -Math.sin(t) * Math.sign(sweep), ty = Math.cos(t) * Math.sign(sweep);
-          push(px, py, tx, ty);
+          push(px, py, -Math.sin(t) * Math.sign(sweep), Math.cos(t) * Math.sign(sweep));
         }
       }
-      const z = C[C.length - 1], dz = dirOf(C[C.length - 2], z);
+      const z = C[n - 1], dz = dirOf(C[n - 2], z);
       push(z.x, z.y, dz.x, dz.y);
     }
     let s = 0;
@@ -164,11 +228,12 @@
       },
     };
   }
-  // A route from A to B. blocks: rectangles { x0, y0, x1, y1 } to keep the route's line out of
-  // (inflate them first for the route's width). stub: how far it runs level out of A and into B.
-  // Returns v, or null when there's no way through.
-  const COST = { bend: 4, along: 6, across: 1.5 };
-  function auto(G, A, B, blocks, stub) {
+  // A route from A to B. blocks: rectangles { x0, y0, x1, y1 } the route's line should keep out of
+  // (inflate them first for the route's width): it walks round them, but goes behind one when that's
+  // much shorter (COST.behind a step; Chris, 2026-11-10: walk around, but go behind otherwise). stub:
+  // how far it runs level out of A and into B. Returns v with its cost (v.cost), or null.
+  const COST = { bend: 4, along: 6, across: 1.5, behind: 30 };
+  function auto(G, A, B, blocks, stub, minJog) {
     const g = G.g, W = G.W, H = G.H, N = W * H;
     const blocked = new Uint8Array(N);
     blocks.forEach(b => {
@@ -195,9 +260,8 @@
         const ni = i + DX[nd], nj = j + DY[nd];
         if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
         const nc = nj * W + ni;
-        if (blocked[nc]) continue;
         const o = G.occ[nc];
-        const cost = base + 1 + (nd !== d ? COST.bend : 0) + (o ? (o & (nd % 2 ? 2 : 1) ? COST.along : COST.across) : 0);
+        const cost = base + 1 + (nd !== d ? COST.bend : 0) + (o ? (o & (nd % 2 ? 2 : 1) ? COST.along : COST.across) : 0) + (blocked[nc] ? COST.behind : 0);
         const ns = nc * 4 + nd;
         if (st[ns] === gen && dist[ns] <= cost) continue;
         st[ns] = gen; dist[ns] = cost; prev[ns] = cur;
@@ -223,7 +287,15 @@
     // A grid point is up to half a step off a terminal's height, so a straight grid route between
     // terminals at slightly different heights still needs one vertical run.
     if (!out.length && Math.abs(A.y - B.y) > 0.5) out.push(Math.round((ta.x + tb.x) / 2 / g) * g);
-    return out;
+    // A terminal off the grid leaves a jog shorter than a step next to it, too short to round (a
+    // hook where a pair met its pins): the level run beside a terminal takes the terminal's height.
+    if (out.length >= 3) {
+      if (Math.abs(out[1] - A.y) < g) out[1] = A.y;
+      if (Math.abs(out[out.length - 2] - B.y) < g) out[out.length - 2] = B.y;
+    }
+    const v = straighten(A, B, tidy(A, B, out), minJog || 0, blocks, stub);
+    v.cost = dist[found];
+    return v;
   }
   // Mark what a route covers, so routes after it keep clear of it: cells within `half` of each
   // run, level runs as 1 and vertical runs as 2.
@@ -248,5 +320,5 @@
     return best;
   }
 
-  LM.route = { corners, runs, fits, tidy, addBend, shape, grid, auto, occupy, nearestRun, COST };
+  LM.route = { corners, runs, fits, tidy, addBend, shape, grid, auto, occupy, nearestRun, straighten, COST };
 })(window.LM = window.LM || {});

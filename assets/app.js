@@ -877,7 +877,8 @@
       }
       snapshot();
       h.routes = h.routes || {};
-      h.routes[g.run.key] = { v };
+      g.keep = { a: R0.A.side, b: R0.B.side, mode: h.routes[g.run.key] && h.routes[g.run.key].mode };
+      h.routes[g.run.key] = Object.assign({ v }, g.keep);
       Object.assign(g, { v0: v, k, axis: k % 2 ? 'h' : 'v', p0: toWorld({ clientX: g.x, clientY: g.y }), A: R0.A, B: R0.B, stub: R0.stub });
       svgEl().classList.add('dragging');
     }
@@ -885,11 +886,11 @@
     const q = toWorld(e), gs = gridOf(h), free = e.ctrlKey || e.metaKey || !gs;
     let val = g.v0[g.k] + (g.axis === 'v' ? q.x - g.p0.x : q.y - g.p0.y);
     if (!free) val = Math.round(val / gs) * gs;
-    if (g.axis === 'v' && g.k === 0) val = g.A.out > 0 ? Math.max(val, g.A.x + g.stub) : Math.min(val, g.A.x - g.stub);
-    if (g.axis === 'v' && g.k === g.v0.length - 1) val = g.B.in > 0 ? Math.min(val, g.B.x - g.stub) : Math.max(val, g.B.x + g.stub);
+    // Parts don't stop a run (Chris, 2026-11-10): dragged past a connector, the route leaves from its
+    // other edge, and over one, it runs behind it (conn.js routeAll).
     const v = g.v0.slice();
     v[g.k] = val;
-    h.routes[g.run.key] = { v };
+    h.routes[g.run.key] = Object.assign({ v }, g.keep);
     renderCanvas();
   }
   // A finger lifting ends a pinch; the one left down does nothing until it lifts too.
@@ -981,7 +982,7 @@
       if (g.moved) { renderCanvas(); toast('Drag a bigger box, or click a part to pin the note to it.'); return; }
     }
     if (g && g.marquee && g.moved) { finishMarquee(g); return; }
-    if (g && g.run && g.moved) { const r = H().routes[g.run.key]; if (r) r.v = LM.route.tidy(g.A, g.B, r.v); svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
+    if (g && g.run && g.moved) { const r = H().routes[g.run.key], R1 = lastLayout && lastLayout.runAt(g.run.key, { x: 0, y: 0 }); if (r && R1) { r.v = LM.route.tidy(R1.route.A, R1.route.B, r.v); r.a = R1.route.A.side; r.b = R1.route.B.side; } svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && (g.setEnd || g.note || g.badge || g.area) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
@@ -1302,17 +1303,33 @@
     }
     const c = readClip(), at = toWorld({ clientX: g.x, clientY: g.y });
     const what = list => (list.length === 1 ? esc(list[0]) : list.length + ' parts');
+    // On a wire or a set (arranged view; Chris, 2026-11-10): how its route treats the parts in its
+    // way, walking round them or running straight past behind them, and Reset route once shaped.
+    const wEl = !ids.length && !fold.prop && g.t.closest && (g.t.closest('[data-wire]') || g.t.closest('.cv-setarea'));
+    const rkey = wEl && lastLayout ? (wEl.dataset.wire ? lastLayout.boxOfWire(wEl.dataset.wire) : lastLayout.boxOfSet(wEl.dataset.set)) : null;
+    const rs = rkey && h.routes && h.routes[rkey], behind = !!(rs && rs.mode === 'behind');
+    const routeItems = rkey ? `<button data-ctx="around" role="menuitemradio" aria-checked="${!behind}"><span>${behind ? '' : '✓ '}Walk around parts</span></button>` +
+      `<button data-ctx="behind" role="menuitemradio" aria-checked="${behind}"><span>${behind ? '✓ ' : ''}Go behind parts</span></button>` +
+      (rs && rs.v ? `<button data-ctx="reset-route" role="menuitem"><span>Reset route</span></button>` : '') + '<hr>' : '';
     const m = document.createElement('div');
     m.className = 'menu lm-ctx';
     m.setAttribute('role', 'menu');
-    m.innerHTML = (ids.length ? `<button data-ctx="copy" role="menuitem"><span>Copy ${what(ids.map(id => M.node(h, id).ref))}</span><span class="lm-ctx-k">Ctrl+C</span></button>` : '') +
+    m.innerHTML = routeItems + (ids.length ? `<button data-ctx="copy" role="menuitem"><span>Copy ${what(ids.map(id => M.node(h, id).ref))}</span><span class="lm-ctx-k">Ctrl+C</span></button>` : '') +
       `<button data-ctx="paste" role="menuitem"${c ? '' : ' disabled'}><span>${c ? 'Paste ' + what(c.parts.map(x => x.node.ref)) + ' here' : 'Paste'}</span><span class="lm-ctx-k">Ctrl+V</span></button>` +
-      (!ids.length && !c ? `<div class="lm-ctx-hint">Right-click a connector or splice to copy it.</div>` : '');
+      (!ids.length && !c && !rkey ? `<div class="lm-ctx-hint">Right-click a connector or splice to copy it.</div>` : '');
     m.addEventListener('click', e => {
       const b = e.target.closest('[data-ctx]');
       if (!b || b.disabled) return;
       closeCtx();
-      if (b.dataset.ctx === 'copy') copyParts(ids);
+      const k = b.dataset.ctx;
+      if (k === 'around' || k === 'behind') change(x => {
+        x.routes = x.routes || {};
+        const r = Object.assign({}, x.routes[rkey]);
+        if (k === 'behind') r.mode = 'behind'; else delete r.mode;
+        if (r.v || r.mode) x.routes[rkey] = r; else delete x.routes[rkey];
+      });
+      else if (k === 'reset-route') change(x => { const r = x.routes && x.routes[rkey]; if (r) { delete r.v; delete r.a; delete r.b; if (!r.mode) delete x.routes[rkey]; } });
+      else if (k === 'copy') copyParts(ids);
       else pasteParts(at);
     });
     m.addEventListener('contextmenu', e => e.preventDefault());
@@ -2243,7 +2260,7 @@
     at.x = snap(at.x); at.y = snap(at.y);
     const nb = LM.route.addBend(R0.A, R0.B, R0.v, r.j, at);
     if (!nb) return;
-    change(x => { x.routes = x.routes || {}; x.routes[key] = { v: nb.v }; });
+    change(x => { x.routes = x.routes || {}; x.routes[key] = Object.assign({}, x.routes[key], { v: nb.v, a: R0.A.side, b: R0.B.side }); });
     toast('Bend added. Drag its new run to shape the wire.');
   });
   svg.addEventListener('pointercancel', e => { if (endTouch(e) || pinch) return; const g = gesture; gesture = null; S.slide = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });

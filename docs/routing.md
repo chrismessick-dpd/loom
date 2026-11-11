@@ -9,6 +9,31 @@ His choices: right angles with rounded corners; loose wires and sets together; n
 for loose wires; built on a branch, with `main` put back to `72f9253` (the morning's drawing) while
 this is tried.
 
+## Second round (2026-11-10, after Chris tried it)
+
+Chris: P3's pins jumped to its far edge when he placed it, so P2:4 → P3:4 wrapped round it; a kink
+where a pair met its corner; drags shouldn't be stopped by parts ("try to walk around, but go behind
+otherwise"); maybe a right-click choice of walk around, push, or ignore.
+
+- **Either edge.** A connector end may leave from either edge: both are routed and the cheaper wins,
+  the facing edges on a tie. P3 keeps its pins where P2:4 → P3:4 can walk round on one side. The pin
+  numbers sit on the edge the routes use (`Lo.pinSides`). A shaped route stores its edges (`a`, `b`)
+  and moves to a connector's other edge when its end run is dragged past it.
+- **Behind parts.** Parts are expensive to cross rather than walls (route.js `COST.behind`, 30 a
+  step), so a route walks round unless that's much longer, and a drag is never stopped: a run over a
+  part draws behind it. Right-click a wire or set for *Walk around parts* or *Go behind parts*
+  (`h.routes[key].mode = 'behind'` routes straight past everything), and *Reset route*. Push isn't
+  built: it would move other parts.
+- **No kinks.** Wires keep their pins' spacing and change it once, on the route's longest straight
+  (`P.ease`), not at a corner. A route is as wide as its pins' spread when that's wider than its rows.
+  A jog shorter than a step next to a pin folds into the end run (the grid rounding that hooked two
+  wires into M6). A jog too short for two corners of the route's width is drawn as one S-curve along
+  the runs either side (route.js `shape`), and a route's jogs are lined up where that keeps it clear of
+  parts (`straighten`). A breakout too close to the other end goes level with it. A test now checks
+  that no wire in the demo or the routing checks turns tighter than radius 6.
+- **Demo.** S1 sat on P2 once routes ran B1 to P2's pins (it was placed at B1's right end): it's now
+  two thirds of the way from P1 to P2 (demo `VERSION` 17).
+
 ## What it does
 
 - **Every group of wires travels on a route.** A group is what conn.js calls a box: an outermost set

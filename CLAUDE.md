@@ -31,7 +31,9 @@ links to it so far. Before every commit:
   layout* forget it. Real proportions is unchanged. Leads, anchors, and the arranged view's box are
   gone. `main` was put back to the morning's drawing (`f4eff7c`, the same tree as `72f9253`) while
   this is tried. Everything is in `docs/routing.md`. Tests 33 (routing 6), with a made-up fan-out
-  harness, `tests/fixture-fanout.js`.
+  harness, `tests/fixture-fanout.js`. Second round the same day (Chris): either connector edge, parts
+  crossed only when walking round is much longer, drags never stopped, right-click *Walk around parts* /
+  *Go behind parts*, no kinks (one spacing change on the longest straight, S-curve jogs). Tests 34.
 - **Tools switcher (2026-11-09, Chris; pushed `b960a66`):** signed in, the sidebar's Dovetail Signoff list adds Signoff
   EE, ME, FW, and PL (FTE only, `R.access() === 'fte'`) and folds to a row of icons like Signoff EE's (`renderTools`,
   `setupToolsFold` in `app.js`, a copy of the engine's); signed out it's Fabcheck and All tools as before.
