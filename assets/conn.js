@@ -1,11 +1,13 @@
 // The connection view: a wiring diagram in the style of WireViz. Connectors are tables (a header, a
-// type row, one row per pin), each top-level wire set is a box in the middle with one row per wire
-// ("P1:3  BU  P2:3"), and every wire is a curve in its own color that runs through its box.
+// type row, one row per pin), and every wire is a line in its own color with a label
+// ("P1:3  BU  P2:3") hanging from it.
 //
-// Boxes: each outermost set (M.roots) gets a box, drawn with what holds each set inside it (lacing,
-// a cable's sheath, a shield's braid, a twist) and a round badge with the outermost set's label.
-// Wires in no set run in a plain stack with the others that join the same two ends. Splices are
-// small nodes between boxes. Positions dragged by hand (h.place) win; the rest is
+// Boxes: each outermost set (M.roots) is a box, and the wires in no set make a stack with the others
+// that join the same two ends. A box is the group of wires that travel together: its rows, its sets
+// (lacing, a cable's sheath, a shield's braid, a twist, and a badge for each), and its path. In the
+// arranged view the path is a route (route.js) from one end's pins to the other's, around the parts,
+// and the box itself isn't drawn; in Real proportions it's the box, to scale. Splices are small
+// nodes between boxes. Positions dragged by hand (h.place) win; the rest is
 // automatic: ends and splices sit in columns
 // by how far they are from the busiest connector, boxes sit in the columns between them, and each column
 // is ordered to keep wires from crossing. The editor's canvas and the drawing sheet both use it.
@@ -37,9 +39,8 @@
   // as its conductors need: SET_R past its outer wires. They fan in to it from grid spacing and back
   // out over fanLen, and its box keeps LABEL_PAD either side of its wires' labels after the fan-out.
   const PACK = 5, LABEL_PAD = 8;
-  // A lead (layout: the curve off a box's side toward its part) ends BREAKOUT short of the part, and
-  // is drawn only when it runs at least MIN_LEAD; one bending too tight comes in to MIN_BRK first.
-  const BREAKOUT = 40, MIN_LEAD = 30, MIN_BRK = 16;
+  // Routes found for each harness, by box key, so a layout that changes nothing finds none again.
+  const routeCache = new Map();
   const fanLen = sp => Math.max(24, Math.min(90, (sp.i1 - sp.i0) * (PITCH - PACK) * 0.7));
   // The sets that pack their wires: cables, shields, and bundles inside no other (an inner one packs
   // with it).
@@ -600,167 +601,117 @@
       return { x: right ? it.x + it.w : it.x, y: endY(e) };
     }
 
-    // ── Paths and leads ──
-    // Each set box has a path: the straight run across the box at its rows' middle (cy) and, in
-    // the arranged view, a lead off each side toward the one part its wires run to there (Chris:
-    // drag a cable's, shield's, or bundle's ends along the curves, closer to the connectors). u is
-    // the distance along the path, and the wires' run maps onto all of it at one scale (sz.k, mm
-    // per unit), so a set reaching its wire ends is drawn to the end of each lead, a breakout short
-    // of the part, and its wires fan to their pins from wherever it ends. A box whose sets hold no
-    // cable, shield, or bundle (a twist alone) has no leads: its path is its frame, as before.
-    // Lessons from the first try (branch `sets`, Chris: glitchy once ends crossed or parts moved):
-    // - Only packed wires ride a lead; a band at grid spacing folds over itself on a bend.
-    // - No fixed breakout the wires must meet: they leave the lead where their set ends, along it.
-    // - A lead is two circular arcs, level at both ends, with a straight between when it climbs
-    //   further than it runs, so its tightest radius is known; a side whose lead would bend tighter
-    //   than its wires need, or whose part isn't out to that side, has no lead.
-    // - Sets are placed by where they reach along the path (M.reach), not relative to their
-    //   parents, so a nested set's end passes its parent's cleanly.
-    function biarc(P0, P1) {
-      const dx = P1.x - P0.x, dy = P1.y - P0.y, sg = dy < 0 ? -1 : 1, ady = Math.abs(dy), out = [];
-      const push = (x, y, tx, ty) => out.push({ x, y, nx: -ty, ny: tx });
-      let r = Infinity;
-      if (ady < 0.5) { const n = Math.max(2, Math.ceil(dx / 4)); for (let i = 0; i <= n; i++) push(P0.x + dx * i / n, P0.y + dy * i / n, 1, 0); }
-      else {
-        let th, L = 0;
-        if (ady <= dx) { th = 2 * Math.atan(ady / dx); r = dx / (2 * Math.sin(th)); } else { th = Math.PI / 2; r = dx / 2; L = ady - dx; }
-        const n1 = Math.max(4, Math.ceil(r * th / 4));
-        for (let i = 0; i <= n1; i++) { const a = th * i / n1; push(P0.x + r * Math.sin(a), P0.y + sg * r * (1 - Math.cos(a)), Math.cos(a), sg * Math.sin(a)); }
-        const m = out[out.length - 1];
-        if (L > 0) { const n2 = Math.max(1, Math.ceil(L / 4)); for (let i = 1; i <= n2; i++) push(m.x, m.y + sg * L * i / n2, 0, sg); }
-        for (let i = n1 - 1; i >= 0; i--) { const a = th * i / n1; push(P1.x - r * Math.sin(a), P1.y - sg * r * (1 - Math.cos(a)), Math.cos(a), sg * Math.sin(a)); }
-      }
-      let s = 0;
-      out.forEach((p, i) => { if (i) s += Math.hypot(p.x - out[i - 1].x, p.y - out[i - 1].y); p.s = s; });
-      return { pts: out, S: s, r };
-    }
-    // The lead off one side of a box (k 0 left, 1 right), or null: from the box's edge at cy to a
-    // breakout BREAKOUT (more for a tall spread of pins) short of the part, level with the middle of
-    // its pins. need is how far the box's packed wires reach from the path's middle.
-    // Leads leaving one part's side the same way (both climbing, say) nest instead of lying on each
-    // other: the one going furthest turns first, and each next one's breakout is further out by
-    // twice their half-widths and a gap, which puts their turns (halfway along) a band apart.
-    const stagger = new Map();
+    // ── Paths ──
+    // Every box has a path its wires ride, u being the distance along it, and its sets reach along
+    // it (sz.arc: u0, u1, from M.reach at sz.k mm per unit). A wire rides at its row's offset from
+    // the path's middle (cy), packed where its sets pack it (packAt), and wpt turns that into a point.
+    // - Arranged view (Chris, 2026-11-10: wires walk around the parts, and their straight runs drag):
+    //   the path is a route (route.js) from the pins at one end to the pins at the other, in straight
+    //   runs at right angles with rounded corners, around every connector and splice. A side whose
+    //   wires go to more than one part ends at the box's edge (a breakout), and its wires curve on to
+    //   their pins from there. The box itself is no longer drawn.
+    // - Real proportions: the path is the box, straight across at cy, to scale (sz.prop).
     const rowYs = it => it.sz.rows.map((r, i) => (r.w ? rowY(it, i) : null)).filter(v => v != null);
     const midY = it => { const ys = rowYs(it); return (Math.min(...ys) + Math.max(...ys)) / 2; };
-    // How far a box's wires reach from its path's middle on a lead: packed in a set's box, at their
-    // rows in a stack.
-    const reachOf = it => { const ys = rowYs(it), c = midY(it), o = Math.max(...ys.map(y => Math.abs(y - c))); return it.b.kind === 'set' ? o * PACK / PITCH + it.sz.R0 + 2 : o + 4; };
-    [0, 1].forEach(k => {
-      const groups = new Map();
+    // How far a box's drawing reaches from its path's middle: its rows, and a set's sheath, braid,
+    // or lacing past them.
+    const reachOf = it => { const ys = rowYs(it), c = midY(it); return Math.max(...ys.map(y => Math.abs(y - c))) + (it.b.kind === 'set' ? it.sz.R0 : 3); };
+    const RT = LM.route, routes = new Map();
+    // A box's end on side k (0 left, 1 right): its wires' pins when they all go to one part (the
+    // edge facing towardX, level with the middle of the pins), else the box's edge. dir is the way
+    // out of the part (or out of the box), along x.
+    function terminal(b, k, towardX) {
+      const it = b.item, es = b.wires.map(w => leftFirst(w)[k]), pit = itemOf.get(es[0].node);
+      if (new Set(es.map(e => e.node)).size === 1 && pit && pit.kind !== 'loose') {
+        const as = es.map(e => anchor(e, towardX)), ys = as.map(p => p.y);
+        return { x: as[0].x, y: (Math.min(...ys) + Math.max(...ys)) / 2, dir: as[0].x > pit.x + pit.w / 2 ? 1 : -1, pins: true, node: es[0].node, toward: towardX };
+      }
+      // A breakout: BREAK short of the nearest of those parts' pins, on the side facing the rest of
+      // the route, level with the middle of the pins (Chris's harnesses: a bundle splitting to two
+      // loads). dir is set so the route leaves it (A) or arrives (B) heading toward the parts.
+      const as = es.map(e => anchor(e, towardX)), ys = as.map(p => p.y), xs = as.map(p => p.x);
+      const fromLeft = towardX < xs.reduce((t, x) => t + x, 0) / xs.length;
+      const x = fromLeft ? Math.min(...xs) - BREAK : Math.max(...xs) + BREAK, head = fromLeft ? 1 : -1;
+      return { x, y: Math.round((Math.min(...ys) + Math.max(...ys)) / 2 / 10) * 10, dir: head, pins: false };
+    }
+    const BREAK = 60;
+    // Routes for every box, biggest first, each keeping clear of those before it; one shaped by hand
+    // (h.routes[box key].v) is kept as it is. Unchanged since the last layout, they
+    // come from the cache; view.fast (a part being dragged) re-routes only boxes whose ends moved.
+    function routeAll() {
+      const rects = items.filter(i => i.kind === 'conn' || i.kind === 'splice').map(i => ({ id: i.n.id, x0: i.x, y0: i.y, x1: i.x + i.w, y1: i.y + i.h }));
+      const all = [];
       boxes.forEach(b => {
-        const es = b.wires.map(w => leftFirst(w)[k]);
-        if (new Set(es.map(e => e.node)).size !== 1) return;
-        const ys = es.map(endY).filter(y => y != null);
-        if (!ys.length) return;
-        const dy = midY(b.item) - (Math.min(...ys) + Math.max(...ys)) / 2, g = es[0].node + '|' + Math.sign(Math.round(dy));
-        if (!groups.has(g)) groups.set(g, []);
-        groups.get(g).push({ b, d: Math.abs(dy) });
+        const it = b.item, cx = it.x + it.w / 2;
+        const far = k => { const es = b.wires.map(w => leftFirst(w)[k]), o = itemOf.get(es[0].node); return new Set(es.map(e => e.node)).size === 1 && o ? o.x + o.w / 2 : cx; };
+        const tA = terminal(b, 0, far(1)), tB = terminal(b, 1, far(0));
+        const half = reachOf(it), stub = Math.round(half + 20);
+        const A0 = { x: tA.x, y: tA.y, out: tA.pins ? tA.dir : -tA.dir, pins: tA.pins, node: tA.node, toward: tA.toward };
+        const B0 = { x: tB.x, y: tB.y, in: tB.pins ? -tB.dir : tB.dir, pins: tB.pins, node: tB.node, toward: tB.toward };
+        const kept = h.routes && h.routes[b.key] && h.routes[b.key].v;
+        all.push({ b, A: A0, B: B0, half, stub, r: half + 10, kept: kept && RT.fits(A0, B0, kept, stub) ? kept.map(Number) : null });
       });
-      groups.forEach(list => {
-        let x = 0;
-        list.sort((a, c) => c.d - a.d).forEach((o, i) => { if (i) x += 2 * (reachOf(list[i - 1].b.item) + reachOf(o.b.item) + 6); stagger.set(o.b.key + '|' + k, x); });
-      });
-    });
-    function leadSide(it, k, cy, need) {
-      const es = it.b.wires.map(w => leftFirst(w)[k]);
-      if (new Set(es.map(e => e.node)).size !== 1) return null;
-      const pit = itemOf.get(es[0].node);
-      if (!pit || pit.kind === 'loose') return null;
-      const as = es.map(e => anchor(e, k ? -Infinity : Infinity)), ys = as.map(p => p.y);
-      const brk = Math.max(BREAKOUT, Math.min(120, (Math.max(...ys) - Math.min(...ys)) * 0.6)) + (stagger.get(it.b.key + '|' + k) || 0);
-      const ax = k ? Math.min(...as.map(p => p.x)) : Math.max(...as.map(p => p.x));
-      const E = { x: k ? it.x + it.w : it.x, y: cy }, by = (Math.min(...ys) + Math.max(...ys)) / 2;
-      // Too tight a turn for its wires: the breakout comes in toward the part (to MIN_BRK) for room.
-      for (let b = brk; ; b = Math.max(MIN_BRK, b - 8)) {
-        const B = { x: k ? ax - b : ax + b, y: by };
-        if ((k ? B.x - E.x : E.x - B.x) >= MIN_LEAD) {
-          const L = k ? biarc(E, B) : biarc(B, E);
-          if (L.r >= need + 4) return L;
+      const sig = o => JSON.stringify([o.A.x, o.A.y, o.A.out, o.B.x, o.B.y, o.B.in, o.half].map(v => Math.round(v * 10) / 10));
+      const whole = JSON.stringify([rects.map(r => [r.x0, r.y0, r.x1, r.y1].map(Math.round)), all.map(o => o.b.key + sig(o) + (o.kept ? o.kept.join(',') : ''))]);
+      const cache = routeCache.get(h.id) || { whole: '', v: new Map(), sig: new Map() };
+      const same = cache.whole === whole;
+      const xs = rects.flatMap(r => [r.x0, r.x1]).concat(all.flatMap(o => [o.A.x, o.B.x])), ys = rects.flatMap(r => [r.y0, r.y1]).concat(all.flatMap(o => [o.A.y, o.B.y]));
+      const G = RT.grid({ x0: Math.min(0, ...xs) - 300, y0: Math.min(0, ...ys) - 300, x1: Math.max(0, ...xs) + 300, y1: Math.max(0, ...ys) + 300 }, 10);
+      // One order whatever is shaped, so shaping one route moves as few others as it can.
+      all.sort((p, q) => q.b.wires.length - p.b.wires.length || (p.b.key < q.b.key ? -1 : 1));
+      // A route found before is kept while its ends haven't moved, it doesn't now run through a part,
+      // and it doesn't lie along a route that changed before it in this pass (Chris, 2026-11-10:
+      // lines he hadn't touched kept changing). So moving a part re-routes the groups it carries and
+      // the few it's moved into, not the whole drawing.
+      const strict = (p, q, r) => (Math.abs(p.y - q.y) < 0.01
+        ? p.y > r.y0 && p.y < r.y1 && Math.max(p.x, q.x) > r.x0 && Math.min(p.x, q.x) < r.x1
+        : p.x > r.x0 && p.x < r.x1 && Math.max(p.y, q.y) > r.y0 && Math.min(p.y, q.y) < r.y1);
+      const crosses = (o, v) => RT.runs(o.A, o.B, v).some(r => rects.some(rc => {
+        if (r.k < 0 && (rc.id === o.A.node || rc.id === o.B.node)) return false;
+        const m = o.half + 2;
+        return strict(r.a, r.b, { x0: rc.x0 - m, y0: rc.y0 - m, x1: rc.x1 + m, y1: rc.y1 + m });
+      }));
+      const along = (r, s, d) => {
+        if (r.axis !== s.axis) return false;
+        const lv = r.axis === 'h', gap = Math.abs(lv ? r.a.y - s.a.y : r.a.x - s.a.x);
+        const lo = lv ? Math.max(Math.min(r.a.x, r.b.x), Math.min(s.a.x, s.b.x)) : Math.max(Math.min(r.a.y, r.b.y), Math.min(s.a.y, s.b.y));
+        const hi = lv ? Math.min(Math.max(r.a.x, r.b.x), Math.max(s.a.x, s.b.x)) : Math.min(Math.max(r.a.y, r.b.y), Math.max(s.a.y, s.b.y));
+        return gap < d && hi - lo > 1;
+      };
+      const changed = [];
+      const nearChanged = (o, v) => { const mine = RT.runs(o.A, o.B, v); return changed.some(c => c.runs.some(s => mine.some(r => along(r, s, o.half + c.half + 1)))); };
+      all.forEach(o => {
+        const prev = cache.v.get(o.b.key);
+        let v = o.kept;
+        if (!v) {
+          const same1 = prev && cache.sig.get(o.b.key) === sig(o);
+          if (prev && (same || (same1 && ((view && view.fast) || (!crosses(o, prev) && !nearChanged(o, prev)))))) v = prev;
+          else {
+            const m = o.half + 8;
+            v = RT.auto(G, o.A, o.B, rects.map(r => ({ x0: r.x0 - m, y0: r.y0 - m, x1: r.x1 + m, y1: r.y1 + m })), o.stub);
+            if (!v || !RT.fits(o.A, o.B, v, o.stub)) v = RT.fits(o.A, o.B, [], o.stub) ? [] : [o.A.x + o.A.out * o.stub];
+          }
         }
-        if (b <= MIN_BRK) return curveLead(it, E, es, pit, by, k, need);
-      }
-    }
-    // Where no two-arc lead fits (the part above or below and not far enough out to the side, or
-    // behind the box's edge), the lead is a free curve (Chris, 2026-11-10: anchors and set ends should
-    // slide all the way round in the arranged view; only connections and a clean drawing matter
-    // there). It leaves the box level and reaches the pins on the side the wires are drawn to (as
-    // wirePath's anchor, facing the box), stopping MIN_BRK short of them so the wires still fan in.
-    // Pointing the same way at both ends it's an S (a cubic); pointing opposite ways (the part is
-    // behind the box's edge) it runs straight to a U-turn of the height between them and back, so it
-    // never folds into a hairpin. Too tight for its wires (radius under need + 4), there's no lead.
-    function curveLead(it, E, es, pit, by, k, need) {
-      const cx = it.x + it.w / 2, bs = es.map(e => anchor(e, cx));
-      const near = bs.reduce((m, p) => (Math.abs(p.x - E.x) < Math.abs(m.x - E.x) ? p : m), bs[0]);
-      const B = { x: near.x, y: by }, dB = near.x > pit.x + pit.w / 2 ? 1 : -1;
-      // In travel order (left to right along the path): from p heading tp to q heading tq.
-      const p = k ? E : B, q = k ? B : E, tp = k ? 1 : dB, tq = k ? -dB : 1;
-      const raw = [], line = (a, b) => { const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 4)); for (let i = 1; i <= n; i++) raw.push({ x: a.x + (b.x - a.x) * i / n, y: a.y + (b.y - a.y) * i / n }); };
-      const cubic = (a, c1, c2, b) => { for (let i = 1; i <= 48; i++) { const t = i / 48, u = 1 - t; raw.push({ x: u * u * u * a.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * b.x, y: u * u * u * a.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * b.y }); } };
-      raw.push({ x: p.x, y: p.y });
-      const uTurn = (a, b, t) => { const d = Math.abs(b.y - a.y) * 2 / 3; cubic(a, { x: a.x + t * d, y: a.y }, { x: b.x + t * d, y: b.y }, b); };
-      if (tp === tq && (q.x - p.x) * tp < 30) {
-        // Pointing the same way with q behind p (a splice port facing away): out past p, a U-turn to
-        // halfway, back past q, and a U-turn into it.
-        const X1 = tp > 0 ? Math.max(p.x, q.x) : Math.min(p.x, q.x), X2 = tp > 0 ? Math.min(p.x, q.x) : Math.max(p.x, q.x), ym = (p.y + q.y) / 2;
-        if (Math.abs(q.y - p.y) < 2) return null;
-        line(p, { x: X1, y: p.y }); uTurn({ x: X1, y: p.y }, { x: X1, y: ym }, tp);
-        line({ x: X1, y: ym }, { x: X2, y: ym }); uTurn({ x: X2, y: ym }, { x: X2, y: q.y }, -tp);
-        line({ x: X2, y: q.y }, q);
-      } else if (tp === tq) {
-        const d = Math.max(30, Math.abs(q.x - p.x) * 0.5, Math.abs(q.y - p.y) * 0.5);
-        cubic(p, { x: p.x + tp * d, y: p.y }, { x: q.x - tq * d, y: q.y }, q);
-      } else {
-        // The U-turn: a cubic close to a half circle of the height between them, past whichever is further out.
-        const X = tp > 0 ? Math.max(p.x, q.x) : Math.min(p.x, q.x), h = Math.abs(q.y - p.y), d = h * 2 / 3;
-        if (h < 1) return null;
-        line(p, { x: X, y: p.y });
-        cubic({ x: X, y: p.y }, { x: X + tp * d, y: p.y }, { x: X + tp * d, y: q.y }, { x: X, y: q.y });
-        line({ x: X, y: q.y }, q);
-      }
-      const pts = raw.filter((pt, i) => !i || Math.hypot(pt.x - raw[i - 1].x, pt.y - raw[i - 1].y) > 0.01);
-      if (pts.length < 3) return null;
-      let S = 0, rMin = Infinity;
-      pts.forEach((pt, i) => {
-        if (i) S += Math.hypot(pt.x - pts[i - 1].x, pt.y - pts[i - 1].y);
-        pt.s = S;
-        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], m = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-        pt.nx = -(b.y - a.y) / m; pt.ny = (b.x - a.x) / m;
+        if (!prev || prev.join(',') !== v.join(',')) changed.push({ half: o.half, runs: RT.runs(o.A, o.B, v) });
+        RT.occupy(G, o.A, o.B, v, o.half + 6);
+        routes.set(o.b.key, { key: o.b.key, A: o.A, B: o.B, v, half: o.half, stub: o.stub, r: o.r, kept: !!o.kept });
       });
-      // The tightest turn: the angle between neighboring steps over their length.
-      for (let i = 1; i < pts.length - 1; i++) {
-        const a = pts[i - 1], o = pts[i], b = pts[i + 1];
-        const t1 = Math.atan2(o.y - a.y, o.x - a.x), t2 = Math.atan2(b.y - o.y, b.x - o.x);
-        let th = Math.abs(t2 - t1); if (th > Math.PI) th = 2 * Math.PI - th;
-        if (th > 1e-4) rMin = Math.min(rMin, ((Math.hypot(o.x - a.x, o.y - a.y) + Math.hypot(b.x - o.x, b.y - o.y)) / 2) / th);
-      }
-      if (rMin < need + 4 || S < MIN_BRK + 8) return null;
-      // Trim MIN_BRK off the pin end, and measure from the lead's start again.
-      const kept = k ? pts.filter(pt => pt.s <= S - MIN_BRK) : pts.filter(pt => pt.s >= MIN_BRK);
-      const s0 = kept[0].s;
-      kept.forEach(pt => { pt.s -= s0; });
-      return { pts: kept, S: kept[kept.length - 1].s, r: rMin };
+      const next = { whole, v: new Map(), sig: new Map() };
+      all.forEach(o => { next.v.set(o.b.key, routes.get(o.b.key).v); next.sig.set(o.b.key, sig(o)); });
+      routeCache.set(h.id, next);
     }
-    // Every box's path (it.path) and where each of its sets reaches along it (sz.arc: u0, u1). Sets
-    // that pack (cables, shields, bundles, twists) ride the leads; any other stays on the straight
-    // part. A stack (wires in no set) gets a path too, and each of its wires a left and a right
-    // anchor (w.anchors: mm in from that side's wire end; unset, at the box's edge; sz.warc), handles that slide
-    // along the curves like a cable's ends (Chris): the wire rides the path between them and fans to
-    // its pins from them. In Real proportions the path is the box, sz.ext (from proportion) says
-    // where sets reach, and sz.prop where anchors sit.
+    if (!prop) routeAll();
     boxes.forEach(b => {
-      const it = b.item, sz = it.sz, isSet = b.kind === 'set';
-      const ys = sz.rows.map((r, i) => (r.w ? rowY(it, i) : null)).filter(v => v != null);
-      const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-      const leads = !prop && (!isSet || setsUnder(h, b.set).some(x => rides(x.s)));
-      const need = reachOf(it);
-      const lL = leads ? leadSide(it, 0, cy, need) : null, lR = leads ? leadSide(it, 1, cy, need) : null;
-      const xa = prop || lL ? it.x : it.x + sz.lx, xb = prop || lR ? it.x + it.w : it.x + sz.lx + sz.rootW;
-      const aL = lL ? lL.S : 0, Ls = xb - xa, aR = lR ? lR.S : 0, S = aL + Ls + aR;
-      const pts = (lL ? lL.pts : []).concat([{ x: xa, y: cy, nx: 0, ny: 1, s: aL }, { x: xb, y: cy, nx: 0, ny: 1, s: aL + Ls }],
-        lR ? lR.pts.map(p => Object.assign({}, p, { s: p.s + aL + Ls })) : []);
-      it.path = { pts, S, aL, Ls, aR, xa, xb, cy, lL, lR };
-      sz.arc = new Map(); sz.warc = new Map();
+      const it = b.item, sz = it.sz, isSet = b.kind === 'set', cy = midY(it);
+      if (!prop) {
+        const R0 = routes.get(b.key), sh = RT.shape(R0.A, R0.B, R0.v, R0.r);
+        it.path = { pts: sh.pts, S: sh.S, aL: 0, Ls: sh.S, aR: 0, cy, routed: true, route: R0, xa: R0.A.x, xb: R0.B.x };
+      } else {
+        const xa = it.x, xb = it.x + it.w;
+        it.path = { pts: [{ x: xa, y: cy, nx: 0, ny: 1, s: 0 }, { x: xb, y: cy, nx: 0, ny: 1, s: xb - xa }], S: xb - xa, aL: 0, Ls: xb - xa, aR: 0, xa, xb, cy };
+      }
+      const S = it.path.S;
+      sz.arc = new Map();
       const span = (u0, u1, lo, hi) => {
         u0 = Math.min(hi, Math.max(lo, u0)); u1 = Math.max(lo, Math.min(hi, u1));
         if (u1 - u0 < 12) { const c = Math.min(hi - 6, Math.max(lo + 6, (u0 + u1) / 2)); u0 = c - 6; u1 = c + 6; }
@@ -769,21 +720,38 @@
       if (!isSet) {
         const lens = b.wires.map(w => A.wireLen.get(w.id)).filter(v => v != null && v > 0), run = lens.length ? Math.max(...lens) : null;
         sz.k = run ? Math.min(10, Math.max(0.3, run / S)) : 2;
-        b.wires.forEach(w => {
-          // Unset, an anchor sits at the box's edge, so the wire curves to its pin as it always did.
-          const an = w.anchors || {}, at = (v, side) => (v == null ? (side ? aL + Ls : aL) : prop && sz.prop ? sz.prop.map(side ? sz.prop.L - +v : +v) : side ? S - +v / sz.k : +v / sz.k);
-          sz.warc.set(w.id, span(at(an.l, 0), at(an.r, 1), 0, S));
-        });
         return;
       }
       if (prop) { sz.ext.forEach((e, id) => sz.arc.set(id, { u0: e.x0, u1: e.x1 })); return; }
       const run = M.setRun(A, b.set);
       sz.k = run ? Math.min(10, Math.max(0.3, run / S)) : 2;
       setsUnder(h, b.set).forEach(({ s: st }) => {
-        const r = M.reach(h, st), lo = rides(st) ? 0 : aL, hi = rides(st) ? S : aL + Ls;
-        sz.arc.set(st.id, span(r.l / sz.k, S - r.r / sz.k, lo, hi));
+        const r = M.reach(h, st);
+        sz.arc.set(st.id, span(r.l / sz.k, S - r.r / sz.k, 0, S));
       });
     });
+    // Where each routed wire sits across its path at either end: at its pin (the end's pins are
+    // level with the path's start, across it), or at its row at a breakout. In between it rides at
+    // its row, easing over END_EASE from each end's offset (a part's pins may be spread or ordered
+    // otherwise than the rows).
+    const END_EASE = 50;
+    const endOff = new Map();
+    function offsets(w, it) {
+      if (endOff.has(w.id)) return endOff.get(w.id);
+      const P = it.path, R0 = P.route, r = boxRowY.get(w.id) - P.cy, [l, rr] = leftFirst(w);
+      const at = (e, u, T) => { if (!T.pins) return r; const p = pathAt(P, u), q = anchor(e, T.toward); return (q.x - p.x) * p.nx + (q.y - p.y) * p.ny; };
+      const o = { r, a: at(l, 0, R0.A), b: at(rr, P.S, R0.B), F: Math.min(END_EASE, P.S / 3) };
+      endOff.set(w.id, o);
+      return o;
+    }
+    // A routed wire's height in its box's row space at u (before packing).
+    function baseAt(w, it, u) {
+      const o = offsets(w, it), P = it.path;
+      let y = o.r;
+      if (Math.abs(o.a - o.r) > 0.01) y += (o.a - o.r) * (1 - smooth(u / o.F));
+      if (Math.abs(o.b - o.r) > 0.01) y += (o.b - o.r) * (1 - smooth((P.S - u) / o.F));
+      return P.cy + y;
+    }
 
     // Packing (Chris: cables, shields, bundles, and twists hold their wires PACK apart, edges touching). Each
     // boxed wire's chain is the sets that pack it, innermost first, each with where it reaches, the
@@ -836,8 +804,7 @@
     const chainOf = new Map();
     boxes.forEach(b => {
       const it = b.item;
-      // A stack's wires: their anchors, which pack nothing but say where each leaves the path.
-      if (b.kind !== 'set') { it.sz.warc.forEach((a, id) => chainOf.set(id, [{ a, own: true, F: 1 }])); return; }
+      if (b.kind !== 'set') return;
       it.sz.spans.slice().sort((x, y) => y.depth - x.depth).forEach(sp => {
         const a = it.sz.arc.get(sp.s.id);
         if (!rides(sp.s) || !a) return;
@@ -848,19 +815,13 @@
     const cover = (k, u) => (u < k.a.u0 ? smooth((u - k.a.u0 + k.F) / k.F) : u > k.a.u1 ? smooth((k.a.u1 + k.F - u) / k.F) : 1);
     function packAt(w, u, base) {
       let y = base;
-      (chainOf.get(w.id) || []).forEach(k => { const m = k.own ? 0 : cover(k, u); if (m > 0) y += (k.c + k.f(base) - y) * m; });
+      (chainOf.get(w.id) || []).forEach(k => { const m = cover(k, u); if (m > 0) y += (k.c + k.f(base) - y) * m; });
       return y;
     }
     // A boxed wire's point at u along its box's path: its packed height, as an offset across it.
     const wpt = (w, it, u, base) => { const p = pathAt(it.path, u), o = packAt(w, u, base) - it.path.cy; return { x: p.x + p.nx * o, y: p.y + p.ny * o }; };
-    // Where a wire leaves a lead for its pin: the furthest end of the sets that pack it, when that
-    // end is out on the lead (null: it fans straight to the box, as before).
-    function joins(w, it) {
-      const P = it.path, ch = chainOf.get(w.id) || [];
-      if (!P || !ch.length) return { l: null, r: null };
-      const u0 = Math.min(...ch.map(k => k.a.u0)), u1 = Math.max(...ch.map(k => k.a.u1));
-      return { l: P.lL && u0 < P.aL - 0.5 ? u0 : null, r: P.lR && u1 > P.aL + P.Ls + 0.5 ? u1 : null };
-    }
+    // A boxed wire's height in row space at u before packing: its row, or on a route, eased to its pins.
+    const rowBase = (w, it, u) => (it.path && it.path.routed ? baseAt(w, it, u) : boxRowY.get(w.id));
     const steps = (a, b, d) => { const n = Math.max(1, Math.ceil(Math.abs(b - a) / d)); return [...Array(n + 1)].map((_, i) => a + (b - a) * i / n); };
     const tanAt = (P, u) => { const p = pathAt(P, u); return { x: p.ny, y: -p.nx }; };
 
@@ -902,31 +863,29 @@
     // twist's near side; J says where it joins each lead (null: it doesn't).
     function runPts(w, e, twisty) {
       const { it, lIn, rIn } = e, P = it.path, y0 = boxRowY.get(w.id);
-      if (!P) return { pts: [{ x: lIn.x, y: lIn.y }, { x: rIn.x, y: rIn.y }], J: { l: null, r: null } };
-      // A stack's wire (arranged view) rides its path only between its anchors, wherever they are,
-      // straight part included, and leaves it there for its pins (Chris, 2026-11-10: an anchor on the
-      // straight did nothing, and the wire ran on past it). Unset, they sit at the box's edges.
-      const own = (chainOf.get(w.id) || [])[0];
-      // An anchor at the box's edge on a side with no lead leaves as it always did (J null: the curve
-      // to its pin picks its own direction).
-      if (own && own.own && !prop) return { pts: steps(own.a.u0, own.a.u1, 3).map(u => wpt(w, it, u, y0)),
-        J: { l: P.lL || own.a.u0 > P.aL + 0.5 ? own.a.u0 : null, r: P.lR || own.a.u1 < P.aL + P.Ls - 0.5 ? own.a.u1 : null } };
-      const J = joins(w, it), out = [];
-      // The twist runs by distance along the path, leads included, so it follows the curves.
-      const tsp = twisty ? twistSpan(w) : null, hx = tsp && helix(tsp, y0), dir = rIn.x >= lIn.x ? 1 : -1;
-      const base = u => (tsp && u >= tsp.ua && u <= tsp.ub ? hx(u - tsp.ua) : { y: y0, front: false });
-      const onLead = (a, b) => steps(a, b, 3).forEach(u => { const v = base(u); out.push(Object.assign(wpt(w, it, u, v.y), { front: v.front })); });
-      if (J.l != null) onLead(J.l, P.aL);
-      const xs = [lIn.x, rIn.x];
-      (chainOf.get(w.id) || []).forEach(k => { if (!k.own) [[k.a.u0 - k.F, k.a.u0], [k.a.u1, k.a.u1 + k.F]].forEach(([a, b]) => steps(a, b, 3).forEach(u => xs.push(xOfU(it, u)))); });
+      if (!P) return { pts: [{ x: lIn.x, y: lIn.y }, { x: rIn.x, y: rIn.y }] };
+      // The twist runs by distance along the path, so on a route it follows the corners.
+      const tsp = twisty ? twistSpan(w) : null, hx = tsp && helix(tsp, y0);
+      const tw = u => (tsp && u >= tsp.ua && u <= tsp.ub ? hx(u - tsp.ua) : null);
+      // On a route the wire rides all of it, from pin to pin (or breakout to breakout).
+      if (P.routed) return { pts: steps(0, P.S, 3).map(u => { const v = tw(u); return Object.assign(wpt(w, it, u, v ? v.y : baseAt(w, it, u)), { front: !!(v && v.front) }); }) };
+      // Real proportions: across the box, straight, packed where its sets pack it.
+      const out = [], dir = rIn.x >= lIn.x ? 1 : -1, xs = [lIn.x, rIn.x];
+      (chainOf.get(w.id) || []).forEach(k => [[k.a.u0 - k.F, k.a.u0], [k.a.u1, k.a.u1 + k.F]].forEach(([a, b]) => steps(a, b, 3).forEach(u => xs.push(xOfU(it, u)))));
       if (tsp) steps(tsp.ua, tsp.ub, 3).forEach(u => xs.push(xOfU(it, u)));
       const lo = Math.min(lIn.x, rIn.x) - 0.01, hi = Math.max(lIn.x, rIn.x) + 0.01;
       [...new Set(xs.filter(x => x >= lo && x <= hi).map(x => Math.round(x * 100) / 100))].sort((a, b) => (a - b) * dir).forEach(x => {
-        const u = uOfX(it, x), v = base(u);
+        const u = uOfX(it, x), v = tw(u) || { y: y0, front: false };
         out.push({ x, y: packAt(w, u, v.y), front: v.front });
       });
-      if (J.r != null) onLead(P.aL + P.Ls, J.r);
-      return { pts: out, J };
+      return { pts: out };
+    }
+    // A routed wire's two ends past its path: at a part's pins it starts on the path itself; at a
+    // breakout it curves on from the path's end to its pin, leaving along the path.
+    function routedEnds(w, e, pts) {
+      const { it, l, r } = e, P = it.path, R0 = P.route, a = pts[0], z = pts[pts.length - 1];
+      const L0 = R0.A.pins ? a : anchor(l, a.x), Z = R0.B.pins ? z : anchor(r, z.x);
+      return { L0, Z, head: R0.A.pins ? null : [L0, a, null, tanAt(P, 0)], tail: R0.B.pins ? null : [z, Z, tanAt(P, P.S), null] };
     }
     const whichOf = (w, e) => (e === w.from ? 'from' : 'to');
     // A wire's path, plus its two ends (where each meets its pin, port, or loose end) for the drag
@@ -946,11 +905,15 @@
         const p = anchor(l, ri.x + ri.w / 2), q = anchor(r, li.x + li.w / 2);
         return { d: `M${f(p.x)} ${f(p.y)}` + curve(p, q), over: [], ends: [{ which: whichOf(w, l), at: p, e: l }, { which: whichOf(w, r), at: q, e: r }] };
       }
-      const { it, l, r } = e;
+      const { it, l, r } = e, run = runPts(w, e, true), pts = run.pts, a = pts[0], z = pts[pts.length - 1];
+      const line = pts.slice(1).map(q => `L${f(q.x)} ${f(q.y)}`).join('');
+      if (it.path && it.path.routed) {
+        const E = routedEnds(w, e, pts);
+        return { d: `M${f(E.L0.x)} ${f(E.L0.y)}` + (E.head ? curve(...E.head) : '') + (E.head ? `L${f(a.x)} ${f(a.y)}` : '') + line + (E.tail ? curve(...E.tail) : ''), over: overOf(pts),
+          ends: [{ which: whichOf(w, l), at: E.L0, e: l }, { which: whichOf(w, r), at: E.Z, e: r }] };
+      }
       const L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
-      const run = runPts(w, e, true), pts = run.pts, a = pts[0], z = pts[pts.length - 1];
-      const tl = run.J.l != null ? tanAt(it.path, run.J.l) : null, tr = run.J.r != null ? tanAt(it.path, run.J.r) : null;
-      return { d: `M${f(L0.x)} ${f(L0.y)}` + curve(L0, a, null, tl) + pts.slice(1).map(q => `L${f(q.x)} ${f(q.y)}`).join('') + curve(z, R0, tr, null), over: overOf(pts),
+      return { d: `M${f(L0.x)} ${f(L0.y)}` + curve(L0, a) + line + curve(z, R0), over: overOf(pts),
         ends: [{ which: whichOf(w, l), at: L0, e: l }, { which: whichOf(w, r), at: R0, e: r }] };
     }
     // A twisted wire's run through its box, drawn as a helix seen from the side: past the box's ends
@@ -966,7 +929,9 @@
       const t = twistOf.get(w.id), it = t && t.it, P = it && it.path, a = P && it.sz.arc.get(t.sp.s.id);
       if (!a) return null;
       const pad = hasEnds(t.sp.s) ? END + 6 : 8, fan = it.fan || 0;
-      const ua = Math.max(a.u0 + pad, P.lL ? 0 : uOfX(it, it.x + fan + 8)), ub = Math.min(a.u1 - pad, P.lR ? P.S : uOfX(it, it.x + it.w - fan - 8));
+      // On a route, clear of the ends, where the wires ease to their pins.
+      const F = P.routed ? offsets(w, it).F + 8 : 0;
+      const ua = Math.max(a.u0 + pad, P.routed ? F : uOfX(it, it.x + fan + 8)), ub = Math.min(a.u1 - pad, P.routed ? P.S - F : uOfX(it, it.x + it.w - fan - 8));
       const run = ub - ua, n = t.ws.length;
       return run < TURN * n * 0.6 ? null : { t, ua, ub, run, n };
     }
@@ -998,6 +963,12 @@
       if (!e) return null;
       const s = twistSpan(w), it = e.it, y0 = e.lIn.y;
       if (!it.path) return { x: q.x, y: y0 };
+      if (it.path.routed) {
+        const u0 = project(it.path, q);
+        if (!s) return wpt(w, it, u0, baseAt(w, it, u0));
+        const u = Math.min(s.ub, Math.max(s.ua, u0));
+        return wpt(w, it, u, helix(s, y0)(u - s.ua).y);
+      }
       if (!s) return { x: q.x, y: packAt(w, uOfX(it, q.x), y0) };
       const u = Math.min(s.ub, Math.max(s.ua, uOfX(it, q.x)));
       return wpt(w, it, u, helix(s, y0)(u - s.ua).y);
@@ -1024,7 +995,7 @@
       const P = it.path, a = it.sz.arc.get(sp.s.id) || { u0: 0, u1: P.S };
       const ws = it.sz.rows.slice(sp.i0, sp.i1 + 1).filter(r => r.w).map(r => r.w);
       const at = u => {
-        const p = pathAt(P, u), os = ws.map(w => packAt(w, u, boxRowY.get(w.id)) - P.cy);
+        const p = pathAt(P, u), os = ws.map(w => packAt(w, u, rowBase(w, it, u)) - P.cy);
         return { u, x: p.x, y: p.y, nx: p.nx, ny: p.ny, top: Math.min(...os) - sp.R, bot: Math.max(...os) + sp.R };
       };
       const pts = steps(a.u0, a.u1, 3).map(at), e0 = pts[0], e1 = pts[pts.length - 1];
@@ -1035,12 +1006,23 @@
       return g;
     }
     boxes.forEach(b => { if (b.item.path) b.item.band = sp => band(b.item, sp); });
-    // A loose wire's anchors, where it leaves its box's path for each pin (canvas dots, app.js).
-    function anchorsOf(w) {
-      const e = entry(w), a = e && e.it.sz.warc && e.it.sz.warc.get(w.id);
-      if (!a) return null;
-      return [['l', a.u0], ['r', a.u1]].map(([side, u]) => Object.assign(wpt(w, e.it, u, e.lIn.y), { side }));
+    // The runs of each routed box you can drag (canvas handles and app.js): its middle runs, with
+    // where each is drawn. And the one nearest p on a box's route, for a drag that starts on a wire
+    // or a set's area.
+    function routeRuns(key) {
+      const b = boxes.find(x => x.key === key), P = b && b.item.path;
+      if (!P || !P.routed) return [];
+      const R0 = P.route;
+      return RT.runs(R0.A, R0.B, R0.v).filter(r => r.k >= 0 && Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) > 0.5);
     }
+    function runAt(key, p) {
+      const b = boxes.find(x => x.key === key), P = b && b.item.path;
+      if (!P || !P.routed) return null;
+      const R0 = P.route, n = RT.nearestRun(R0.A, R0.B, R0.v, p);
+      return n && { key, route: R0, j: n.j, k: n.k, axis: n.axis, d: n.d, at: n.at };
+    }
+    const boxOfWire = id => { const b = boxes.find(x => x.wires.some(w => w.id === id)); return b ? b.key : null; };
+    const boxOfSet = id => { const b = boxes.find(x => x.item.sz.spans.some(sp => sp.s.id === id)); return b ? b.key : null; };
     // Where a set's end sits (the middle of its band there), for placing parts by it (demo.js).
     function setEndAt(id, side) {
       for (const b of boxes) {
@@ -1065,10 +1047,15 @@
       const e = entry(w);
       let out = null;
       if (e) {
-        const { it, l, r } = e, L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
-        const run = runPts(w, e, false), mid = run.pts;
-        const tl = run.J.l != null ? tanAt(it.path, run.J.l) : null, tr = run.J.r != null ? tanAt(it.path, run.J.r) : null;
-        const pts = curvePts(L0, mid[0], null, tl).concat(mid.slice(1, -1), curvePts(mid[mid.length - 1], R0, tr, null));
+        const { it, l, r } = e, mid = runPts(w, e, false).pts;
+        let pts;
+        if (it.path && it.path.routed) {
+          const E = routedEnds(w, e, mid);
+          pts = (E.head ? curvePts(...E.head).slice(0, -1) : []).concat(mid, E.tail ? curvePts(...E.tail).slice(1) : []);
+        } else {
+          const L0 = anchor(l, it.x + it.w / 2), R0 = anchor(r, it.x + it.w / 2);
+          pts = curvePts(L0, mid[0]).concat(mid.slice(1, -1), curvePts(mid[mid.length - 1], R0));
+        }
         let s = 0;
         out = { pts: pts.map((p, i) => { if (i) s += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y); return { x: p.x, y: p.y, s }; }), S: 0, it };
         out.S = s;
@@ -1126,10 +1113,60 @@
     // the label is where it always defaulted (lifted clear of a packed set that fills its box), or,
     // once its dot was slid, just right of the dot. null for a wire in no box (one with a loose end).
     const DOT_GAP = 8;
+    // On a route, a box's labels default to one spot along it for all its wires, so they stack as a
+    // table: on its longest level stretch, clear of the ends (where wires ease to their pins) and of
+    // packed sets and their fans; at the stretch's left end when the label fits along it, else its
+    // middle.
+    const labelU = new Map();
+    function routedLabelU(it) {
+      if (labelU.has(it)) return labelU.get(it);
+      const P = it.path, F = Math.min(END_EASE, P.S / 3) + 6;
+      const bad = packSpans(it.sz).map(sp => { const a = it.sz.arc.get(sp.s.id); return a && [a.u0 - fanLen(sp), a.u1 + fanLen(sp)]; }).filter(Boolean);
+      let pieces = [];
+      for (let i = 1; i < P.pts.length; i++) {
+        const a = P.pts[i - 1], b = P.pts[i];
+        if (Math.abs(a.y - b.y) > 0.01 || Math.abs(a.x - b.x) < 0.01) continue;
+        const last = pieces[pieces.length - 1];
+        if (last && Math.abs(last[1] - a.s) < 0.01) last[1] = b.s; else pieces.push([a.s, b.s]);
+      }
+      pieces = pieces.map(([a, b]) => [Math.max(a, F), Math.min(b, P.S - F)]).filter(([a, b]) => b - a > 4);
+      const level = pieces.slice();
+      bad.forEach(([a, b]) => { pieces = pieces.flatMap(([p, q]) => (b <= p || a >= q ? [[p, q]] : [[p, Math.max(p, a)], [Math.min(q, b), q]]).filter(([x, y]) => y - x > 4)); });
+      // With no clear stretch (a cable or twist the length of the route), the labels stack under the
+      // wires on the longest level stretch instead, each with a leader up to its wire (`under`).
+      let u = P.S / 2, under = false;
+      const pick = list => {
+        const [a, b] = list.reduce((m, p) => (p[1] - p[0] > m[1] - m[0] ? p : m));
+        const left = pathAt(P, a).x <= pathAt(P, b).x ? a : b;
+        return b - a >= it.sz.inner + 30 ? left + (left === a ? 10 : -10) : (a + b) / 2;
+      };
+      if (pieces.length) u = pick(pieces);
+      else if (level.length) { u = pick(level); under = true; }
+      else under = bad.some(([a, b]) => u > a && u < b);
+      labelU.set(it, { u, under });
+      return labelU.get(it);
+    }
     function labelAt(w) {
       const ln = lane(w);
       if (!ln) return null;
-      const it = ln.it, x0d = labelX0(it), ry = boxRowY.get(w.id), lift = offLane.has(it) ? offLane.get(it).get(w.id) || 0 : 0;
+      const it = ln.it;
+      if (it.path && it.path.routed) {
+        const t = w.labelAt == null ? null : Math.min(1, Math.max(0, +w.labelAt));
+        let dot, at = null;
+        if (t != null) dot = laneAt(ln, t * ln.S);
+        else {
+          const L = routedLabelU(it), u = L.u, ts = twistSpan(w);
+          dot = ts && u >= ts.ua && u <= ts.ub ? wpt(w, it, u, helix(ts, boxRowY.get(w.id))(u - ts.ua).y) : wpt(w, it, u, baseAt(w, it, u));
+          if (L.under) {
+            // Under the box's wires there, a row each, in row order.
+            const live = it.sz.rows.filter(r => r.w).map(r => r.w), low = Math.max(...live.map(x => wpt(x, it, u, baseAt(x, it, u)).y)) + it.sz.R0 + 8;
+            at = { x0: dot.x + DOT_GAP, ty: low + 12 + (it.b.kind === 'set' ? BADGE_H + 6 : 0) + live.indexOf(w) * 15 };
+          }
+        }
+        const s = project(ln, dot), o = w.labelOff, set = o && isFinite(+o.dx) && isFinite(+o.dy);
+        return { dot, x0: set ? dot.x + +o.dx : at ? at.x0 : dot.x + DOT_GAP, ty: set ? dot.y + +o.dy : at ? at.ty : dot.y - 5, t: ln.S ? s / ln.S : 0.5, it };
+      }
+      const x0d = labelX0(it), ry = boxRowY.get(w.id), lift = offLane.has(it) ? offLane.get(it).get(w.id) || 0 : 0;
       const t = w.labelAt == null ? null : Math.min(1, Math.max(0, +w.labelAt));
       const s = t != null ? t * ln.S : project(ln, { x: x0d - DOT_GAP, y: ry });
       let dot = laneAt(ln, s);
@@ -1140,7 +1177,7 @@
       const ty = set ? dot.y + +o.dy : t == null ? ry + lift - 5 : dot.y - 5;
       return { dot, x0, ty, t: ln.S ? s / ln.S : 0.5, it };
     }
-    boxes.forEach(b => labelX0(b.item));
+    boxes.forEach(b => { if (!b.item.path || !b.item.path.routed) labelX0(b.item); });
     // Notes: where a note is pinned, and the reverse for pinning one (app.js). A wire's t runs along
     // its box row (or, outside a box, straight between its ends); a set's spot is on its drawn area.
     function wireEnds(w) {
@@ -1165,10 +1202,15 @@
       if (a.kind === 'area') return edgeAt(areaRect(c), a.e);
       if (a.kind === 'node') { const it = itemOf.get(a.id); return it && { x: it.x + (a.fx || 0) * it.w, y: it.y + (a.fy || 0) * it.h }; }
       if (a.kind === 'set') { const g = setGeom(a.id); return g && { x: g.x + (a.fx || 0) * g.w, y: g.y + (a.fy || 0) * g.h }; }
-      const w = M.wire(h, a.id), e = w && wireEnds(w), t = a.t == null ? 0.5 : a.t;
+      const w = M.wire(h, a.id), t = a.t == null ? 0.5 : a.t, ln = w && lane(w);
+      if (ln) return laneAt(ln, t * ln.S);
+      const e = w && wireEnds(w);
       return e && { x: e[0].x + (e[1].x - e[0].x) * t, y: e[0].y + (e[1].y - e[0].y) * t };
     }
+    // A note on a wire keeps t, how far along the wire's line it's pinned (0 to 1).
     function wireT(w, p) {
+      const ln = lane(w);
+      if (ln && ln.S) return Math.min(1, Math.max(0, project(ln, p) / ln.S));
       const e = wireEnds(w);
       if (!e || Math.abs(e[1].x - e[0].x) < 1) return 0.5;
       return Math.min(1, Math.max(0, (p.x - e[0].x) / (e[1].x - e[0].x)));
@@ -1179,7 +1221,7 @@
       box.x0 = Math.min(box.x0, p.x + c.dx - s.w / 2); box.x1 = Math.max(box.x1, p.x + c.dx + s.w / 2); box.y0 = Math.min(box.y0, p.y + c.dy - s.h / 2); box.y1 = Math.max(box.y1, p.y + c.dy + s.h / 2);
       if (c.at.kind === 'area') { const r = areaRect(c); box.x0 = Math.min(box.x0, r.x); box.x1 = Math.max(box.x1, r.x + r.w); box.y0 = Math.min(box.y0, r.y); box.y1 = Math.max(box.y1, r.y + r.h); }
     });
-    return { items, itemOf, boxes, wirePath, twistStart, twistEnd, wireAt, lane, labelAt, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom, setEndAt, anchorsOf, areaRect };
+    return { items, itemOf, boxes, wirePath, twistStart, twistEnd, wireAt, lane, labelAt, anchor, endY, portsOf, portOf, box, noteAt, wireT, setGeom, setEndAt, areaRect, routeRuns, runAt, boxOfWire, boxOfSet };
   }
 
   // A lane (layout's lane: points with arc length s): the point at s along it, and how far along it
@@ -1350,7 +1392,7 @@
   const uOfX = (it, x) => (it.path ? it.path.aL + x - it.path.xa : x - it.x);
   const spanX = (it, sp) => { const a = it.sz.arc && it.sz.arc.get(sp.s.id); return a ? { x0: xOfU(it, a.u0), x1: xOfU(it, a.u1) } : { x0: it.x, x1: it.x + it.w }; };
   const smooth = u => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u); };
-  // The point and normal at s along a lead's samples, and at u along a box's path.
+  // The point and normal at s along a route's samples, and at u along a box's path.
   function sampleAt(pts, s) {
     s = Math.min(pts[pts.length - 1].s, Math.max(0, s));
     let i = 1;
@@ -1360,8 +1402,7 @@
     return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, nx: nx / n, ny: ny / n };
   }
   function pathAt(P, u) {
-    if (P.lL && u < P.aL) return sampleAt(P.lL.pts, u);
-    if (P.lR && u > P.aL + P.Ls) return sampleAt(P.lR.pts, u - P.aL - P.Ls);
+    if (P.routed) return sampleAt(P.pts, u);
     return { x: P.xa + u - P.aL, y: P.cy, nx: 0, ny: 1 };
   }
   // A band sample's top and bottom edges, its angle along the path, and a transform that draws in
@@ -1398,7 +1439,8 @@
   // Under the wires: the box's paper, the far side of each lacing tie, and each cable's cut end (a
   // full, lighter ellipse the wires come out of).
   function boxBack(it, opts) {
-    let o = `<rect class="cv-box${boxSel(it, opts) && it.b.kind !== 'set' ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>` + badgeLeaders(it, opts);
+    // A route draws no box: its wires and sets are the drawing (Chris, 2026-11-10).
+    let o = (it.path && it.path.routed ? '' : `<rect class="cv-box${boxSel(it, opts) && it.b.kind !== 'set' ? ' sel' : ''}${dimIf(boxDim(it, opts))}" x="${f(it.x)}" y="${f(it.y)}" width="${f(it.w)}" height="${f(it.h)}"/>`) + badgeLeaders(it, opts);
     if (it.band) it.sz.spans.forEach(sp => {
       const cls = spanCls(it, sp, opts), g = it.band(sp);
       if (sp.s.bundle) o += lacing(g, cls, 'back');
@@ -1556,7 +1598,31 @@
   // and its label, and a leader runs from it up to the bottom edge of its set, ending in a dot.
   // Clicking a badge selects its set. Leaders are drawn under the wires (badgeLeaders), badges over.
   const setKind = st => (st.cable ? 'cable' : st.bundle ? 'bundle' : st.twist ? 'twist' : 'shield');
+  // On a route there's no box to sit under: the row starts under the outermost set's band, at its
+  // first level stretch past its rounded end, and each leader meets its set's lower edge on a level
+  // stretch as near straight above its badge as it can.
+  const lowEdge = p => (p.ny >= 0 ? ptB(p) : ptT(p));
+  function badgeRowRouted(it) {
+    const sps = it.sz.spans, g0 = sps.length && it.band(sps[0]);
+    if (!g0) return [];
+    const level = g => g.pts.filter(p => Math.abs(p.ny) > 0.99 && p.u >= g.u0 + g.rx + 4 && p.u <= g.u1 - g.rx - 4);
+    const L0 = level(g0), start = L0.length ? lowEdge(L0[0]) : lowEdge(g0.at((g0.u0 + g0.u1) / 2));
+    const near = L0.filter(p => Math.abs(p.y - L0[0].y) < 0.5).map(lowEdge);
+    let x = start.x;
+    const y = Math.max(start.y, ...near.map(q => q.y)) + 10;
+    return sps.map(sp => {
+      const w = badgeW(sp.s.label), g = it.band(sp), cx = x + w / 2, pool = level(g).length ? level(g) : g.pts;
+      const a = pool.reduce((m, p) => (Math.abs(lowEdge(p).x - cx) + Math.abs(lowEdge(p).y - y) * 0.2 < Math.abs(lowEdge(m).x - cx) + Math.abs(lowEdge(m).y - y) * 0.2 ? p : m));
+      const span = Math.max(1e-6, g.u1 - g.u0), st = sp.s, t = st.badgeAt == null ? (a.u - g.u0) / span : Math.min(1, Math.max(0, +st.badgeAt));
+      const d = st.badgeAt == null ? lowEdge(a) : lowEdge(g.at(g.u0 + t * span)), o = st.badgeOff, moved = !!o && isFinite(+o.dx) && isFinite(+o.dy);
+      const bx = moved ? d.x + +o.dx : x, by = moved ? d.y + +o.dy : y;
+      const out = { sp, x: bx, y: by, w, cx: bx + w / 2, ax: d.x, ay: d.y, t, moved };
+      x += w + BADGE_GAP;
+      return out;
+    });
+  }
   function badgeRow(it) {
+    if (it.path && it.path.routed) return badgeRowRouted(it);
     const y = wireYAt(it, it.sz.rows.length - 1) + it.sz.R0 + 8 + (it.labelDrop || 0);
     // The row starts at the outermost set's own left end, so it follows the set when its ends are
     // dragged (Chris: the badges stayed put), but no further out than the box.
@@ -1604,7 +1670,7 @@
     const sz = it.sz, x = it.x, w = it.w;
     let o = (it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) : '') + breakMark(it) + (it.b.kind === 'set' ? setEnds(it, opts) + badges(it, opts) : '');
     // A stack (wires in no set) is dragged by a clear grab over each row's run.
-    if (it.b.kind !== 'set' && !opts.sheet) sz.rows.forEach((r, i) => {
+    if (it.b.kind !== 'set' && !opts.sheet && !(it.path && it.path.routed)) sz.rows.forEach((r, i) => {
       if (r.w) o += `<rect class="cv-grab" x="${f(x)}" y="${f(wireYAt(it, i) - G.BROW + 3)}" width="${f(w)}" height="${G.BROW}"/>`;
     });
     return o;
@@ -1633,7 +1699,7 @@
   function render(h, A, opts) {
     opts = opts || {};
     A = A || M.analyze(h);
-    const Lo = layout(h, A, { prop: !!opts.prop });
+    const Lo = layout(h, A, { prop: !!opts.prop, fast: !!opts.fast });
     opts = Object.assign({}, opts, { pick: pickOf(h, opts.sel), focus: focusOf(h, opts.sel, opts.pending) });
     const fx = !!opts.fx;
     // The intro reveals parts left to right.
@@ -1676,15 +1742,17 @@
         else if (it.kind === 'conn' && !opts.sheet) dots += `<circle class="cv-end${dim}${rg.cls}" cx="${f(en.at.x)}" cy="${f(en.at.y)}" r="3.4" data-end="${w.id}|${en.which}" data-wire="${w.id}"${rg.style}/>` + hitEnd(en.at.x, en.at.y, w.id, en.which, opts);
       });
     });
-    // A loose wire's anchors (canvas only): a small dot at each in its wire's color (Chris), a darker
-    // shade with a darker ring on a light wire, and its own color with a light ring on a dark one, so
-    // it shows on the wire and on the canvas. It slides along the curve.
-    const dotFill = c => (isLight(c) ? `color-mix(in srgb, ${c} 62%, #000)` : c), dotRing = c => (isLight(c) ? `color-mix(in srgb, ${c} 35%, #000)` : '#e6e8ec');
-    if (!opts.sheet) h.wires.forEach(w => {
-      const an = Lo.anchorsOf(w);
-      if (!an) return;
-      const dim = dimIf(opts.focus && !opts.focus.wires.has(w.id)), c = M.colorInfo(w.color).base || '#9a9aa0';
-      an.forEach(p => { dots += `<g class="cv-anchor${dim}" data-anchor="${w.id}|${p.side}" data-wire="${w.id}"><circle class="cv-anchor-hit" cx="${f(p.x)}" cy="${f(p.y)}" r="8"/><circle class="cv-anchor-dot" cx="${f(p.x)}" cy="${f(p.y)}" r="2.8" style="fill:${dotFill(c)};stroke:${dotRing(c)}"/></g>`; });
+    // Each selected route's middle runs get a handle (canvas only): a small bar at the run's middle,
+    // along it, to drag the run sideways (app.js). A wire's or set's line drags the run under the
+    // pointer too; the handles show which runs move.
+    if (!opts.sheet && !opts.prop) Lo.boxes.forEach(b => {
+      const it = b.item;
+      if (!it.path || !it.path.routed || !(boxSel(it, opts) || b.wires.some(w => opts.pick.wire.has(w.id)) || it.sz.spans.some(sp => spanSel(sp, opts)))) return;
+      Lo.routeRuns(b.key).forEach(r => {
+        const mx = (r.a.x + r.b.x) / 2, my = (r.a.y + r.b.y) / 2, L = Math.min(18, Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) / 2), hv = r.axis === 'h';
+        dots += `<g class="cv-run ${r.axis}" data-run="${esc(b.key)}|${r.j}"><rect class="cv-run-hit" x="${f(mx - (hv ? L + 4 : 8))}" y="${f(my - (hv ? 8 : L + 4))}" width="${f(hv ? 2 * L + 8 : 16)}" height="${f(hv ? 16 : 2 * L + 8)}" rx="6"/>` +
+          `<rect class="cv-run-bar" x="${f(mx - (hv ? L : 2.5))}" y="${f(my - (hv ? 2.5 : L))}" width="${f(hv ? 2 * L : 5)}" height="${f(hv ? 5 : 2 * L)}" rx="2.5"/></g>`;
+      });
     });
     const notes = (h.callouts || []).map(c => noteSvg(c, Lo, opts)).join('');
     return { svg: backs + wires + overs + fronts + ends + labels + dots + notes, box: Lo.box, layout: Lo };

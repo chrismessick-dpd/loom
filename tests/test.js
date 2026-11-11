@@ -24,6 +24,83 @@
   }
   const stable = v => SG.model.stableStringify(v);
 
+  // ── Wire routes (route.js) ──
+  const RT = LM.route;
+  const A = { x: 0, y: 0, out: 1 }, B = { x: 300, y: 100, in: 1 };
+  test('route: v sets the middle runs, and the end runs belong to the terminals', () => {
+    eq(RT.corners(A, B, [150]), [{ x: 0, y: 0 }, { x: 150, y: 0 }, { x: 150, y: 100 }, { x: 300, y: 100 }]);
+    eq(RT.runs(A, B, [100, 50, 200]).map(r => [r.axis, r.k]), [['h', -1], ['v', 0], ['h', 1], ['v', 2], ['h', -1]]);
+    ok(RT.fits(A, B, [150], 20), 'a Z fits');
+    ok(!RT.fits(A, B, [10], 20), 'a vertical run inside the stub does not');
+    ok(!RT.fits(A, B, [150, 40], 20), 'an even count does not');
+    ok(RT.fits(A, { x: 300, y: 0, in: 1 }, [], 20), 'level terminals may be joined straight');
+  });
+  test('route: a run dragged flush with its neighbor merges, and a bend can be added back', () => {
+    eq(RT.tidy(A, B, [100, 50, 100]), [100], 'a level run of no length goes');
+    eq(RT.tidy(A, B, [100, 0, 200]), [200], 'a vertical run of no length goes with the level run before it');
+    eq(RT.tidy(A, { x: 300, y: 0, in: 1 }, [150]), [], 'a vertical run between level terminals goes');
+    const b = RT.addBend(A, B, [150], 2, { x: 220, y: 100 });
+    eq(b, { v: [150, 100, 220], k: 1 }, 'a bend in the last run');
+    eq(RT.tidy(A, B, b.v), [150], 'an unmoved bend tidies away');
+    eq(RT.addBend(A, B, [150], 0, { x: 60, y: 0 }), { v: [60, 0, 150], k: 1 }, 'a bend in the first run');
+    eq(RT.addBend(A, B, [150], 1, { x: 150, y: 40 }), { v: [150, 40, 150], k: 2 }, 'a bend in a vertical run');
+  });
+  test('route: shape rounds the corners and keeps the ends exact', () => {
+    const s = RT.shape(A, B, [150], 20), p0 = s.pts[0], z = s.pts[s.pts.length - 1];
+    eq([p0.x, p0.y, z.x, z.y], [0, 0, 300, 100]);
+    ok(Math.abs(s.S - (300 + 100 - 4 * 20 + Math.PI * 20)) < 0.5, 'length is the runs less the corners plus two quarter circles: ' + s.S);
+    ok(s.pts.every(p => Math.abs(Math.hypot(p.nx, p.ny) - 1) < 1e-6), 'unit normals');
+    eq([p0.nx, p0.ny], [-0, 1], 'the normal is on the left of travel (down the screen going right)');
+  });
+  test('route: auto goes round a part in the way and keeps clear of a route laid before it', () => {
+    const G = RT.grid({ x0: -100, y0: -200, x1: 400, y1: 300 }, 10);
+    const T = { x: 300, y: 0, in: 1 }, wall = { x0: 130, y0: -60, x1: 170, y1: 60 };
+    const v = RT.auto(G, A, T, [wall], 20);
+    ok(v && v.length >= 3, 'it bends round the wall: ' + JSON.stringify(v));
+    const hit = RT.runs(A, T, v).some(r => Math.max(r.a.x, r.b.x) >= wall.x0 && Math.min(r.a.x, r.b.x) <= wall.x1 && Math.max(r.a.y, r.b.y) >= wall.y0 && Math.min(r.a.y, r.b.y) <= wall.y1);
+    ok(!hit, 'no run enters the wall');
+    RT.occupy(G, A, T, [], 12);   // a trunk about 24 wide along y = 0
+    const A2 = { x: 0, y: 10, out: 1 }, T2 = { x: 300, y: 10, in: 1 }, v2 = RT.auto(G, A2, T2, [], 20);
+    ok(v2 && v2.length >= 3, 'a second route between the same ends moves off the first: ' + JSON.stringify(v2));
+  });
+
+  // ── Routes in the diagram (conn.js) ──
+  const inside = (p, q, r) => {
+    // Whether the segment p–q passes through the inside of rectangle r (its edges don't count).
+    const x0 = r.x + 1, y0 = r.y + 1, x1 = r.x + r.w - 1, y1 = r.y + r.h - 1;
+    if (Math.abs(p.y - q.y) < 0.01) return p.y > y0 && p.y < y1 && Math.max(p.x, q.x) > x0 && Math.min(p.x, q.x) < x1;
+    return p.x > x0 && p.x < x1 && Math.max(p.y, q.y) > y0 && Math.min(p.y, q.y) < y1;
+  };
+  test('routes: every wire starts and ends at its pins, and no route runs through a part', () => {
+    [LM.demo.harness(), LM.fixtures.fanout(), LM.fixtures.directions()].forEach(h => {
+      const Lo = LM.conn.layout(h, M.analyze(h), {});
+      h.wires.forEach(w => {
+        const p = Lo.wirePath(w), m = /^M([-\d.]+) ([-\d.]+)/.exec(p.d), a = p.ends[0].at;
+        ok(m && Math.abs(+m[1] - a.x) < 0.2 && Math.abs(+m[2] - a.y) < 0.2, h.title + ': ' + M.wireName(w) + ' starts at its pin');
+      });
+      const parts = Lo.items.filter(i => i.kind === 'conn' || i.kind === 'splice');
+      Lo.boxes.forEach(b => {
+        const P = b.item.path;
+        ok(P && P.routed, b.key + ' is routed');
+        LM.route.runs(P.route.A, P.route.B, P.route.v).forEach(r => parts.forEach(it => {
+          ok(!inside(r.a, r.b, it), h.title + ': ' + b.key + ' runs through ' + (it.n.ref || it.n.id));
+        }));
+      });
+    });
+  });
+  test('routes: a shaped route is kept when its parts move, and Real proportions draws boxes', () => {
+    const h = LM.fixtures.fanout(), Lo = LM.conn.layout(h, M.analyze(h), {}), b = Lo.boxes[0], R0 = b.item.path.route;
+    const v = R0.v.length ? R0.v.map((x, k) => (k % 2 ? x + 20 : x)) : [R0.A.x + R0.A.out * (R0.stub + 30)];
+    h.routes = { [b.key]: { v } };
+    const node = h.nodes.find(n => n.id === R0.B.node) || h.nodes.find(n => n.id === R0.A.node);
+    h.place['n:' + node.id].y += 20;
+    const L2 = LM.conn.layout(h, M.analyze(h), {}), P2 = L2.boxes.find(x => x.key === b.key).item.path;
+    eq(P2.route.v, v, 'the middle runs stay where they were shaped');
+    ok(P2.route.kept, 'and it says so');
+    const L3 = LM.conn.layout(h, M.analyze(h), { prop: true });
+    ok(L3.boxes.every(x => !x.item.path.routed), 'Real proportions keeps its straight boxes');
+  });
+
   // ── The file ──
   test('envelope and unwrap round-trip a harness', () => {
     const h = harness('Sensor harness', { pn: 'DT-2100', rev: 'B', project: 'Smart Thermostat', updated: Date.parse('2026-11-07T10:00:00Z'), updatedBy: 'alice' });

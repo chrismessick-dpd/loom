@@ -590,12 +590,12 @@
   function renderHud() {
     // Slid labels count as dragged positions: Auto layout puts them back too.
     // In Real proportions it's the heights dragged there (h.propY) that Auto layout forgets.
-    const h = H(), gs = gridOf(h), placed = h && (fold.prop ? h.propY && Object.keys(h.propY).length : (h.place && Object.keys(h.place).length) || h.wires.some(w => w.labelAt != null || w.labelOff != null) || h.sets.some(st => st.badgeAt != null || st.badgeOff != null));
+    const h = H(), gs = gridOf(h), placed = h && (fold.prop ? h.propY && Object.keys(h.propY).length : (h.place && Object.keys(h.place).length) || (h.routes && Object.keys(h.routes).length) || h.wires.some(w => w.labelAt != null || w.labelOff != null) || h.sets.some(st => st.badgeAt != null || st.badgeOff != null));
     // Glass capsules, one per kind of control (docs/look-2026-11.md): the panel, the view, the grid.
     $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
     $('#hud').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel" aria-label="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
       `<div class="seg glass"><button class="hud-ico" data-act="fit" title="Fit the diagram (F)">${ICON.fit}<span>Fit</span></button>` +
-      (placed ? `<button class="hud-ico" data-act="auto-layout" title="Forget the positions you dragged and lay the diagram out again">${ICON.relayout}<span>Auto layout</span></button>` : '') + `</div>` +
+      (placed ? `<button class="hud-ico" data-act="auto-layout" title="Forget the positions you dragged and the wires you shaped, and lay the diagram out again">${ICON.relayout}<span>Auto layout</span></button>` : '') + `</div>` +
       `<label class="seg glass hud-grid" title="Parts snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${ICON.grid}<select data-hud="grid" aria-label="Grid"><optgroup label="Spacing">${GRIDS.map(g => `<option value="${g}"${g === gs ? ' selected' : ''}>${g ? 'Grid ' + g : 'Grid off'}</option>`).join('')}</optgroup>` +
       `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${(fold.gridStyle === 'lines') === (k === 'lines') ? '● ' : '○ '}${t}</option>`).join('')}</optgroup></select></label>`;
   }
@@ -648,8 +648,7 @@
     // A wire-end dot (a splice port, a loose end, or where a wire meets a pin) drags that end.
     const endEl = e.button === 0 && !S.pending && e.target.closest('[data-end]');
     // A nested set's end grip drags that end past its parent's or in from it.
-    // A loose wire's anchor (where it leaves the shared path for a pin) slides like a set's end.
-    const setEndEl = e.button === 0 && !S.pending && !endEl && e.target.closest('[data-setend], [data-anchor]');
+    const setEndEl = e.button === 0 && !S.pending && !endEl && e.target.closest('[data-setend]');
     // A note's bubble drags the bubble.
     const noteEl = e.button === 0 && !S.pending && !S.placing && e.target.closest('[data-notebox]');
     // A wire's label slides along its wire; a click on one is a click on what's under it.
@@ -661,23 +660,17 @@
     const badge = badgeEl ? { id: badgeEl.dataset.set, dot: !!badgeEl.dataset.bdot } : null;
     const itemEl = e.button === 0 && !endEl && !setEndEl && !badgeEl && e.target.closest('[data-item]');
     const end = endEl ? { wire: endEl.dataset.end.split('|')[0], which: endEl.dataset.end.split('|')[1] } : null;
-    const setEnd = !setEndEl ? null : setEndEl.dataset.anchor ? { wire: setEndEl.dataset.anchor.split('|')[0], side: setEndEl.dataset.anchor.split('|')[1] }
-      : { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] };
+    const setEnd = setEndEl ? { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] } : null;
     gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null, label: labelEl ? labelEl.dataset.label : null, ldot, badge };
     // A left drag that grabs nothing (empty canvas, or a wire's line) draws a selection box
     // (marquee). A finger pans instead.
     const g = gesture;
-    // A loose wire's line drags its nearer anchor along the curve (Chris, 2026-11-10: the dots were
-    // hard to hit); the anchor follows the pointer's movement from where the line was grabbed, and a
-    // click without movement still selects the wire. Shift-drag from a line still draws a box.
-    const lineEl = g.button === 0 && !g.touch && !g.shift && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge
-      && e.target.classList.contains('w-hit') && e.target.closest('[data-wire]');
-    const an = lineEl && lastLayout && lastLayout.anchorsOf(M.wire(H(), lineEl.dataset.wire) || {});
-    if (an) {
-      const p = toWorld(e), near = an.reduce((m, a) => (Math.hypot(a.x - p.x, a.y - p.y) < Math.hypot(m.x - p.x, m.y - p.y) ? a : m));
-      g.setEnd = { wire: lineEl.dataset.wire, side: near.side };
-    }
-    if (g.button === 0 && !g.touch && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge) g.marquee = true;
+    // Routes (arranged view; Chris, 2026-11-10): a run's handle, a wire's line, or a set's area drags
+    // the straight run of its route under the pointer sideways (dragRun). A click without moving
+    // still selects, and Shift-drag from a line still draws a box. A set's area doesn't move its box.
+    if (g.item && g.item.startsWith('b:') && !fold.prop) g.item = null;
+    g.run = runUnder(e, g);
+    if (g.button === 0 && !g.touch && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge && !g.run) g.marquee = true;
     svgEl().setPointerCapture(e.pointerId);
   }
   // Where a dragged wire end would land: a splice (the side and port slot under the pointer), a
@@ -743,6 +736,7 @@
     if (g.marquee) { drawMarquee(g, e); return; }
     if (g.area) { dragArea(g, e); return; }
     if (g.setEnd) { dragSetEnd(g, e); return; }
+    if (g.run) { dragRun(g, e); return; }
     if (g.label) { (g.ldot ? slideDot : moveLabel)(g, e); return; }
     if (g.badge) { dragBadge(g, e); return; }
     if (g.note) {
@@ -757,7 +751,7 @@
     if (!g.moved && g.item) {
       // In Real proportions x comes from lengths, so parts and sets drag only up and down there
       // (h.propY; Chris). A box nobody moved follows its ends.
-      const Lo = lastLayout, ok = i => !fold.prop || i.kind !== 'loose', it = Lo && Lo.items.find(i => i.key === g.item && ok(i));
+      const Lo = lastLayout, ok = i => (fold.prop ? i.kind !== 'loose' : i.kind !== 'box'), it = Lo && Lo.items.find(i => i.key === g.item && ok(i));
       if (!it) g.item = null;
       else {
         snapshot(); g.prop = !!fold.prop;
@@ -782,7 +776,7 @@
       }
       h.place = h.place || {};
       g.parts.forEach(p => { h.place[p.key] = { x: snap(p.start.x + dx / S.cam.k), y: snap(p.start.y + dy / S.cam.k + p.port0) - p.port0, v: 3 }; });
-      renderCanvas();
+      renderCanvas(null, { fast: true });
       return;
     }
     // The right or middle button pans, and so does a finger (a left drag on empty canvas is a marquee).
@@ -802,19 +796,17 @@
     });
     return keys;
   }
-  // Drag a set's end along its box's path (conn.js it.path: the straight run across the box and
-  // the leads off its sides toward the connectors). The pointer, less where the end was grabbed, is
+  // Drag a set's end along its box's path (conn.js it.path: its route, or in Real proportions the
+  // straight run across the box). The pointer, less where the end was grabbed, is
   // projected onto the path, and how far in from the wire ends that is (at the box's scale sz.k,
   // mm per unit; in Real proportions through sz.prop) sets that end's overhang, measured from what
   // holds it (M.setEnd; the sets inside stay put). Snapped to 5 mm, and onto the end of what holds
   // it within SNAP units, so ending with it is easy to hit. It isn't limited by lengths (Chris), only
-  // by the wire ends (the path's ends) and MIN_W from the set's other end; a set with no cable,
-  // shield or bundle stays on the straight part, as only packed wires ride the leads. One snapshot,
+  // by the wire ends (the path's ends) and MIN_W from the set's other end. One snapshot,
   // so one undo puts it back. The tip reads the overhang and the total.
   const MIN_W = 12, SNAP = 10;
   function dragSetEnd(g, e) {
     const h = H(), d = g.setEnd;
-    if (d.wire) { dragAnchor(g, e); return; }
     if (!g.moved) {
       const st = M.set(h, d.id), p = st && M.parentOf(h, d.id);
       const it = st && lastLayout && lastLayout.items.find(i => i.kind === 'box' && i.path && i.sz.arc && i.sz.arc.has(d.id));
@@ -846,32 +838,59 @@
       : (v < 0 ? `stops ${-v} mm short of the wire ends` : v > 0 ? `runs ${v} mm past the wire ends` : 'reaches the wire ends');
     tip.innerHTML = `<b>${esc(st.label)}</b> ${what} on the ${side ? 'right' : 'left'}` + (total != null ? ` · ${U.fmtLen(total)} in all` : '');
   }
-  // Drag a loose wire's anchor along its box's path, as a set's end (above): where it leaves the
-  // shared path for its pin on that side, kept as w.anchors (mm in from that side's wire end, at the
-  // box's scale; Real proportions through sz.prop). Limits: the path's ends and MIN_W from its
-  // other anchor. A drawing handle, not a length: the wire's length is unchanged.
-  function dragAnchor(g, e) {
-    const h = H(), d = g.setEnd, w = M.wire(h, d.wire), side = d.side === 'r';
-    if (!w) { gesture = null; return; }
+  // Routes (arranged view; Chris, 2026-11-10: wires walk around the parts, and their straight runs
+  // drag). The run under the pointer at a drag's start: a run's handle (data-run), else the route of
+  // the wire whose line it is or of the set whose area it is, its run nearest the pointer, within the
+  // route's width. null in Real proportions, with Shift, or on a finger.
+  function runUnder(e, g) {
+    const Lo = lastLayout;
+    if (!Lo || fold.prop || g.button !== 0 || g.touch || g.shift || S.pending || S.placing || g.end || g.setEnd || g.note || g.label || g.badge || g.item) return null;
+    const p = toWorld(e), handle = e.target.closest('[data-run]');
+    // A handle's data-run is the box key (which has a | in it), a |, and the run's index.
+    const hr = handle ? handle.dataset.run : '', cut = hr.lastIndexOf('|');
+    let key = null;
+    if (handle) key = hr.slice(0, cut);
+    else if (e.target.classList.contains('w-hit')) key = Lo.boxOfWire(e.target.closest('[data-wire]').dataset.wire);
+    else if (e.target.classList.contains('cv-setarea')) key = Lo.boxOfSet(e.target.dataset.set);
+    const r = key && Lo.runAt(key, p);
+    if (!r) return null;
+    if (handle) { const j = +hr.slice(cut + 1), R = LM.route.runs(r.route.A, r.route.B, r.route.v)[j]; return R ? Object.assign(r, { j, k: R.k, axis: R.axis, at: { x: (R.a.x + R.b.x) / 2, y: (R.a.y + R.b.y) / 2 } }) : null; }
+    return r.d <= r.route.half + 12 ? r : null;
+  }
+  // Drag a route's run sideways: a vertical run left and right, a level one up and down, snapped to
+  // the grid (Ctrl: anywhere). The route is then kept as shaped (h.routes[box key].v; route.js). An
+  // end run belongs to its part, so dragging one first adds a bend in it, out where it's clear of the
+  // part, and drags the new piece. The first and last vertical runs stay clear of their parts. Let go,
+  // a run dragged flush with its neighbor merges into it (route.js tidy). One undo puts it back.
+  function dragRun(g, e) {
+    const h = H(), RT = LM.route;
     if (!g.moved) {
-      const it = lastLayout && lastLayout.items.find(i => i.kind === 'box' && i.path && i.sz.warc && i.sz.warc.has(w.id));
-      if (!it) { gesture = null; return; }
-      const a = it.sz.warc.get(w.id), P = it.path, at = C.pathAt(P, side ? a.u1 : a.u0), q0 = toWorld({ clientX: g.x, clientY: g.y });
+      const R0 = g.run.route;
+      let v = R0.v.slice(), k = g.run.k;
+      if (k < 0) {
+        const at = Object.assign({}, g.run.at);
+        if (g.run.j === 0) at.x = R0.A.out > 0 ? Math.max(at.x, R0.A.x + R0.stub) : Math.min(at.x, R0.A.x - R0.stub);
+        else at.x = R0.B.in > 0 ? Math.min(at.x, R0.B.x - R0.stub) : Math.max(at.x, R0.B.x + R0.stub);
+        const nb = RT.addBend(R0.A, R0.B, v, g.run.j, at);
+        if (!nb) { gesture = null; return; }
+        v = nb.v; k = nb.k;
+      }
       snapshot();
-      g.moved = true;
-      Object.assign(g, { it, P, off: { x: q0.x - at.x, y: q0.y - at.y }, lo: side ? a.u0 + MIN_W : 0, hi: side ? P.S : a.u1 - MIN_W });
-      S.sel = { kind: 'wire', ids: new Set([w.id]) };
+      h.routes = h.routes || {};
+      h.routes[g.run.key] = { v };
+      Object.assign(g, { v0: v, k, axis: k % 2 ? 'h' : 'v', p0: toWorld({ clientX: g.x, clientY: g.y }), A: R0.A, B: R0.B, stub: R0.stub });
       svgEl().classList.add('dragging');
     }
-    const q = toWorld(e), sz = g.it.sz;
-    const u = Math.min(g.hi, Math.max(g.lo, C.project(g.P, { x: q.x - g.off.x, y: q.y - g.off.y })));
-    const mm = sz.prop ? (side ? sz.prop.L - sz.prop.inv(u) : sz.prop.inv(u)) : (side ? g.P.S - u : u) * sz.k;
-    const v = Math.max(0, Math.round(mm / 5) * 5);
-    w.anchors = Object.assign({}, w.anchors, { [d.side]: v });
+    g.moved = true;
+    const q = toWorld(e), gs = gridOf(h), free = e.ctrlKey || e.metaKey || !gs;
+    let val = g.v0[g.k] + (g.axis === 'v' ? q.x - g.p0.x : q.y - g.p0.y);
+    if (!free) val = Math.round(val / gs) * gs;
+    if (g.axis === 'v' && g.k === 0) val = g.A.out > 0 ? Math.max(val, g.A.x + g.stub) : Math.min(val, g.A.x - g.stub);
+    if (g.axis === 'v' && g.k === g.v0.length - 1) val = g.B.in > 0 ? Math.min(val, g.B.x - g.stub) : Math.max(val, g.B.x + g.stub);
+    const v = g.v0.slice();
+    v[g.k] = val;
+    h.routes[g.run.key] = { v };
     renderCanvas();
-    const tip = $('#tip'), [l, r] = [w.from, w.to].map(x => esc(M.label(M.node(h, x.node)) + (x.pin ? ':' + x.pin : '')));
-    tip.style.display = 'block';
-    tip.innerHTML = `<b>${l} → ${r}</b> ${side ? 'right' : 'left'} anchor ${v ? `${v} mm in from its end` : 'at its end'}`;
   }
   // A finger lifting ends a pinch; the one left down does nothing until it lifts too.
   function endTouch(e) {
@@ -962,6 +981,7 @@
       if (g.moved) { renderCanvas(); toast('Drag a bigger box, or click a part to pin the note to it.'); return; }
     }
     if (g && g.marquee && g.moved) { finishMarquee(g); return; }
+    if (g && g.run && g.moved) { const r = H().routes[g.run.key]; if (r) r.v = LM.route.tidy(g.A, g.B, r.v); svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && (g.setEnd || g.note || g.badge || g.area) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
@@ -1331,6 +1351,7 @@
         <p><i>◉</i> Click a set's badge, or inside it, to edit it. Drag a set's ends to shorten it or run it past what holds it.</p>
         <p><i>✎</i> Add › Note, then click a wire, set, or connector to pin a note. Drag its bubble; click it to edit.</p>
         <p><i>✥</i> Drag a part to move it; it snaps to the grid. Hold Ctrl to place it anywhere.</p>
+        <p><i>⌐</i> Wires find their way round the parts. Drag a straight run of a wire or set sideways to shape it, and double-click one to add a bend.</p>
         <button class="btn hp-guide" data-act="guide">Take the guide: every feature, step by step</button></div>` : '') +
       `<button class="pane-help-btn${open ? ' on' : ''}" data-act="help" title="How it works" aria-label="How it works" aria-expanded="${open}">?</button>`;
     paint($('#parts-pane'), tabs + body + help);
@@ -1612,6 +1633,12 @@
       </div>${ws.length ? `<div class="cat-label">Wires joined</div>${wireRows(h, A, ws)}` : ''}
       <div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${isSplice ? esc(n.ref) : 'breakout'}</button></div></div>`;
   }
+  // Reset route: forget how the routes of these wires were shaped by hand, so they route themselves
+  // again (arranged view). An empty cell when none was shaped.
+  function resetRouteBtn(h, ws) {
+    const Lo = lastLayout, keys = !fold.prop && Lo && h.routes ? [...new Set(ws.map(w => Lo.boxOfWire(w.id)))].filter(k => k && h.routes[k]) : [];
+    return keys.length ? `<button class="btn" data-act="reset-route" data-keys="${esc(keys.join(' '))}" title="Forget how this route was shaped, and let it find its own way">Reset route</button>` : '<span></span>';
+  }
   function railWire(h, A, w) {
     const gs = A.setsOf.get(w.id);
     return railHead('Wire', `<span class="mono-ref">${M.wireName(w)}</span> ${esc(w.signal || '')}`, `<div class="chips"><span class="chip">${U.fmtLen(A.wireLen.get(w.id))}</span>${gs.map(g => `<button class="chip g-chip g-${setKind(g)}" data-pick="set:${g.id}" title="${esc(M.setWord(g))}">${esc(g.label)}</button>`).join('')}</div>`) +
@@ -1624,7 +1651,7 @@
       <div class="cat-label">Sets</div>
       ${gs.length ? wireSetChain(h, w, gs) : ''}
       <p class="f-hint">${gs.length ? 'Click a set to select it. ' : ''}Shift-click other wires to make a set with this one: twisted, shielded, a cable, or a bundle.</p>
-      </div><div class="rail-actions"><span></span><button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${M.wireName(w)}</button></div></div>`;
+      </div><div class="rail-actions">${resetRouteBtn(h, [w])}<button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${M.wireName(w)}</button></div></div>`;
   }
   // A note: its text, and a part number and quantity when it stands for a part (the BOM lists it).
   function railNote(h, c) {
@@ -1731,7 +1758,7 @@
       ${st ? coversField(h, A, st, run) : ''}
       ${fld('Set color', colorSelects('ws.color', ''))}
       ${st ? `<div class="f-label">Hierarchy</div>${setTree(h, M.setChain(h, st)[0], st.id)}` : ''}
-      </div><div class="rail-actions"><span></span>${st
+      </div><div class="rail-actions">${resetRouteBtn(h, ws)}${st
         ? `<button class="btn btn-danger" data-act="delete" title="Removes the set. Its wires and any sets inside it stay.">${ICON.trash}Delete ${esc(st.label)}</button>`
         : `<button class="btn btn-danger" data-act="delete">${ICON.trash}Delete ${ws.length} wires</button>`}</div></div>`;
   }
@@ -2000,7 +2027,8 @@
       case 'fold-parts': toggleFold('parts'); break;
       case 'pane-tab': S.paneTab = el.dataset.tab; renderParts(); break;
       case 'edit-set': S.paneTab = 'props'; renderParts(); break;
-      case 'auto-layout': change(x => { if (fold.prop) delete x.propY; else { x.place = {}; x.wires.forEach(w => { delete w.labelAt; delete w.labelOff; }); x.sets.forEach(st => { delete st.badgeAt; delete st.badgeOff; }); } }); S.cam = null; renderCanvas(); break;
+      case 'reset-route': { const keys = (el.dataset.keys || '').split(' ').filter(Boolean); change(x => { keys.forEach(k => { if (x.routes) delete x.routes[k]; }); }); break; }
+      case 'auto-layout': change(x => { if (fold.prop) delete x.propY; else { x.place = {}; delete x.routes; x.wires.forEach(w => { delete w.labelAt; delete w.labelOff; }); x.sets.forEach(st => { delete st.badgeAt; delete st.badgeOff; }); } }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
       case 'add-splice': addEnd('splice'); break;
       case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;
@@ -2200,6 +2228,24 @@
   svg.addEventListener('pointerleave', () => { hoverPt = null; });
   svg.addEventListener('wheel', closeCtx, { passive: true });
   svg.addEventListener('pointerup', onUp);
+  // A double-click on a wire's line or a set's area adds a bend to its route there (Chris,
+  // 2026-11-10), a jog of no length to drag out; one undo takes it back.
+  svg.addEventListener('dblclick', e => {
+    const Lo = lastLayout, h = H();
+    if (!Lo || fold.prop || !h) return;
+    const key = e.target.classList.contains('w-hit') ? Lo.boxOfWire(e.target.closest('[data-wire]').dataset.wire) : e.target.classList.contains('cv-setarea') ? Lo.boxOfSet(e.target.dataset.set) : null;
+    const r = key && Lo.runAt(key, toWorld(e));
+    if (!r || r.d > r.route.half + 12) return;
+    const R0 = r.route, at = Object.assign({}, r.at);
+    if (r.j === 0) at.x = R0.A.out > 0 ? Math.max(at.x, R0.A.x + R0.stub) : Math.min(at.x, R0.A.x - R0.stub);
+    if (r.k < 0 && r.j > 0) at.x = R0.B.in > 0 ? Math.min(at.x, R0.B.x - R0.stub) : Math.max(at.x, R0.B.x + R0.stub);
+    const gs = gridOf(h), snap = v => (gs ? Math.round(v / gs) * gs : v);
+    at.x = snap(at.x); at.y = snap(at.y);
+    const nb = LM.route.addBend(R0.A, R0.B, R0.v, r.j, at);
+    if (!nb) return;
+    change(x => { x.routes = x.routes || {}; x.routes[key] = { v: nb.v }; });
+    toast('Bend added. Drag its new run to shape the wire.');
+  });
   svg.addEventListener('pointercancel', e => { if (endTouch(e) || pinch) return; const g = gesture; gesture = null; S.slide = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
   svg.addEventListener('wheel', onWheel, { passive: false });
   svg.addEventListener('contextmenu', e => e.preventDefault()); // the right button pans; a right click opens the menu (openCtx)
