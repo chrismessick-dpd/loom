@@ -22,6 +22,27 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Systems (2026-11-11, Chris: phases 1 to 3 of `docs/system.md`, on `main`).** A system is a second kind
+  of document (`assets/system.js`, `LM.system`) that places blocks (Signoff EE boards, drawn boards, and
+  devices) to scale in mm, marks each connector Used with a Function (per placed block; Chris: copies of a
+  board may differ), and plugs harnesses in. A cable is one use of a harness: `{ harness, ends: { <harness
+  end node id>: { block, conn } | null }, lengthMm }`; a length makes it the variant `<PN>-<mm>`. It has
+  its own store (`loom.v1.systems`, `currentSystem`), undo, canvas, and panel, and takes `#page` while open
+  (`renderAll` hands over; `sysHooks` in `app.js` is all it gets from the harness side; `boardEnd` and
+  `newHarnessFor` make New harness here). A board block's connectors sit where its package's
+  pick-and-place puts them (`boards.js` `readZip` now returns `c.at` and `outline`, the parts' extent plus
+  4 mm); connectors not in the PnP wait on the bottom edge, placed by hand. New harness here makes a
+  placeholder (the board end plus a generic far end), or, with a second connector Shift-picked, a
+  board-to-board harness with the shared-net wires (`boards.matches`). Plug in a harness… ranks harnesses
+  made from that connector first. Checks: used and unplugged, plugged and not used, two cables on a
+  connector, open ends, pin counts, pin labels against the board's nets, and an end filled from another
+  package. The harness rail shows "Plugs into …" on a plugged end (`plugsOf`). Sync: `store.js`
+  `syncSystems` after the harnesses, in the data repo under `systems/` (the engine's layout under a data
+  path: `systems/projects/<id>.json`), never `projects/`, which PL reads as harnesses; FTE only, not
+  shared yet. `?system=<id>` opens one; the demo's home page has Demo system (both thermostat boards and
+  the wall wiring). Tests 41. Not done: the board picture under the outline (Fabcheck's preview has no
+  origin), a system sheet and harness BOM page, sharing, PL reading `summary` (phase 4), and a live sync.
+
 - **Project groups fold (2026-11-11, Chris: as in Signoff EE).** The sidebar's client-project groups
   have EE's heading buttons (`toggle-group`: chevron, name, count; suite.css `.side-group-head`),
   closed ones kept in this browser (`fold.closedGroups`, by lowercase name). The group holding the open

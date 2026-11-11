@@ -144,7 +144,21 @@
       try { bom = Fab.assembly.parseBom(file); } catch (e) { bom = null; }
       if (bom) break;
     }
-    return { connectors: connectors(net, bom), netlist: net.name, bom: bom ? bom.name : null };
+    // The pick-and-place, for where each connector sits (Loom systems, docs/system.md). The outline is
+    // the parts' extent plus a margin: Fabcheck's stored preview has the board's size but not its origin.
+    let pnp = null;
+    for (const n of names.filter(n => /\.(txt|csv)$/i.test(n) && /pick|place|pnp|centroid|xy/i.test(n))) {
+      try { const p = Fab.assembly.parsePnp(await zip.file(n).async('string'), n); if (p.parts.length && (!pnp || p.parts.length > pnp.parts.length)) pnp = p; } catch (e) { /* not a PnP */ }
+    }
+    const conns = connectors(net, bom);
+    let outline = null;
+    if (pnp) {
+      const at = new Map(pnp.parts.map(q => [q.des.toUpperCase(), q]));
+      conns.forEach(c => { const q = at.get(c.ref.toUpperCase()); if (q) c.at = { x: q.x, y: q.y, rot: q.rot, side: q.side }; });
+      const xs = pnp.parts.map(q => q.x), ys = pnp.parts.map(q => q.y), m = 4;
+      outline = { x0: Math.min(...xs) - m, y0: Math.min(...ys) - m, x1: Math.max(...xs) + m, y1: Math.max(...ys) + m, from: 'pnp' };
+    }
+    return { connectors: conns, netlist: net.name, bom: bom ? bom.name : null, pnp: pnp ? pnp.name : null, outline };
   }
 
   // ── Connectors ──

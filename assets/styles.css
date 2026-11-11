@@ -994,3 +994,72 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
 .lm-ctx button:hover .lm-ctx-k, .lm-ctx button:focus-visible .lm-ctx-k { color: rgba(255, 255, 255, 0.8); }
 .lm-ctx button:disabled { opacity: 0.45; pointer-events: none; }
 .lm-ctx .lm-ctx-hint { font-size: 11.5px; color: var(--text-3); padding: 4px 10px 6px; max-width: 220px; }
+
+/* Systems (assets/system.js, docs/system.md): boards and devices to scale in mm, connector tabs, and the
+   harnesses plugged between them. Status never by hue alone: a glyph per state, dashed open ends. */
+#page.sys-on { display: flex; min-height: 0; }
+.sys-view { flex: 1; display: grid; grid-template-columns: 1fr 340px; height: calc(100dvh - 56px); min-height: 420px; }
+body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
+.sys-canvas-wrap { grid-area: auto; }
+.sys-canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.sys-panel { grid-area: auto; border-right: none; border-left: 1px solid var(--hair); overflow-y: auto; }
+.sys-panel > .field, .sys-panel > .field-row, .sys-panel > p, .sys-panel > .sys-list, .sys-panel > .sys-actions, .sys-panel > .sys-h, .sys-panel > .sys-checks, .sys-panel > .tick, .sys-panel > details, .sys-panel > .btn { margin-left: 16px; margin-right: 16px; }
+.sys-panel > .field { margin-top: 10px; }
+.sys-panel .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.sys-panel .hint { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+.sys-h { font: 600 12px var(--font, inherit); color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; margin-top: 18px; margin-bottom: 6px; }
+.sys-h .count { color: var(--text-3); font-weight: 500; text-transform: none; }
+.sys-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; margin-bottom: 4px; }
+.sys-list { display: flex; flex-direction: column; gap: 2px; }
+.sys-row { display: flex; gap: 8px; align-items: flex-start; text-align: left; border: 1px solid transparent; background: none; color: var(--text); padding: 6px 8px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; }
+.sys-row:hover { background: var(--accent-soft); }
+.sys-row small { display: block; color: var(--text-3); font-size: 11.5px; }
+.sys-st { width: 16px; flex: none; text-align: center; font-weight: 700; }
+.sys-st.st-wired { color: var(--accent); }
+.sys-st.st-progress, .sys-st.st-missing { color: var(--issue); }
+.sys-st.st-placeholder { color: var(--text-3); }
+.sys-crow { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
+.sys-link { background: none; border: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-align: right; }
+.sys-used { display: flex; align-items: center; gap: 6px; margin-top: 12px; font-weight: 600; }
+.sys-checks { display: flex; flex-direction: column; gap: 4px; }
+.sys-check { display: flex; gap: 8px; text-align: left; background: none; border: 1px solid var(--hair); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.sys-check.error { background: var(--issue-hatch), var(--issue-soft); }
+.sys-check.warn { background: var(--warn-hatch), var(--warn-soft); }
+.sys-check .sev { flex: none; }
+.sys-check.error .sev { color: var(--issue); }
+.sys-check.warn .sev { color: var(--warn); }
+.sys-pins { margin-top: 12px; font-size: 12.5px; }
+.sys-pintab { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.sys-pintab td, .sys-pintab th { text-align: left; padding: 2px 6px; border-bottom: 1px solid var(--hair); }
+.sys-hud { position: absolute; left: 12px; top: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 8px; }
+.sys-hint { font-size: 12px; color: var(--text-3); margin-left: 6px; }
+.sys-plugs { margin-top: 6px; }
+/* The canvas (mm units) */
+.sys-body { fill: var(--bg-elev); stroke: var(--text-3); stroke-width: 0.4; }
+.sys-block.board .sys-body { fill: color-mix(in srgb, var(--accent) 7%, var(--bg-elev)); }
+.sys-block.device .sys-body { stroke-dasharray: 1.5 1; }
+.sys-block.sel .sys-body { stroke: var(--accent); stroke-width: 0.8; }
+.sys-block { cursor: move; }
+.sys-ref { font: 700 4px var(--font, sans-serif); fill: var(--text); pointer-events: none; }
+.sys-name { font: 500 3px var(--font, sans-serif); fill: var(--text-2); pointer-events: none; }
+.sys-tab { cursor: pointer; }
+.sys-tab rect { fill: var(--bg-elev); stroke: var(--text-3); stroke-width: 0.35; }
+.sys-tab text { font: 700 2.2px var(--font, sans-serif); text-anchor: middle; fill: var(--text-3); pointer-events: none; }
+.sys-tab.unused { opacity: 0.55; }
+.sys-tab.used rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 0.5; }
+.sys-tab.used text { fill: var(--text); }
+.sys-tab.open rect { stroke-dasharray: 1 0.6; }
+.sys-tab.plugged rect { fill: var(--accent); }
+.sys-tab.plugged text { fill: var(--accent-ink, #fff); }
+.sys-tab.bottom rect { stroke-dasharray: 0.6 0.5; }
+.sys-tab.sel rect { stroke: var(--text); stroke-width: 0.9; }
+.sys-cable .hit { stroke: transparent; stroke-width: 4; fill: none; cursor: pointer; }
+.sys-cable .line { stroke: var(--text-2); stroke-width: 0.9; fill: none; stroke-linejoin: round; pointer-events: none; }
+.sys-cable.st-wired .line { stroke: var(--accent); }
+.sys-cable.st-progress .line, .sys-cable.st-missing .line { stroke: var(--issue); }
+.sys-cable.st-placeholder .line { stroke-dasharray: 2 1.2; }
+.sys-cable .line.open { stroke-dasharray: 1.4 1; }
+.sys-cable .ring { fill: var(--bg-elev); stroke: var(--text-2); stroke-width: 0.5; pointer-events: none; }
+.sys-cable.sel .line { stroke-width: 1.6; }
+.sys-clabel { font: 600 2.6px var(--font, sans-serif); fill: var(--text); paint-order: stroke; stroke: var(--bg-elev); stroke-width: 0.8; pointer-events: none; }
+@media (max-width: 860px) { .sys-view { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; } .sys-panel { border-left: none; border-top: 1px solid var(--hair); } }

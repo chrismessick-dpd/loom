@@ -32,6 +32,7 @@
   if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', () => applyTheme(readTheme()));
 
   const ICON = {
+    system: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3.5" width="6.5" height="5.5" rx="1.2"/><rect x="11.5" y="11" width="6.5" height="5.5" rx="1.2"/><path d="M8.5 6.2h3.5v4.8"/><path d="M5.2 9v4.7H11.5"/></svg>',
     table: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M3 8.5h14M3 12.3h14M10 4v12"/></svg>',
     note: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4.5h14v8.5H9.5L6 16v-3H3z"/><path d="M6.5 8h7M6.5 10.5h4.5"/></svg>',
     pencil: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d="M10.5 3.5l2 2L6 12H4v-2z"/></svg>',
@@ -66,7 +67,52 @@
     if (want && S.store[want] && !S.store[want].deleted) c = want;
     else if (want) linked = want;   // not here yet: the first sync may bring it (syncNow)
     S.cur = S.store[c] && !S.store[c].deleted ? c : DEMO ? 'hdemo1' : null;
+    // A system (assets/system.js) open last time, or asked for by ?system=, takes the page.
+    const sid = LM.system.init(sysHooks);
+    if (sid) { LM.system.open(sid); S.cur = null; }
   }
+  // What a system (assets/system.js) needs from the harness side. It never edits a harness itself:
+  // New harness here comes back through newHarnessFor.
+  const sysHooks = {
+    toast: (m, t) => toast(m, t), refresh: () => renderAll(), login: () => R && R.login(),
+    harness: id => { const h = S.store[id]; return h && !h.deleted ? h : null; },
+    harnesses: () => live(),
+    projects: () => [...new Set(live().map(h => h.project).concat(LM.system.live().map(s => s.project)).map(p => String(p || '').trim()).filter(Boolean))].sort(),
+    openHarness: id => { S.view = 'build'; openHarness(id); },
+    home: () => { LM.system.close(); S.cur = null; persist(); renderAll(); },
+    newHarness: (sys, ends) => newHarnessFor(sys, ends),
+  };
+  // A harness end from a system block's connector, as From a board makes one (addBoardConnector).
+  function boardEnd(h, b, c, x, y) {
+    const n = M.addConnector(h, x, y, { family: L.guessFamily(c.mpn, c.desc), pins: c.pins.length, rows: 1 });
+    n.pins = c.pins.length; n.rows = 1;
+    n.pinNames = c.pins.map(p => p.pin);
+    n.pinLabels = {};
+    c.pins.forEach(p => { if (p.label) n.pinLabels[p.pin] = p.label; });
+    n.name = `${b.name} ${c.ref}`;
+    n.mate = [c.mfr, c.mpn].filter(Boolean).join(' ');
+    if (b.source) n.board = { project: b.source.id, name: b.source.name, client: b.source.client || '', ref: c.ref, mpn: c.mpn || '', source: b.source.label || '' };
+    return n;
+  }
+  // New harness here: one end from the connector and a generic far end (a placeholder), or, for two
+  // connectors, both ends from them with the wires their shared nets suggest. Returns its end ids in
+  // the order asked (a placeholder's far end last).
+  function newHarnessFor(sys, ends) {
+    const [a, b] = ends;
+    const h = M.blank(b ? `${a.b.name} ${a.c.ref} to ${b.b.name} ${b.c.ref}` : `${a.b.name} ${a.c.ref}${a.c.fn ? ' ' + a.c.fn : ''} harness`);
+    h.drawnBy = ''; h.project = sys.project || '';
+    const old = h.nodes.filter(M.isConn).map(n => n.id);
+    const made = ends.map((e, i) => boardEnd(h, e.b, e.c, 160 + i * 480, 240));
+    let suggested = 0;
+    if (b) {
+      old.forEach(id => M.removeNode(h, id));
+      LM.boards.matches(made[0], made[1], new Set()).forEach(m => { M.addWire(h, { node: made[0].id, pin: m.a }, { node: made[1].id, pin: m.b }, { signal: m.label }); suggested++; });
+    } else M.removeNode(h, old[0]);
+    S.store[h.id] = h;
+    persist();
+    return { h, ends: b ? made.map(n => n.id) : [made[0].id, old[1]], suggested };
+  }
+  function openSystem(id) { S.cur = null; S.sel = null; S.pending = null; LM.system.open(id); persist(); renderAll(); }
   // Harnesses shown: a harness deleted after it was synced stays as a tombstone (h.deleted) until the
   // data repo has it, so another browser's copy can't bring it back.
   const live = () => Object.values(S.store).filter(h => !h.deleted);
@@ -99,6 +145,16 @@
         S.store[id] = res.store[id];
       });
       if (forget.length) R.forget(forget);
+      // Systems (assets/system.js) sync with the data repo's systems/ folder, after the harnesses.
+      try {
+        const ss = LM.system.store(), rs = await R.syncSystems(ss, sysHooks.harness);
+        if (rs) {
+          Object.keys(rs.store).forEach(id => { if (!ss[id] || !rs.before[id] || R.hash(ss[id]) === rs.before[id]) ss[id] = rs.store[id]; });
+          rs.gone.forEach(id => { if (ss[id] && R.hash(ss[id]) === rs.before[id]) delete ss[id]; });
+          rs.conflicts.forEach(s => { ss[s.id] = s; });
+          LM.system.persist();
+        }
+      } catch (e) { toast("Couldn't sync systems: " + (e.message || e), 'error'); }
       res.gone.forEach(id => { if (S.store[id] && R.hash(S.store[id]) === res.before[id]) delete S.store[id]; });
       res.conflicts.forEach(h => { S.store[h.id] = h; });
       if (S.cur && (!S.store[S.cur] || S.store[S.cur].deleted)) S.cur = null;
@@ -238,6 +294,7 @@
     renderAll();
   }
   function openHarness(id) {
+    LM.system.close();
     S.cur = id; S.sel = null; S.pending = null; S.past = []; S.future = []; S.cam = null;
     persist();
     renderAll();
@@ -253,6 +310,13 @@
     selWas = k;
   }
   function renderAll() {
+    if (LM.system.current()) {
+      renderSidebar(); renderToolbar();
+      $('#build-view').hidden = true; $('#page').hidden = false;
+      LM.system.render($('#page'));
+      return;
+    }
+    LM.system.leave($('#page'));
     const h = H();
     if (h && S.view === 'build') unfoldForSelection();
     renderSidebar();
@@ -323,12 +387,23 @@
   function renderSidebar() {
     renderTools();
     const list = live().sort((a, b) => (b.updated || 0) - (a.updated || 0));
-    const dirty = new Set(canSync() ? R.unsynced(S.store) : []);
+    // Systems (assets/system.js) sit first in their client project's group.
+    const systems = LM.system.live().sort((a, b) => String(a.title).localeCompare(String(b.title)));
+    const dirty = new Set(canSync() ? R.unsynced(S.store).concat(R.sysUnsynced(LM.system.store())) : []);
     // Grouped by client project, as Signoff EE groups boards (none: "No project", last).
     const groups = new Map();
-    list.forEach(h => { const k = String(h.project || '').trim(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); });
+    systems.concat(list).forEach(h => { const k = String(h.project || '').trim(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); });
     const keys = [...groups.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+    const sysRow = s => {
+      const c = LM.system.checks(s, sysHooks.harness);
+      const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
+      return `<button class="proj${s.id === LM.system.current() ? ' active' : ''}" data-open-sys="${s.id}">
+        <span class="pkg-icon">${ICON.system}</span>
+        <span class="proj-body"><span class="proj-name">${esc(s.title)}</span><span class="proj-sub">System · ${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'} · ${s.cables.length} cable${s.cables.length === 1 ? '' : 's'}</span></span>
+        <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(s.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
+    };
     const row = h => {
+      if (h.kind === 'system') return sysRow(h);
       const c = M.checks(h);
       const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
       const ends = h.nodes.filter(M.isConn).length;
@@ -342,13 +417,13 @@
     // and folding it closes the harness (home).
     const grouped = keys.length > 1 || !!keys[0], closed = fold.closedGroups || {};
     const gkey = k => k.toLowerCase();
-    $('#harness-list').innerHTML = fromPlHtml() + (list.length ? (grouped ? keys.map(k => {
-      const holds = groups.get(k).some(h => h.id === S.cur), open = !closed[gkey(k)] || holds;
+    $('#harness-list').innerHTML = fromPlHtml() + (list.length || systems.length ? (grouped ? keys.map(k => {
+      const holds = groups.get(k).some(h => h.id === S.cur || h.id === LM.system.current()), open = !closed[gkey(k)] || holds;
       return `<div class="side-group"><button class="side-group-head" data-act="toggle-group" data-group="${esc(gkey(k))}"${holds ? ' data-holds-open' : ''} aria-expanded="${open}" title="Client project">` +
         `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>` +
         `<span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></button>` +
         (open ? groups.get(k).map(row).join('') : '') + `</div>`;
-    }).join('') : list.map(row).join(''))
+    }).join('') : systems.concat(list).map(row).join(''))
       : '<div class="side-empty">No harnesses yet.</div>');
     // Fold or unfold every group: the button in the Harnesses heading, beside New.
     const foldBtn = $('[data-act="fold-groups"]');
@@ -444,8 +519,8 @@
       <div class="empty-art">${ICON.upload}</div>
       <h2>Draw a harness a tech can build from</h2>
       <p>Add the ends, click pin to pin to wire them, and group wires into cables. Loom draws the wiring diagram, the connector faces, the wire list, and the BOM.</p>
-      <div class="actions"><button class="btn btn-primary" data-act="new">New harness</button><button class="btn" data-act="open">Open a file…</button>
-      ${DEMO ? '<button class="btn" data-act="demo">Demo harness</button>' : '<a class="btn" href="?demo">Try the demo</a>'}<button class="btn" data-act="guide">Take the guide</button></div>
+      <div class="actions"><button class="btn btn-primary" data-act="new">New harness</button><button class="btn" data-act="new-system" title="Place boards and devices, and plug harnesses into their connectors">New system</button><button class="btn" data-act="open">Open a file…</button>
+      ${DEMO ? '<button class="btn" data-act="demo">Demo harness</button><button class="btn" data-act="demo-system">Demo system</button>' : '<a class="btn" href="?demo">Try the demo</a>'}<button class="btn" data-act="guide">Take the guide</button></div>
       ${plWaiting().length ? `<div class="lm-home-pl"><b>${plWaiting().length === 1 ? 'A Part in Signoff PL is' : plWaiting().length + ' Parts in Signoff PL are'} waiting for a harness</b><span>They’re under From Signoff PL in the sidebar. Start one to draw it; PL links it to its Part at the next sync.</span></div>` : ''}
       <div class="drop-tiles">
         <div><b>Ends</b>Connector tables with pin labels, face views with pin 1</div>
@@ -483,7 +558,7 @@
   function renderCanvas(hp, extra) {
     const h = hp || H(), svg = svgEl();
     const intro = !hp && !reduceMotion() && S.introFor !== h.id;
-    if (intro) { S.introFor = h.id; clearTimeout(S.introT); S.introT = setTimeout(() => { S.introT = null; if (S.view === 'build') renderCanvas(); }, 1700); }
+    if (intro) { S.introFor = h.id; clearTimeout(S.introT); S.introT = setTimeout(() => { S.introT = null; if (S.view === 'build' && H()) renderCanvas(); }, 1700); }
     const r = C.render(h, M.analyze(h), Object.assign({ sel: S.sel, pending: S.pending, fx: true, intro: intro || (!hp && !!S.introT), fresh: S.fresh, lift: S.lift, slide: S.slide, prop: !!fold.prop }, extra));
     if (!hp) { lastBox = r.box; lastLayout = r.layout; }
     const wrap = $('#canvas-wrap');
@@ -1738,8 +1813,11 @@
     const sugg = matchRows(h, n);
     const boardBox = n.board ? `<div class="board-src"><span class="lay-ico">${ICON.board}</span><div><b>${esc(n.board.name)} ${esc(n.board.ref)}</b><div class="f-hint">${esc(n.board.source)}${n.board.mpn ? ' · board part ' + esc(n.board.mpn) : ''}. Pins and labels come from its netlist.</div></div></div>` : '';
     const suggBox = sugg.length ? `<div class="cat-label">Suggested wires</div><div class="rail-sec">${sugg.map(r => `<div class="sugg"><div><b>${r.pairs.length} pin${r.pairs.length > 1 ? 's' : ''} match ${esc(r.other.ref)}</b><div class="f-hint">${esc([...new Set(r.pairs.map(p => p.label))].slice(0, 6).join(', '))}${new Set(r.pairs.map(p => p.label)).size > 6 ? '…' : ''}</div></div><button class="btn" data-act="match-wire" data-a="${n.id}" data-b="${r.other.id}">Wire them</button></div>`).join('')}<p class="f-hint">Same net name on both ends, on pins with no wire yet. Check each against the boards.</p></div>` : '';
+    // Where this end plugs in, in any system (assets/system.js).
+    const plugs = LM.system.plugsOf(h.id, n.id);
+    const plugBox = plugs.length ? `<div class="board-src sys-plugs"><span class="lay-ico">${ICON.system}</span><div>${plugs.map(p => `<div>Plugs into <button class="sys-link" data-open-sys="${p.system.id}">${esc(p.text)}</button></div>`).join('')}</div></div>` : '';
     return railHead('Connector', `<span class="mono-ref">${esc(n.ref)}</span> ${esc(n.name || L.kindName(n))}`, `<button class="btn cfg-open" data-act="configure" title="Name, type, and a custom face drawing">${ICON.sliders}Configure</button>`) +
-      `<div class="rail-list">${boardBox}${suggBox}<div class="face-tile" data-act="configure" title="Configure">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.fitViews(h, n, 0, 0, 330, 150).note)}</span></div>
+      `<div class="rail-list">${boardBox}${plugBox}${suggBox}<div class="face-tile" data-act="configure" title="Configure">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.fitViews(h, n, 0, 0, 330, 150).note)}</span></div>
       <div class="rail-sec">
       ${LM.shapes.hasBack(n) ? fld('Views', segBtns('n.faceView', LM.shapes.views(n).length > 1 ? 'both' : LM.shapes.views(n)[0], [['front', 'Front'], ['back', 'Back'], ['both', 'Both']]), 'Front is the mating face, back the wire side. The drawing prints these.') : ''}
       <div class="row2 r-ref">${fld('Ref', inp('n.ref', n.ref))}${fld('Name', inp('n.name', n.name, ' placeholder="Main PCBA J1"'))}</div>
@@ -2183,7 +2261,9 @@
   function onAct(act, el) {
     const h = H();
     switch (act) {
-      case 'home': S.cur = null; persist(); renderAll(); break;
+      case 'home': LM.system.close(); S.cur = null; persist(); renderAll(); break;
+      case 'new-system': { const p = h ? h.project : ''; S.cur = null; LM.system.create(p); persist(); renderAll(); toast('Add a board from Signoff EE, or draw one, then click its connectors.'); break; }
+      case 'demo-system': LM.system.demo().then(() => { S.cur = null; persist(); renderAll(); }); break;
       // Project groups fold as in Signoff EE: folding the group that holds the open harness goes home.
       case 'toggle-group': {
         const cg = Object.assign({}, fold.closedGroups), k = el.dataset.group;
@@ -2332,6 +2412,8 @@
     if (a && !a.disabled) { onAct(a.dataset.act, a); return; }
     const v = t.closest('[data-view]');
     if (v) { S.view = v.dataset.view; S.pending = null; renderAll(); return; }
+    const os = t.closest('[data-open-sys]');
+    if (os) { if (os.dataset.openSys !== LM.system.current()) openSystem(os.dataset.openSys); return; }
     const o = t.closest('[data-open]');
     if (o) {
       // A harness clicked in the menu opens its panel when it's folded away.
@@ -2398,6 +2480,7 @@
     if (typing && e.key === 'Escape' && document.activeElement.closest('.title-edit')) { const a = document.activeElement; a.value = a.defaultValue; a.blur(); return; }
     if (typing) { if (e.key === 'Enter' && document.activeElement.tagName === 'INPUT') document.activeElement.blur(); return; }
     if (e.key === '[' && !mod) { e.preventDefault(); toggleSidebar(); return; }
+    if (LM.system.current()) { LM.system.onKey(e); return; }
     if (!H()) return;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }

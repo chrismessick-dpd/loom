@@ -365,6 +365,50 @@
     return { store: out, before, pushed, conflicts, gone, dropped, errors, adopted, pl, login: who.login, access, homes: Object.assign({}, homes), commitUrl };
   }
 
+  // ── Systems (assets/system.js, docs/system.md) ──
+  // Kept in the data repo under systems/ (the engine's layout under a data path: systems/projects/<id>.json),
+  // apart from projects/, which Signoff PL reads as harnesses. FTEs only for now: a token that can't
+  // open the data repo skips them. Whole-system merge with a "(conflict copy)", as for harnesses.
+  function sysEnvelope(s) {
+    return { schema: 1, id: s.id,
+      meta: { name: s.title || 'Untitled system', number: '', revision: s.rev || '', project: s.project || '', deleted: !!s.deleted, updatedAt: iso(s.updated), updatedBy: s.updatedBy || '' },
+      system: s };
+  }
+  async function syncSystems(local, getHarness, opts) {
+    opts = opts || {};
+    const cfg = config(), tok = opts.token || token();
+    if (!tok) return null;
+    const Sy = LM.system;
+    const synced = read('sysSynced', {});
+    const isDirty = id => !synced[id] || synced[id] !== hash(local[id]);
+    const conflicts = [];
+    const store = new SG.GitHubStore({ owner: cfg.owner, repo: cfg.dataRepo, branch: 'main', dataPath: 'systems', token: tok,
+      summarize: doc => doc.system ? Sy.summarize(doc.system, getHarness) : undefined }, opts.fetch);
+    store.cfg.merge = (l, r) => {
+      if (!l) return r;
+      if (!r) return l;
+      if (!isDirty(l.id) || stable(l.system) === stable(r.system)) return r;
+      const lt = Number(l.system && l.system.updated) || 0, rt = Number(r.system && r.system.updated) || 0;
+      const win = lt > rt ? l : r, lose = win === l ? r : l;
+      if (lose.system) { const c = JSON.parse(JSON.stringify(lose.system)); c.id = LM.util.uid('s'); c.title = (c.title || 'System') + ' (conflict copy)'; c.updated = Date.now(); conflicts.push(c); }
+      return sysEnvelope(win.system);
+    };
+    const docs = {}, before = {};
+    Object.keys(local).forEach(id => { const s = local[id]; if (s.demoVersion) return; before[id] = hash(s); docs[id] = sysEnvelope(s); });
+    let res;
+    try { res = await store.sync(docs, null, read('sysCache', null), { dropGone: true, keepLocal: isDirty, message: opts.message || 'Loom: sync systems' }); }
+    catch (e) { if (denied(e)) return null; throw e; }
+    const out = {}, next = {};
+    Object.keys(res.projects).forEach(id => {
+      const s = res.projects[id] && res.projects[id].system;
+      if (!s || s.id !== id) return;
+      try { out[id] = Sy.normalize(s); next[id] = hash(out[id]); } catch (e) { /* not a system */ }
+    });
+    write('sysCache', res.cache); write('sysSynced', next);
+    return { store: out, before, conflicts, gone: res.gone || [], pushed: res.pushed };
+  }
+  const sysUnsynced = store => { const s = read('sysSynced', {}); return Object.keys(store).filter(id => !store[id].demoVersion && (!s[id] || s[id] !== hash(store[id]))); };
+
   // Harnesses changed since this browser's last sync (never synced counts).
   function unsynced(store) {
     const synced = read('synced', {});
@@ -391,7 +435,7 @@
 
   LM.store = {
     DEMO, setNamespace: ns => { NS = ns; }, config, token, signedIn: () => !!token(), envelope, unwrap, summarize, makeMerge, slimPl, plIndex, waiting, startFromPl, adoptFromPl, hash,
-    sync, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, base, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
+    sync, syncSystems, sysUnsynced, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, base, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
     access: () => read('who', {}).access || '',
   };
 })(window.LM = window.LM || {});

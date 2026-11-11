@@ -616,6 +616,59 @@
     ok(Math.abs(g2.h - (g1.h + 40)) < 1e-6, 'a least height from the corner shares out over the rows');
   });
 
+  // ── Systems (assets/system.js, docs/system.md) ──
+  function sysFixture() {
+    const Y = LM.system, s = Y.blank('Gizmo');
+    const a = Y.addDrawn(s, 'board', { x: 0, y: 0 }), d = Y.addDrawn(s, 'device', { x: 120, y: 0 });
+    a.conns.length = 0;
+    const c = { id: 'c1', ref: 'J1', pins: [{ pin: '1', net: 'VIN', label: 'VIN' }, { pin: '2', net: 'GND', label: 'GND' }], x: 80, y: 4, side: 'top', used: true, fn: 'Fan', placed: 'hand' };
+    a.conns.push(c);
+    const h = harness('Fan cable', { pn: '2200100-001' });
+    return { Y, s, a, d, c, h, get: id => (id === h.id ? h : null) };
+  }
+  test('system: checks flag used connectors with nothing plugged in, open ends, and pin counts', () => {
+    const { Y, s, a, c, h, get } = sysFixture();
+    const t = Y.checks(s, get).map(x => x.text);
+    ok(t.some(x => /A1 J1 \(Fan\) is used, but nothing is plugged into it/.test(x)), 'a used connector with no cable');
+    const ends = h.nodes.filter(M.isConn);
+    s.cables.push({ id: 'k1', harness: h.id, ends: { [ends[0].id]: { block: a.id, conn: c.id }, [ends[1].id]: null }, lengthMm: null });
+    const t2 = Y.checks(s, get);
+    ok(!t2.some(x => /A1 J1.*nothing is plugged/.test(x.text)), 'plugged now');
+    ok(t2.some(x => x.sev === 'warn' && new RegExp(ends[1].ref + " isn't plugged in").test(x.text)), 'the other end is open');
+    eq(t2.some(x => x.sev === 'error' && /pins, the connector 2/.test(x.text)), M.pinList(ends[0]).length !== 2, 'pin counts compared');
+    s.cables.push({ id: 'k2', harness: h.id, ends: { [ends[0].id]: { block: a.id, conn: c.id } }, lengthMm: 750 });
+    ok(Y.checks(s, get).some(x => x.sev === 'error' && /2 cables plugged into it/.test(x.text)), 'two cables on one connector');
+  });
+  test('system: a length override is a variant part number, and the summary counts harnesses', () => {
+    const { Y, s, h, get } = sysFixture();
+    s.cables.push({ id: 'k1', harness: h.id, ends: {}, lengthMm: null }, { id: 'k2', harness: h.id, ends: {}, lengthMm: null }, { id: 'k3', harness: h.id, ends: {}, lengthMm: 750.4 });
+    eq(Y.pnOf(h, s.cables[2]), '2200100-001-750');
+    const q = Y.summarize(s, get).harnesses.map(x => [x.pn, x.qty]).sort();
+    eq(q, [['2200100-001', 2], ['2200100-001-750', 1]]);
+    eq(Y.summarize(s, get).kind, 'system');
+  });
+  test('system: the best end is the one made from that board connector', () => {
+    const { Y, s, a, c, h } = sysFixture();
+    a.source = { tool: 'ee', id: 'pb1', name: 'Board' };
+    const ends = h.nodes.filter(M.isConn);
+    ends[1].board = { project: 'pb1', ref: 'J1' };
+    eq(Y.bestEnd(s, null, h, a, c).id, ends[1].id);
+  });
+  test('system sync: systems go under systems/, never projects/, and come back', async () => {
+    const hub = setup();
+    const { Y, s, h, get } = sysFixture();
+    const res = await R.syncSystems({ [s.id]: s }, get, opts(hub));
+    const files = hub.files(OWNER + '/loom_data');
+    const path = 'systems/projects/' + s.id + '.json';
+    ok(files[path], 'stored under systems/');
+    ok(!Object.keys(files).some(p => p.indexOf('projects/') === 0), 'nothing in projects/, which Signoff PL reads as harnesses');
+    eq(JSON.parse(files[path]).summary.kind, 'system');
+    eq(res.store[s.id].title, s.title);
+    eq(R.sysUnsynced(res.store), [], 'nothing left unsynced');
+    const again = await R.syncSystems(res.store, get, opts(hub));
+    eq(again.pushed, 0, 'a second sync has nothing to push');
+  });
+
   (async () => {
     let failed = 0;
     for (const t of tests) {

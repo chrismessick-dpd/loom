@@ -210,3 +210,6 @@ data.
 4. Integration order: the **Loom prefill came first** (2026-11-06). It reads a board's
    released package from EE directly, or the latest stored run when no revision is tagged
    (`assets/boards.js`). Next: Fabcheck connectors → EE summary → PL subsection.
+5. System view (2026-11-11, proposed, not decided): **in Loom, not PL**, as a second document kind that
+   places boards and plugs harnesses into their connectors. See `docs/system.md`, which replaces the
+   "System view in PL" option and the *Connectors & harnesses* subsection idea in section 3.
