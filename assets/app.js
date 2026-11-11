@@ -1473,7 +1473,14 @@
             <div class="f-hint">${c.pins.length} pin${c.pins.length === 1 ? '' : 's'}, ${named.length} with named nets${c.dropped.length ? ` · mounting or shield pads left out: ${esc(c.dropped.join(', '))}` : ''}</div></div>`;
         }).join('') || '<p class="f-hint">No connectors found in this netlist.</p>'}</div>`;
     }
-    $('#board-modal-body').innerHTML = o;
+    // Redrawing the same list (Add on a connector) keeps its scroll, so the next Add is where it was.
+    const host = $('#board-modal-body'), key = BM.step + '|' + (BM.board ? BM.board.id : '');
+    const was = host.querySelector('.lm-modal-body');
+    const top = was && host.dataset.key === key ? was.scrollTop : 0;
+    host.innerHTML = o;
+    host.dataset.key = key;
+    const now = host.querySelector('.lm-modal-body');
+    if (now && top) now.scrollTop = top;
   }
   function addBoardConnector(ref) {
     const b = BM.board, p = BM.pkg, c = p && p.connectors.find(x => x.ref === ref);
