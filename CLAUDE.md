@@ -70,7 +70,8 @@ links to it so far. Before every commit:
   or tab. In Real proportions a paste goes to `placeClear`. One undo reverts a paste. Test: 24.
 
 - **Marquee and mixed selection (2026-11-07, Chris):** a left drag that grabs nothing on the canvas
-  (empty stage, or a wire's line) draws a selection box (`drawMarquee`, `finishMarquee` in `app.js`;
+  (empty stage, or a wire's line; since 2026-11-10 a loose wire's line drags its anchor instead,
+  unless Shift is held) draws a selection box (`drawMarquee`, `finishMarquee` in `app.js`;
   the rect goes in `#ghost`, `.cv-marquee`). Dragged right to left it's green and dashed and picks
   everything it touches; left to right it's light blue and picks what lies wholly inside it. It
   picks everything: connectors and splices, wires and notes (bubble and area). A wire counts by its
@@ -411,7 +412,15 @@ links to it so far. Before every commit:
       color with a light ring on a dark one (`dotFill`, `dotRing`). The wire rides the path between its anchors and fans to its pins
       from them. Unset, an anchor sits at the box's edge, so a wire curves to its pin as before
       until its anchor is dragged out along the curve (`dragAnchor` in `app.js`, as a set's end,
-      snapped to 5 mm). A drawing handle, not a length. Later: a length between a cable's end and
+      snapped to 5 mm). A drawing handle, not a length. A stack's side where no two-arc lead fits
+      (its part above or below and not far enough out to the side) used to get no lead, pinning the
+      anchor at the box's edge; since 2026-11-10 (Chris: only connections and a clean drawing matter
+      in the arranged view) it gets `curveLead`, the wire's own curve from the box's edge to its pins,
+      `MIN_BRK` short of them. Set boxes keep the stricter rule (packed wires fold on tight turns).
+      The anchor's grab circle keeps 14 px on screen at any zoom (`.cv-anchor-hit`), and a left drag on
+      a loose wire's line (its `.w-hit`, no Shift) drags its nearer anchor by the pointer's movement
+      (`g.setEnd` set in `onDown`; Chris, 2026-11-10); a click still selects the wire, and Shift-drag
+      from a line still draws a marquee. Later: a length between a cable's end and
       its wires' ends could build on them.
     - Lessons from `sets` (Chris: glitchy once ends crossed or parts moved): only packed wires ride
       a lead; there's no fixed breakout point the wires must meet; a lead is two circular arcs

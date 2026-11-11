@@ -653,6 +653,16 @@
     // A left drag that grabs nothing (empty canvas, or a wire's line) draws a selection box
     // (marquee). A finger pans instead.
     const g = gesture;
+    // A loose wire's line drags its nearer anchor along the curve (Chris, 2026-11-10: the dots were
+    // hard to hit); the anchor follows the pointer's movement from where the line was grabbed, and a
+    // click without movement still selects the wire. Shift-drag from a line still draws a box.
+    const lineEl = g.button === 0 && !g.touch && !g.shift && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge
+      && e.target.classList.contains('w-hit') && e.target.closest('[data-wire]');
+    const an = lineEl && lastLayout && lastLayout.anchorsOf(M.wire(H(), lineEl.dataset.wire) || {});
+    if (an) {
+      const p = toWorld(e), near = an.reduce((m, a) => (Math.hypot(a.x - p.x, a.y - p.y) < Math.hypot(m.x - p.x, m.y - p.y) ? a : m));
+      g.setEnd = { wire: lineEl.dataset.wire, side: near.side };
+    }
     if (g.button === 0 && !g.touch && !S.pending && !S.placing && !g.item && !g.end && !g.setEnd && !g.note && !g.label && !g.badge) g.marquee = true;
     svgEl().setPointerCapture(e.pointerId);
   }

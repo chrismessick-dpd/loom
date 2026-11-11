@@ -686,7 +686,8 @@ button.chip.g-chip { cursor: pointer; }
 .lm-canvas .cv-setend { cursor: ew-resize; }
 /* A loose wire's anchors: small dots ringed in its color that slide along its curve. */
 .lm-canvas .cv-anchor { cursor: grab; }
-.lm-canvas .cv-anchor-hit { fill: transparent; }
+/* The grab circle keeps at least 14 px on screen however far out the zoom is (--k, as .w-hit). */
+.lm-canvas .cv-anchor-hit { fill: transparent; r: max(8px, calc(14px / var(--k, 1))); }
 .lm-canvas .cv-anchor-dot { stroke-width: 1.2; transition: r 0.15s; }
 .lm-canvas .cv-anchor:hover .cv-anchor-dot, .lm-canvas.dragging .cv-anchor-dot { r: 4; }
 .lm-canvas .cv-anchor.dim { opacity: 0.6; }

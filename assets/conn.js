@@ -678,8 +678,35 @@
           const L = k ? biarc(E, B) : biarc(B, E);
           if (L.r >= need + 4) return L;
         }
-        if (b <= MIN_BRK) return null;
+        if (b <= MIN_BRK) return it.b.kind === 'set' ? null : curveLead(it, E, as, by, k);
       }
+    }
+    // A stack's wires don't pack, so any turn will do (Chris: an anchor should slide all the way round
+    // the curve in the arranged view; only connections matter there). Where no two-arc lead fits (the
+    // part is above or below and not far enough out to the side), the lead is the curve the wires are
+    // drawn on anyway, from the pins (facing the box) to the box's edge, leaving the box level, and
+    // stopping MIN_BRK short of the pins so the wire still fans in to them.
+    function curveLead(it, E, as, by, k) {
+      const cx = it.x + it.w / 2, near = as.reduce((m, p) => (Math.abs(p.x - cx) < Math.abs(m.x - cx) ? p : m), as[0]);
+      const B = { x: near.x, y: by }, s = k ? (B.x >= E.x ? 1 : -1) : (E.x >= B.x ? 1 : -1);
+      const p = k ? E : B, q = k ? B : E, tp = k ? { x: 1, y: 0 } : { x: s, y: 0 }, tq = k ? { x: s, y: 0 } : { x: 1, y: 0 };
+      const d = Math.max(30, Math.abs(q.x - p.x) * 0.5), a = { x: p.x + tp.x * d, y: p.y + tp.y * d }, c = { x: q.x - tq.x * d, y: q.y - tq.y * d };
+      const N = 64, pts = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, u = 1 - t;
+        const x = u * u * u * p.x + 3 * u * u * t * a.x + 3 * u * t * t * c.x + t * t * t * q.x, y = u * u * u * p.y + 3 * u * u * t * a.y + 3 * u * t * t * c.y + t * t * t * q.y;
+        let tx = 3 * u * u * (a.x - p.x) + 6 * u * t * (c.x - a.x) + 3 * t * t * (q.x - c.x), ty = 3 * u * u * (a.y - p.y) + 6 * u * t * (c.y - a.y) + 3 * t * t * (q.y - c.y);
+        const m = Math.hypot(tx, ty) || 1; tx /= m; ty /= m;
+        pts.push({ x, y, nx: -ty, ny: tx });
+      }
+      let S = 0;
+      pts.forEach((pt, i) => { if (i) S += Math.hypot(pt.x - pts[i - 1].x, pt.y - pts[i - 1].y); pt.s = S; });
+      if (S < MIN_BRK + 8) return null;
+      // Trim MIN_BRK off the pin end, and measure from the lead's start again.
+      const kept = k ? pts.filter(pt => pt.s <= S - MIN_BRK) : pts.filter(pt => pt.s >= MIN_BRK);
+      const s0 = kept[0].s;
+      kept.forEach(pt => { pt.s -= s0; });
+      return { pts: kept, S: kept[kept.length - 1].s, r: 0 };
     }
     // Every box's path (it.path) and where each of its sets reaches along it (sz.arc: u0, u1). Sets
     // that pack (cables, shields, bundles, twists) ride the leads; any other stays on the straight
