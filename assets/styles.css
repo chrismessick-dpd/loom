@@ -1042,7 +1042,7 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-block { cursor: move; }
 .sys-ref { font: 700 16px var(--font, sans-serif); fill: var(--text); pointer-events: none; }
 .sys-name { font: 500 12px var(--font, sans-serif); fill: var(--text-2); pointer-events: none; }
-.sys-tab { cursor: crosshair; }
+.sys-tab { cursor: pointer; }
 .sys-tab rect { fill: var(--bg-elev); stroke: var(--text-3); stroke-width: 1.3; }
 .sys-tab text { font: 700 9px var(--font, sans-serif); text-anchor: middle; fill: var(--text-3); pointer-events: none; }
 .sys-tab.unused { opacity: 0.6; }
@@ -1055,6 +1055,14 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-tab.sel rect, .sys-tab.land rect { stroke: var(--text); stroke-width: 3; }
 .sys-tab.land rect { filter: drop-shadow(0 0 4px var(--cv-glow)); }
 .sys-tab:hover rect { filter: drop-shadow(0 0 3px var(--cv-glow)); }
+.sys-tab.can rect { fill: var(--cv-sel-soft); stroke: var(--cv-sel); animation: lmfx-breathe 1.6s ease-in-out infinite alternate; }
+.sys-tab.can:hover rect, .sys-tab.pending rect { fill: var(--cv-sel); stroke: var(--cv-sel); animation: none; }
+.sys-tab.can:hover text, .sys-tab.pending text { fill: #fff; }
+.sys-canvas.wiring .sys-block, .sys-canvas.wiring .sys-tab { cursor: pointer; }
+.sys-canvas.dragging .sys-block { cursor: grabbing; }
+.sys-canvas .sys-end, .sys-canvas #sys-ghost { pointer-events: none; }
+.sys-canvas .cv-end.sys-end:has(+ .cv-hitend:hover) { stroke: var(--cv-sel); stroke-width: 2.4; }
+@media (prefers-reduced-motion: reduce) { .sys-tab.can rect { animation: none; } }
 .sys-canvas .sys-w .sys-hit { stroke: transparent; stroke-width: 16; fill: none; cursor: pointer; }
 .sys-canvas .sys-w.sel .sys-hit { cursor: move; }
 .sys-canvas .sys-w .w-edge { stroke-width: 8.5; }

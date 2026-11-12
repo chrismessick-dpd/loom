@@ -182,7 +182,7 @@
     return false;
   }
 
-  function open(id) { S.cur = id; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
+  function open(id) { S.cur = id; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
   function create(project) { const s = blank(project); S.store[s.id] = s; open(s.id); return s; }
 
   // ── Drawing ──
@@ -241,8 +241,9 @@
         `<text class="sys-name" x="${X + 10}" y="${Y + 40}">${esc(b.name)}</text>`;
       b.conns.forEach(c => {
         const at = pluggedAt(s, b.id, c.id).length, g = tabGeom(b, c);
-        const cls = ['sys-tab', c.used ? 'used' : 'unused', at ? 'plugged' : '', c.used && !at ? 'open' : '', c.side === 'bottom' ? 'bottom' : '', isSel('conn', b.id, c.id) ? 'sel' : ''].filter(Boolean).join(' ');
-        html += `<g class="${cls}" data-conn="${c.id}" data-block="${b.id}"><title>${esc(`${b.ref} ${c.ref}${c.fn ? ' · ' + c.fn : ''} · ${c.pins.length} pins${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · placed by hand' : ''} · drag to another connector to make a cable`)}</title>` +
+        const pend = S.pending && S.pending.block === b.id && S.pending.conn === c.id;
+        const cls = ['sys-tab', pend ? 'pending' : S.pending ? 'can' : '', c.used ? 'used' : 'unused', at ? 'plugged' : '', c.used && !at ? 'open' : '', c.side === 'bottom' ? 'bottom' : '', isSel('conn', b.id, c.id) ? 'sel' : ''].filter(Boolean).join(' ');
+        html += `<g class="${cls}" data-conn="${c.id}" data-block="${b.id}"><title>${esc(`${b.ref} ${c.ref}${c.fn ? ' · ' + c.fn : ''} · ${c.pins.length} pins${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · placed by hand' : ''} · click, then click another connector, to run a cable`)}</title>` +
           `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3"/><text x="${g.cx}" y="${g.cy + 3.5}">${esc(c.ref)}</text></g>`;
       });
       html += '</g>';
@@ -255,7 +256,7 @@
       const wire = (d, extra) => `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
         (st.key === 'placeholder' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : '');
       html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}" data-cable="${cab.id}">`;
-      let mid = null;
+      let mid = null, ring = null;
       routes.forEach(r => { html += wire(pathOf(r.pts)); });
       if (routes.length) mid = midOf(routes[0]);
       // Ends not plugged in yet: a dashed stub ending in a ring, off the one plugged end or the middle.
@@ -263,9 +264,19 @@
       if (at.length === 1) {
         const g = at[0].g, x2 = g.tx + g.out * STUB_U * 2.2;
         html += `<g class="sys-open">${wire(`M${g.tx} ${g.cy}L${x2} ${g.cy}`, 'open')}<circle class="sys-ring" cx="${x2}" cy="${g.cy}" r="5"/></g>`;
-        mid = { x: x2, y: g.cy };
-      } else if (open && mid) html += `<g class="sys-open">${wire(`M${mid.x} ${mid.y}l0 ${STUB_U * 1.6}`, 'open')}<circle class="sys-ring" cx="${mid.x}" cy="${mid.y + STUB_U * 1.6}" r="5"/></g>`;
+        mid = { x: x2, y: g.cy }; ring = { x: x2, y: g.cy, ax: g.tx, ay: g.cy };
+      } else if (open && mid) {
+        html += `<g class="sys-open">${wire(`M${mid.x} ${mid.y}l0 ${STUB_U * 1.6}`, 'open')}<circle class="sys-ring" cx="${mid.x}" cy="${mid.y + STUB_U * 1.6}" r="5"/></g>`;
+        ring = { x: mid.x, y: mid.y + STUB_U * 1.6, ax: mid.x, ay: mid.y };
+      }
       html += '</g>';
+      const anchorOf = x => { const o = at.find(y => y !== x); return o ? o.g : x.g; };
+      at.forEach(x => {
+        const a = anchorOf(x);
+        handles += `<circle class="cv-end sys-end" cx="${x.g.tx}" cy="${x.g.cy}" r="4.5"/><circle class="cv-hitend" data-cend="${cab.id}|${x.n.id}" data-from='${esc(JSON.stringify({ block: x.b.id, conn: x.c.id }))}' data-x="${a.tx}" data-y="${a.cy}" cx="${x.g.tx}" cy="${x.g.cy}" r="10"><title>Drag this end to another connector, or off to leave it open</title></circle>`;
+      });
+      const loose = ends.find(x => !x.g);
+      if (loose && ring) handles += `<circle class="cv-hitend" data-cend="${cab.id}|${loose.n.id}" data-x="${ring.ax}" data-y="${ring.ay}" cx="${ring.x}" cy="${ring.y}" r="10"><title>${esc(loose.n.ref)} isn't plugged in: drag it onto a connector</title></circle>`;
       if (mid) labels += `<text class="sys-clabel${on ? ' sel' : ''}" x="${mid.x + 8}" y="${mid.y - 9}">${esc(`${st.glyph} ${h ? h.title : 'Missing harness'}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`)}</text>`;
       // The selected cable's middle runs drag, as the editor's do.
       if (on) routes.forEach(r => RT().runs(r.A, r.B, r.v).forEach(R => {
@@ -337,11 +348,11 @@
       `<label class="tick sys-used"><input type="checkbox" data-sused="${c.id}"${c.used ? ' checked' : ''}> Used</label>` +
       fld('Function', inp('c.fn', c.fn, ' placeholder="What it connects to: Fan, Display, 24 VAC in…"')) +
       (b.source ? '' : `<div class="field-row">${fld('Ref', inp('c.ref', c.ref))}${fld('Pins', inp('c.pins', c.pins.length, ' type="number" min="1" max="200"'))}</div>`) +
+      (!b.source || c.placed === 'hand' ? `<div class="field-row">${fld('X on the block, mm', inp('c.x', c.x, ' type="number" step="0.5"'))}${fld('Y, mm', inp('c.y', c.y, ' type="number" step="0.5"'))}</div>` : '') +
       (c.mpn || c.desc ? `<p class="hint">${esc([c.mfr, c.mpn, c.desc].filter(Boolean).join(' · '))}${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · not in the pick-and-place, placed by hand' : ''}</p>` : '') +
       `<h4 class="sys-h">Plugged in</h4>` +
       (at.length ? `<div class="sys-list">${at.map(x => { const h = get(x.cable.harness), n = h && M.node(h, x.node), st = status(h); return `<button class="sys-row" data-ssel="cable:${x.cable.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(h ? h.title : 'Missing harness')}<small>${esc(n ? 'its end ' + n.ref : '')}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Nothing yet.</p>') +
       (pick ? pickHtml(s, b, c) : `<div class="sys-actions">${btn('new-harness', 'New harness here', '', 'btn-primary')}${btn('pick-harness', 'Plug in a harness…')}</div>`) +
-      `<p class="hint">Pick another connector with Shift-click, then New harness here, for a cable between the two (its wires are offered from shared nets).</p>` +
       (S.pair && S.pair.block !== b.id || S.pair && S.pair.conn !== c.id ? '' : '') +
       `<details class="sys-pins"><summary>${c.pins.length} pins</summary><table class="sys-pintab"><tr><th>Pin</th><th>Net</th></tr>${pins}</table></details>` +
       (b.source ? '' : `<div class="sys-actions">${btn('delete-conn', 'Delete connector', '', 'btn-danger')}</div>`);
@@ -379,7 +390,7 @@
     redraw(svg);
     page.querySelector('[data-sact="undo"]').disabled = !S.past.length;
     page.querySelector('[data-sact="redo"]').disabled = !S.future.length;
-    page.querySelector('#sys-hint').textContent = S.pair ? `Pair: ${endName(s, S.pair)} and the selected connector` : s.blocks.length ? 'Drag from a connector to another to make a cable · drag a selected cable’s runs · double-click to add a bend' : 'Add a board from the panel';
+    page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to run a cable · drag a cable’s ends · drag a selected cable’s runs · double-click to add a bend' : 'Add a board from the panel';
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     panel.innerHTML = panelHtml(s);
     panel.scrollTop = keep;
@@ -387,9 +398,16 @@
   function leave(page) { page.classList.remove('sys-on'); }
 
   // ── Interaction ──
-  // As in the harness editor: drag from a connector to another to run a cable (an elastic ghost that
-  // snaps to the connector under the pointer), drag a selected cable's straight runs, double-click a
-  // cable to add a bend. Blocks drag; Alt-drag moves a connector placed by hand; empty space pans.
+  // Exactly the harness editor's gestures, with connectors as its pins, boards and devices as its
+  // connector cards, and cables as its wires (app.js onDown, click, finishWire, drawGhost):
+  // - a click on a connector starts a cable (S.pending); the ghost follows the pointer and snaps to
+  //   the connector under it; a click on another connector finishes it, on the same one or anywhere
+  //   else cancels it (Esc too);
+  // - a drag on a block, or on one of its connectors, moves the block;
+  // - a cable end's dot drags onto another connector (re-plug) or empty canvas (left open), and an
+  //   open end's ring drags onto a connector to plug it;
+  // - a click selects a cable; a selected cable's straight runs drag, and a double-click adds a bend;
+  // - the right or middle button pans (the left button too, on empty canvas), the wheel zooms.
   function toWorld(svg, e) {
     const r = svg.getBoundingClientRect(), k = Math.max(S.cam.w / r.width, S.cam.h / r.height);
     const ox = S.cam.x + (S.cam.w - r.width * k) / 2, oy = S.cam.y + (S.cam.h - r.height * k) / 2;
@@ -398,9 +416,11 @@
   const snap = v => Math.round(v);
   const snapU = v => Math.round(v / GRID) * GRID;
   let drag = null, lastLo = null;
-  function redraw(svg) { lastLo = layout(cur()); svg.innerHTML = svgHtml(cur(), lastLo); }
+  function redraw(svg) { lastLo = layout(cur()); svg.innerHTML = svgHtml(cur(), lastLo); svg.classList.toggle('wiring', !!S.pending); }
   const tabAt = e => { const el = document.elementFromPoint(e.clientX, e.clientY); return el && el.closest && el.closest('#sys-canvas [data-conn]'); };
-  // The run of a cable nearest a point: { cab, route, run }.
+  const tabRef = el => ({ block: el.dataset.block, conn: el.dataset.conn });
+  const sameTab = (a, b) => !!a && !!b && a.block === b.block && a.conn === b.conn;
+  // The run of a cable nearest a point: { r (its route), n (route.nearestRun) }.
   function runNear(cabId, p) {
     const L = lastLo && lastLo.get(cabId);
     if (!L) return null;
@@ -409,107 +429,139 @@
     return best;
   }
   function keepRoute(cab, key, v) { cab.routes = Object.assign({}, cab.routes, { [key]: v }); }
+  // The cable being drawn: from the connector's terminal, leaving level as a cable would, sagging a
+  // little; over another connector it snaps onto that one's terminal.
   function ghost(svg, from, p, snapped) {
-    const g = from.g, s = p.x >= g.tx ? 1 : -1, dx = Math.max(40, Math.abs(p.x - g.tx) * 0.5), out = g.out;
+    const s0 = cur(), b = block(s0, from.block), c = b && conn(b, from.conn);
+    if (!c) return;
+    const g = tabGeom(b, c), s = p.x >= g.tx ? 1 : -1, dx = Math.max(40, Math.abs(p.x - g.tx) * 0.5);
     const sag = Math.min(60, Math.abs(p.x - g.tx) * 0.08 + Math.abs(p.y - g.cy) * 0.05);
-    const d = `M${g.tx} ${g.cy}C${g.tx + out * dx} ${g.cy + sag} ${p.x - s * dx} ${p.y + sag} ${p.x} ${p.y}`;
-    svg.querySelector('#sys-ghost').innerHTML = `<g class="ghost-w${snapped ? ' snapped' : ''}" style="color:var(--accent)"><path class="ghost-glow" d="${d}"/><path class="ghost-edge" d="${d}"/><path class="ghost-base" d="${d}"/><path class="ghost-flow" d="${d}"/>` +
+    const d = `M${g.tx} ${g.cy}C${g.tx + g.out * dx} ${g.cy + sag} ${p.x - s * dx} ${p.y + sag} ${p.x} ${p.y}`;
+    const gh = svg.querySelector('#sys-ghost');
+    if (gh) gh.innerHTML = `<g class="ghost-w${snapped ? ' snapped' : ''}" style="color:var(--accent)"><path class="ghost-glow" d="${d}"/><path class="ghost-edge" d="${d}"/><path class="ghost-base" d="${d}"/><path class="ghost-flow" d="${d}"/>` +
       `<circle class="ghost-end" cx="${p.x}" cy="${p.y}" r="${snapped ? 6 : 4.5}"/></g>`;
+  }
+  // The ghost for the pointer: snapped to a connector under it (not the one it starts from).
+  function ghostAt(svg, from, e) {
+    const t = tabAt(e);
+    svg.querySelectorAll('.sys-tab.land').forEach(x => x.classList.remove('land'));
+    if (t && !sameTab(tabRef(t), from)) {
+      t.classList.add('land');
+      const b = block(cur(), t.dataset.block), g = tabGeom(b, conn(b, t.dataset.conn));
+      ghost(svg, from, { x: g.tx, y: g.cy }, true);
+      return tabRef(t);
+    }
+    ghost(svg, from, toWorld(svg, e), false);
+    return null;
+  }
+  function cancelWire() { S.pending = null; A.refresh(); }
+  // A click on a connector, as on a pin: start, finish, or cancel a cable.
+  function clickTab(ref) {
+    if (!S.pending) { S.pending = ref; S.sel = Object.assign({ kind: 'conn' }, ref); S.picking = null; A.refresh(); return; }
+    if (sameTab(S.pending, ref)) { cancelWire(); return; }
+    S.pair = S.pending; S.pending = null;
+    S.sel = Object.assign({ kind: 'conn' }, ref);
+    act('new-harness');
   }
   function wire(page) {
     const svg = page.querySelector('#sys-canvas');
+    svg.addEventListener('contextmenu', e => e.preventDefault());
     svg.addEventListener('pointerdown', e => {
-      if (e.button !== 0) return;
+      if (e.button > 2) return;
       const p = toWorld(svg, e), t = e.target, s = cur();
-      const run = t.closest('[data-run]'), tab = t.closest('[data-conn]'), cb = t.closest('[data-cable]'), bl = t.closest('[data-block]');
-      drag = null;
-      if (run) {
-        const [cid, key, k] = run.dataset.run.split('|'), r = lastLo.get(cid).routes.find(x => x.key === key);
-        drag = { kind: 'run', cab: cable(s, cid), r, k: +k, axis: r.v.length && RT().runs(r.A, r.B, r.v).find(R => R.k === +k).axis, v0: r.v.slice(), moved: false };
-      } else if (tab) {
-        const b = block(s, tab.dataset.block), c = conn(b, tab.dataset.conn);
-        const sel = { kind: 'conn', block: b.id, conn: c.id };
-        if (e.shiftKey && S.sel && S.sel.kind === 'conn') S.pair = { block: S.sel.block, conn: S.sel.conn }; else S.pair = null;
-        S.sel = sel; S.picking = null;
-        drag = e.altKey && (!b.source || c.placed === 'hand') ? { kind: 'conn', p, x: c.x, y: c.y, moved: false, b, c }
-          : { kind: 'wire', p, from: { block: b.id, conn: c.id, g: tabGeom(b, c) }, moved: false };
-      } else if (cb) {
-        const was = S.sel && S.sel.kind === 'cable' && S.sel.id === cb.dataset.cable;
-        S.sel = { kind: 'cable', id: cb.dataset.cable }; S.pair = null;
-        // A drag on a selected cable's line moves the run under it, as in the editor.
-        const near = was && runNear(cb.dataset.cable, p);
-        if (near && near.n.k >= 0) drag = { kind: 'run', cab: cable(s, cb.dataset.cable), r: near.r, k: near.n.k, axis: near.n.axis, v0: near.r.v.slice(), moved: false };
-      } else if (bl) {
-        const b = block(s, bl.dataset.block);
-        S.sel = { kind: 'block', block: b.id }; S.pair = null;
-        drag = { kind: 'block', p, x: b.x, y: b.y, moved: false, b };
-      } else { S.sel = null; S.pair = null; drag = { kind: 'pan', p, cam: Object.assign({}, S.cam), cx: e.clientX, cy: e.clientY, k: p.k }; }
-      S.picking = S.picking && S.sel && S.sel.kind === 'conn' && S.picking.conn === S.sel.conn ? S.picking : null;
+      const base = { x: e.clientX, y: e.clientY, p, t, moved: false, button: e.button };
       try { svg.setPointerCapture(e.pointerId); } catch (err) { /* not an active pointer */ }
-      if (!drag || drag.kind !== 'run') A.refresh();
+      if (e.button !== 0) { drag = Object.assign(base, { kind: 'pan', cam: Object.assign({}, S.cam), k: p.k }); return; }
+      const endEl = !S.pending && t.closest('[data-cend]'), run = !S.pending && t.closest('[data-run]'), bl = t.closest('[data-block]'), cb = t.closest('[data-cable]');
+      if (endEl) {
+        const [cid, node] = endEl.dataset.cend.split('|');
+        drag = Object.assign(base, { kind: 'end', cab: cid, node, from: endEl.dataset.from ? JSON.parse(endEl.dataset.from) : null, anchor: { x: +endEl.dataset.x, y: +endEl.dataset.y } });
+      } else if (run) {
+        const [cid, key, k] = run.dataset.run.split('|'), r = lastLo.get(cid).routes.find(x => x.key === key);
+        const R = RT().runs(r.A, r.B, r.v).find(x => x.k === +k);
+        drag = Object.assign(base, { kind: 'run', cab: cable(s, cid), r, k: +k, axis: R && R.axis, v0: r.v.slice() });
+      } else if (bl && !S.pending) {
+        const b = block(s, bl.dataset.block);
+        drag = Object.assign(base, { kind: 'block', bx: b.x, by: b.y, b });
+      } else if (cb && !S.pending && S.sel && S.sel.kind === 'cable' && S.sel.id === cb.dataset.cable) {
+        // A drag on a selected cable's line moves the run under it, as in the editor.
+        const near = runNear(cb.dataset.cable, p);
+        drag = near && near.n.k >= 0 ? Object.assign(base, { kind: 'run', cab: cable(s, cb.dataset.cable), r: near.r, k: near.n.k, axis: near.n.axis, v0: near.r.v.slice() }) : Object.assign(base, { kind: 'click' });
+      } else drag = Object.assign(base, { kind: bl || cb ? 'click' : 'pan', cam: Object.assign({}, S.cam), k: p.k });
     });
     svg.addEventListener('pointermove', e => {
-      if (!drag) return;
-      if (drag.kind === 'pan') { S.cam.x = drag.cam.x - (e.clientX - drag.cx) * drag.k; S.cam.y = drag.cam.y - (e.clientY - drag.cy) * drag.k; svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`); return; }
+      const d = drag;
+      if (!d) { if (S.pending) ghostAt(svg, S.pending, e); return; }
+      if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
+      d.moved = true;
       const p = toWorld(svg, e);
-      if (drag.kind === 'wire') {
-        if (!drag.moved && Math.hypot(p.x - drag.p.x, p.y - drag.p.y) < 4) return;
-        drag.moved = true;
-        const t = tabAt(e), same = t && t.dataset.conn === drag.from.conn && t.dataset.block === drag.from.block;
+      if (d.kind === 'pan') { S.cam.x = d.cam.x - (e.clientX - d.x) * d.k; S.cam.y = d.cam.y - (e.clientY - d.y) * d.k; svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`); return; }
+      if (d.kind === 'click') return;
+      if (d.kind === 'end') {
+        svg.classList.add('dragging-end');
+        if (!d.ghostFrom) d.ghostFrom = true;
+        // The end's line follows the pointer from where it's held (its other end), snapping to connectors.
+        const t = tabAt(e), gh = svg.querySelector('#sys-ghost');
         svg.querySelectorAll('.sys-tab.land').forEach(x => x.classList.remove('land'));
-        if (t && !same) {
-          t.classList.add('land');
-          const b = block(cur(), t.dataset.block), g = tabGeom(b, conn(b, t.dataset.conn));
-          ghost(svg, drag.from, { x: g.tx, y: g.cy }, true);
-        } else ghost(svg, drag.from, p, false);
+        let q = p, snapped = false;
+        if (t) { const b = block(cur(), t.dataset.block), g = tabGeom(b, conn(b, t.dataset.conn)); q = { x: g.tx, y: g.cy }; snapped = true; t.classList.add('land'); }
+        const a = d.anchor, s2 = q.x >= a.x ? 1 : -1, dx = Math.max(40, Math.abs(q.x - a.x) * 0.5);
+        const path = `M${a.x} ${a.y}C${a.x + s2 * dx} ${a.y} ${q.x - s2 * dx} ${q.y} ${q.x} ${q.y}`;
+        if (gh) gh.innerHTML = `<g class="ghost-w${snapped ? ' snapped' : ''}" style="color:var(--accent)"><path class="ghost-glow" d="${path}"/><path class="ghost-edge" d="${path}"/><path class="ghost-base" d="${path}"/><path class="ghost-flow" d="${path}"/><circle class="ghost-end" cx="${q.x}" cy="${q.y}" r="${snapped ? 6 : 4.5}"/></g>`;
         return;
       }
-      if (drag.kind === 'run') {
-        if (!drag.moved) { S.past.push(JSON.stringify(cur())); S.future = []; drag.moved = true; }
-        const v = drag.v0.slice();
-        v[drag.k] = snapU(drag.axis === 'v' ? p.x : p.y);
-        keepRoute(drag.cab, drag.r.key, v);
+      if (d.kind === 'run') {
+        if (!d.snap) { S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; }
+        const v = d.v0.slice();
+        v[d.k] = snapU(d.axis === 'v' ? p.x : p.y);
+        keepRoute(d.cab, d.r.key, v);
         redraw(svg);
         return;
       }
-      const dx = (p.x - drag.p.x) / K, dy = (p.y - drag.p.y) / K;
-      if (!drag.moved && Math.hypot(dx, dy) < 0.8) return;
-      if (!drag.moved) { S.past.push(JSON.stringify(cur())); S.future = []; drag.moved = true; }
-      if (drag.kind === 'block') { drag.b.x = snap(drag.x + dx); drag.b.y = snap(drag.y + dy); }
-      else { drag.c.x = Math.max(-TAB.w / 2, Math.min(drag.b.w - TAB.w / 2, snap(drag.x + dx))); drag.c.y = Math.max(-TAB.h / 2, Math.min(drag.b.h - TAB.h / 2, snap(drag.y + dy))); }
-      redraw(svg);
+      if (d.kind === 'block') {
+        if (!d.snap) { S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; svg.classList.add('dragging'); }
+        d.b.x = snap(d.bx + (p.x - d.p.x) / K); d.b.y = snap(d.by + (p.y - d.p.y) / K);
+        redraw(svg);
+      }
     });
     const up = e => {
       const d = drag;
       drag = null;
+      svg.classList.remove('dragging', 'dragging-end');
       if (!d) return;
-      if (d.kind === 'wire') {
+      if (d.kind === 'end' && d.moved) {
+        const t = e && e.type === 'pointerup' ? tabAt(e) : null, to = t ? tabRef(t) : null;
         const gh = svg.querySelector('#sys-ghost');
         if (gh) gh.innerHTML = '';
-        if (!d.moved) return;
-        const t = e && e.type === 'pointerup' ? tabAt(e) : null;
-        if (t && !(t.dataset.conn === d.from.conn && t.dataset.block === d.from.block)) {
-          S.pair = { block: d.from.block, conn: d.from.conn };
-          S.sel = { kind: 'conn', block: t.dataset.block, conn: t.dataset.conn };
-          act('new-harness');
-        } else A.refresh();
+        if (sameTab(to, d.from)) { A.refresh(); return; }
+        change(s => { const cab = cable(s, d.cab); cab.ends[d.node] = to; if (to) conn(block(s, to.block), to.conn).used = true; if (cab.routes) delete cab.routes[d.node]; S.sel = { kind: 'cable', id: cab.id }; });
         return;
       }
-      if (d.kind === 'run' && d.moved) { const v = d.cab.routes[d.r.key]; keepRoute(d.cab, d.r.key, RT().tidy(d.r.A, d.r.B, v)); }
-      if (d.moved) { cur().updated = now(); persist(); A.refresh(); }
-      else if (d.kind === 'run') A.refresh();
+      if (d.kind === 'run' && d.moved) { const v = d.cab.routes[d.r.key]; keepRoute(d.cab, d.r.key, RT().tidy(d.r.A, d.r.B, v)); cur().updated = now(); persist(); A.refresh(); return; }
+      if (d.kind === 'block' && d.moved) { cur().updated = now(); persist(); A.refresh(); return; }
+      if (d.moved || d.button !== 0) return;
+      // A click: as the editor's click().
+      const t = d.t, tab = t.closest('[data-conn]');
+      if (tab) { clickTab(tabRef(tab)); return; }
+      if (S.pending) { cancelWire(); return; }
+      const cb = t.closest('[data-cable]'), bl = t.closest('[data-block]');
+      S.pair = null; S.picking = null;
+      if (cb) S.sel = { kind: 'cable', id: cb.dataset.cable };
+      else if (bl) S.sel = { kind: 'block', block: bl.dataset.block };
+      else S.sel = null;
+      A.refresh();
     };
     svg.addEventListener('pointerup', up);
     svg.addEventListener('pointercancel', up);
     svg.addEventListener('dblclick', e => {
       const cb = e.target.closest('[data-cable]');
-      if (!cb) return;
+      if (!cb || S.pending) return;
       const p = toWorld(svg, e), near = runNear(cb.dataset.cable, p);
       if (!near) return;
       const r = near.n.axis === 'h' ? { x: snapU(p.x), y: near.n.at.y } : { x: near.n.at.x, y: snapU(p.y) };
       const got = RT().addBend(near.r.A, near.r.B, near.r.v, near.n.j, r);
       if (!got) return;
-      change(s => { keepRoute(cable(s, cb.dataset.cable), near.r.key, got.v); });
+      change(s => { keepRoute(cable(s, cb.dataset.cable), near.r.key, got.v); S.sel = { kind: 'cable', id: cb.dataset.cable }; });
     });
     svg.addEventListener('wheel', e => {
       e.preventDefault();
@@ -547,6 +599,7 @@
       else if (f === 'b.h' && b && +v >= 5) b.h = +v;
       else if (f === 'c.fn' && c) c.fn = v.trim();
       else if (f === 'c.ref' && c) c.ref = v.trim() || c.ref;
+      else if ((f === 'c.x' || f === 'c.y') && c && v !== '' && isFinite(+v)) { const k = f.slice(2), lim = k === 'x' ? b.w - TAB.w / 2 : b.h - TAB.h / 2; c[k] = Math.max(-TAB.w / 2, Math.min(lim, +v)); }
       else if (f === 'c.pins' && c && +v >= 1) { const n = Math.min(200, Math.round(+v)); c.pins = Array.from({ length: n }, (_, i) => c.pins[i] || { pin: String(i + 1), net: '', label: '' }); }
       else if (f === 'cab.len') { const cab = cable(s, S.sel.id); cab.lengthMm = +v > 0 ? Math.round(+v) : null; }
     });
@@ -628,7 +681,7 @@
     if (typing) return;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? swap(S.future, S.past) : swap(S.past, S.future); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); swap(S.future, S.past); return; }
-    if (e.key === 'Escape') { S.sel = null; S.pair = null; S.picking = null; S.adding = null; A.refresh(); return; }
+    if (e.key === 'Escape') { if (S.pending) { S.pending = null; A.refresh(); return; } S.sel = null; S.pair = null; S.picking = null; S.adding = null; A.refresh(); return; }
     if (e.key.toLowerCase() === 'f' && !mod) { S.cam = bounds(cur()); A.refresh(); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) {
       e.preventDefault();

@@ -41,14 +41,17 @@ links to it so far. Before every commit:
   path: `systems/projects/<id>.json`), never `projects/`, which PL reads as harnesses; FTE only, not
   shared yet. `?system=<id>` opens one; the demo's home page has Demo system (both thermostat boards and
   the wall wiring). Tests 41.
-  Then (2026-11-11, Chris: wire like the harness editor): drag from a connector to another makes the cable (an
-  elastic ghost that snaps to the connector under the pointer, the editor's `.ghost-w`); cables route at right
-  angles round every block with `route.js` (`layout`: `tabGeom` terminals leave the tab's side facing out of the
-  block's nearer side), a selected cable's middle runs drag (`.cv-run`, or the line itself), a double-click adds a
-  bend, and the shape is kept per cable and end (`cab.routes[<end node id>]`) until *Reset route*. The canvas is
-  drawn in the editor's units (`K` = 4 per mm) with class `lm-canvas`, so wires, gloss, and the pulse are the
-  editor's. Alt-drag moves a connector placed by hand. `?demo` builds the demo system on load (`DEMO_V`), so it
-  is in the sidebar from the start. Not done: the board picture under the outline (Fabcheck's preview has no
+  Then (2026-11-11, Chris: exactly the harness editor, with connectors as pins, boards as connector cards, and
+  cables as wires): a click on a connector starts a cable (`S.pending`, the editor's ghost following the pointer
+  and snapping to the connector under it, `.can` targets); a click on another connector finishes it, on the same
+  one or anywhere else cancels it, Esc too. A drag on a block or any of its connectors moves the block. Each
+  plugged end has a dot (`data-cend`) that drags onto another connector (re-plug) or empty canvas (left open), and
+  an open end's ring drags onto a connector. A selected cable's runs drag, a double-click adds a bend, and the
+  shape is kept per cable and end (`cab.routes`) until *Reset route*. Cables route at right angles round every
+  block with `route.js` (`layout`; `tabGeom`: a terminal leaves the tab's side facing its block's nearer side).
+  The canvas is drawn in the editor's units (`K` = 4 per mm) with class `lm-canvas`, so wires, gloss, the pulse,
+  and the ghost are the editor's. Connectors on drawn blocks are placed by X and Y in their panel. Right or middle
+  drag pans (left on empty canvas too; no marquee yet). `?demo` builds the demo system on load (`DEMO_V`). Not done: the board picture under the outline (Fabcheck's preview has no
   origin), a system sheet and harness BOM page, sharing, PL reading `summary` (phase 4), and a live sync.
 
 - **Project groups fold (2026-11-11, Chris: as in Signoff EE).** The sidebar's client-project groups
