@@ -433,7 +433,9 @@
         (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : '');
       // While a cable is selected, however it was picked, the others fade (Chris, 2026-11-12).
       const dim = !on && !!sel && sel.kind === 'cable';
-      html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}${dim ? ' dim' : ''}" data-cable="${cab.id}">`;
+      // The one selected cable, while the others fade, is drawn half again as wide with a glow (Chris).
+      const solo = on && !!sel && sel.kind === 'cable';
+      html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}${solo ? ' solo' : ''}${dim ? ' dim' : ''}" data-cable="${cab.id}">`;
       let mid = null, ring = null;
       routes.forEach(r => { html += wire(r.d); });
       if (routes.length) mid = midOf(routes[0]);

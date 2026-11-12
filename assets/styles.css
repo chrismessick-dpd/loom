@@ -1099,7 +1099,14 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-canvas .sys-open .w-base { stroke-dasharray: 5 4; stroke-linecap: butt; }
 /* A generic connection is a thin dashed line (nothing to build or buy yet); a purchased cable is solid,
    gray, and glossy. Never by hue alone (Chris is colorblind): dashes and weight tell them apart. */
-/* While a cable is selected, the others fade (Chris, 2026-11-12). */
+/* While a cable is selected, the others fade, and it is drawn half again as wide with a soft glow
+   (Chris, 2026-11-12). */
+.sys-canvas .sys-w.solo .w-edge { stroke-width: 13; filter: drop-shadow(0 0 5px var(--cv-glow)); }
+.sys-canvas .sys-w.solo .w-base { stroke-width: 9; }
+.sys-canvas .sys-w.solo .w-gloss { stroke-width: 2.1; }
+.sys-canvas .sys-w.solo .w-pulse { stroke-width: 6; }
+.sys-canvas .sys-w.solo.st-link .w-base { stroke-width: 6; }
+.sys-canvas .sys-w.solo.st-link .w-edge { stroke-width: 9.75; }
 .sys-canvas .sys-w.dim, .sys-canvas .sys-clabel.dim { opacity: 0.18; transition: opacity 0.2s; }
 .sys-back { align-self: flex-start; margin: -4px 0 2px -6px; padding: 3px 8px; border: 0; border-radius: 6px; background: none; color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .sys-back:hover { background: var(--accent-soft, rgba(0, 114, 127, 0.1)); }
