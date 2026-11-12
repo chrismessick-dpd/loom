@@ -13,8 +13,8 @@ a system). The canvas bar keeps Fit.
 
 ## The panel (2026-11-12, Chris)
 
-A cable picked from a list in the panel stays lit and the others fade. **‹ Back** at the top left of the
-panel goes to the previous panel, one step at a time.
+While a cable is selected, it stays lit and the others fade. **‹ Back** at the top left of any panel goes
+straight to the system's own panel.
 
 ## Connections (2026-11-11, Chris)
 

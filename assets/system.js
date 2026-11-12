@@ -227,27 +227,10 @@
     return false;
   }
 
-  function open(id) { S.cur = id; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; S.hist = []; S.seen = selKey(null); S.focus = null; S.goingBack = false; persist(); }
-  // The panel's history, for Back (Chris, 2026-11-12: back to the previous panel): each selection the
-  // panel showed, by value, in order. A cable picked from a list in the panel (S.focus) dims the others
-  // until anything else is selected.
-  const selKey = t => JSON.stringify(t || null);
-  function notePanel() {
-    const k = selKey(S.sel);
-    if (k === S.seen) return;
-    if (!S.goingBack) { S.hist = (S.hist || []).concat([JSON.parse(S.seen || 'null')]).slice(-50); }
-    S.goingBack = false;
-    S.seen = k;
-    if (S.focus !== k) S.focus = null;
-  }
-  function back() {
-    while (S.hist && S.hist.length) {
-      const t = S.hist.pop();
-      S.sel = t; S.pair = null; S.picking = null; S.adding = null;
-      if (!t || selValid()) { S.goingBack = true; A.refresh(); return; }
-    }
-    S.sel = null; S.goingBack = true; A.refresh();
-  }
+  function open(id) { S.cur = id; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
+  // Back (Chris, 2026-11-12): from any panel straight to the system's own.
+  function back() { S.sel = null; S.pair = null; S.picking = null; S.adding = null; S.pending = null; A.refresh(); }
+
   function create(project) { const s = blank(project); S.store[s.id] = s; open(s.id); return s; }
 
   // ── Drawing ──
@@ -401,7 +384,8 @@
       const color = st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)';
       const wire = (d, extra) => `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
         (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : '');
-      const dim = !on && S.focus && S.focus === selKey(S.sel);
+      // While a cable is selected, however it was picked, the others fade (Chris, 2026-11-12).
+      const dim = !on && !!sel && sel.kind === 'cable';
       html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}${dim ? ' dim' : ''}" data-cable="${cab.id}">`;
       let mid = null, ring = null;
       routes.forEach(r => { html += wire(r.d); });
@@ -588,8 +572,7 @@
     redraw(svg);
     page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to connect them · drag a cable’s ends · drag its runs (Shift breaks one, Ctrl off the grid) · double-click to add a bend · right-click for its route' : 'Add a board from the panel';
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
-    notePanel();
-    const backBtn = S.hist && S.hist.length ? `<button class="sys-back" data-sact="back" title="Back to the previous panel">${'\u2039'} Back</button>` : '';
+    const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'\u2039'} Back</button>` : '';
     panel.innerHTML = backBtn ? panelHtml(s).replace('<div class="rail-head">', '<div class="rail-head">' + backBtn) : panelHtml(s);
     panel.scrollTop = keep;
   }
@@ -828,7 +811,7 @@
       const a = t.closest('[data-sact]');
       if (a && !a.disabled) { act(a.dataset.sact, a); return; }
       const sl = t.closest('[data-ssel]');
-      if (sl) { const [k, x, y] = sl.dataset.ssel.split(':'); S.sel = k === 'cable' ? { kind: 'cable', id: x } : { kind: 'conn', block: x, conn: y }; S.focus = k === 'cable' ? selKey(S.sel) : null; S.picking = null; A.refresh(); return; }
+      if (sl) { const [k, x, y] = sl.dataset.ssel.split(':'); S.sel = k === 'cable' ? { kind: 'cable', id: x } : { kind: 'conn', block: x, conn: y }; S.picking = null; A.refresh(); return; }
       const ck = t.closest('[data-scheck]');
       if (ck) { const c = checks(cur(), A.harness)[+ck.dataset.scheck]; if (c && c.sel) { S.sel = c.sel; A.refresh(); } }
     });
