@@ -78,7 +78,7 @@
         spot: () => [...props().map(s => s + ' .face-tile'), item('P1')] },
       // No Try it (Chris, 2026-11-08): the custom connector steps add the connector.
       { title: 'Adding parts',
-        text: '{Add › Connector} puts a new end on the canvas (or press {k:C}). {Splice} adds a splice, and {Note} pins a note to a part (more on notes later). The {Parts} tab also lists the splices, notes, and wire sets; click one to select it.',
+        text: '{Add › Connector} puts a new end on the canvas (or press {k:C}). {Splice} adds a splice, and {Note} pins a note to a part (more on notes later). With nothing selected, {Properties} lists the splices, notes, and wire sets; click one to select it.',
         phone: 'The parts pane needs a wider screen; on a phone, open Loom on a computer to add parts.',
         setup() { build(); clear(); },
         spot: () => ['#parts-pane .palette'] },

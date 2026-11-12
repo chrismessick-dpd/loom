@@ -22,6 +22,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Harness pane: Parts adds, Properties lists (2026-11-12, Chris).** The Parts tab holds only Add
+  (Connector, From a board, Splice, Note, and Table). Properties with nothing selected lists the splices,
+  notes, and wire sets (`overviewHtml`), each row selecting its item; with none, the old hint. Any change of
+  selection, clearing it too, shows Properties. `S.keepTab` and the set tree's Edit button there are gone.
+
 - **System panel: Back, and a selected cable stands out (2026-11-12, Chris).** While a cable is selected,
   however it was picked, it keeps its selection pulse and every other cable and its label fades
   (`.sys-w.dim`). Any panel but the system's own has **‹ Back** at the top left of its head, which goes

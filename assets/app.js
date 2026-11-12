@@ -1546,18 +1546,17 @@
   window.addEventListener('resize', closeCtx);
 
   // ── Build: the right pane, with a Parts tab and a Properties tab ──
-  // A new selection switches it to Properties; clearing the selection goes back to Parts. A set
-  // picked in the Parts tab's tree stays in Parts (S.keepTab), and its row's Edit button opens
-  // Properties (Chris, 2026-11-07).
+  // Parts holds only what can be added to the drawing; Properties shows the selection, or with nothing
+  // selected, the harness's splices, notes, and wire sets to pick from (Chris, 2026-11-12). Any change of
+  // selection, clearing it too, shows Properties.
   function renderParts() {
     const sel = S.sel, key = sel ? sel.kind + ':' + [...sel.ids].sort().join(',') : '';
-    if (key !== S.paneSelKey) { S.paneSelKey = key; S.paneTab = key && !S.keepTab ? 'props' : 'parts'; }
-    S.keepTab = false;
+    if (key !== S.paneSelKey) { S.paneSelKey = key; S.paneTab = 'props'; }
     const tab = S.paneTab === 'props' ? 'props' : 'parts';
     const tabs = `<div class="pane-tabs" role="tablist">${[['parts', 'Parts'], ['props', 'Properties']].map(([k, t]) =>
       `<button role="tab" class="pane-tab${k === tab ? ' on' : ''}" aria-selected="${k === tab}" data-act="pane-tab" data-tab="${k}">${t}</button>`).join('')}</div>`;
     const body = tab === 'props'
-      ? `<div class="pane-props">${propsHtml() || `<div class="pane-empty">Select a connector, splice, wire, or box on the canvas to see its properties here.</div>`}</div>`
+      ? `<div class="pane-props">${propsHtml() || overviewHtml()}</div>`
       : `<div class="pane-body">${partsHtml()}</div>`;
     // How it works (Chris): a ? button in the pane's bottom-right corner pops this card up over the
     // bottom of the pane, in either tab. Open until closed, remembered in this browser (fold.help).
@@ -1583,7 +1582,8 @@
     if (sc2 && sc2.className === scKind) sc2.scrollTop = scroll;
     if (focus) { const f2 = el.querySelector(`[data-f="${focus}"]`); if (f2) f2.focus(); }
   }
-  function partsHtml() {
+  // Properties with nothing selected: the splices, notes, and wire sets, each a row that selects it.
+  function overviewHtml() {
     const h = H();
     const sel = id => selHas(S.sel, 'node', id);
     const splices = h.nodes.filter(n => n.kind === 'splice');
@@ -1600,8 +1600,13 @@
     const roots = M.roots(h);
     if (roots.length) {
       o += `<div class="side-head"><span class="side-label">Wire sets</span><span class="side-count">${h.sets.length}</span></div>`;
-      o += roots.map(r => setTree(h, r, new Set(selParts(S.sel).set), true)).join('');
+      o += roots.map(r => setTree(h, r, new Set(selParts(S.sel).set), false)).join('');
     }
+    return o ? `<div class="pane-body">${o}</div>` : `<div class="pane-empty">Select a connector, splice, wire, or box on the canvas to see its properties here.</div>`;
+  }
+  // Parts: what can be added to the drawing.
+  function partsHtml() {
+    let o = '';
     o += `<div class="side-head"><span class="side-label">Add</span></div><div class="palette">
       <button data-act="add-conn">${ICON.conn}<span>Connector</span></button>
       <button data-act="from-board" title="A board connector from Signoff EE, with its pins and nets">${ICON.board}<span>From a board</span></button>
@@ -2448,7 +2453,7 @@
     const sf = t.closest('[data-setf]');
     if (sf) { setField(sf.dataset.setf, sf.dataset.v); return; }
     const p = t.closest('[data-pick]');
-    if (p) { const [kind, id] = p.dataset.pick.split(':'); if (kind === 'set' && p.closest('.pane-body')) S.keepTab = true; select(kind, id); return; }
+    if (p) { const [kind, id] = p.dataset.pick.split(':'); select(kind, id); return; }
     const c = t.closest('[data-check]');
     if (c) goToCheck(+c.dataset.check);
   });
