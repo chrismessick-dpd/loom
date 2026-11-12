@@ -51,6 +51,27 @@ harnesses between them, with board-to-board harnesses in the parent; in the side
   step to confirm with Chris), a parent's BOM rolling up its children's harnesses, and dragging a tab along its
   block (X and Y in the panel for now).
 
+## Overview, Detail, and Wires (2026-11-12, Chris)
+
+A system has three tabs over its canvas, where a harness has Build, Drawing, and the rest (`#view-seg`,
+`data-act="sys-tab"`; not `data-view`, which is the harness's own). Inside the open system's tree in the menu,
+a click on a system or harness is a pick, not a jump (`data-sfocus="kind|id|path"`, `LM.system.setFocus`); the
+open system's own row clears it, and other systems and harnesses still open as before.
+
+- **Overview** draws the open system (`S.root`) and selects the pick: the block placing it (which lights that
+  block's cables), or a harness's cables there (several at once fade the rest as one does). A harness used only
+  deeper selects the block it's inside (`overviewSel`). The camera moves to the block if it's out of view.
+- **Detail** draws the picked system itself, or the system holding a picked harness with its cables selected.
+  It's the real system, editable; each system drawn keeps its own undo and camera (`show`, `S.hist`).
+- **Wires** is read only, a start (Chris: not fully designed yet): for a system, each block, its used or
+  plugged connectors, the cables plugged into each, and a harness cable's wires from that end (pin, signal or
+  the board's net, color, gauge in mm² first, far end and where it plugs, and length); for a harness, its ends,
+  where they plug in, and its from/to list. Names in it pick that system or harness, and a breadcrumb leads back.
+
+A single placed system or harness cable selected on the canvas becomes the pick when the tab changes, unless
+it's the selection the tab made itself (`S.autoSel`). The tab and pick aren't stored; opening a system starts
+on Overview. Screenshots (the made-up nested demo): `docs/screens/system-tabs-*.jpg`.
+
 ## Toolbar (2026-11-12, Chris)
 
 As a harness's, at the top right: Undo, Redo, Discard changes (while the system has changes since the last

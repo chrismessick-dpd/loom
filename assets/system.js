@@ -13,7 +13,11 @@
   const NS = DEMO ? 'loom.demo.' : 'loom.v1.';
   const TAB = { w: 7, h: 4.5 };          // a connector tab on a block, mm
   const STUB = 14;                       // an unplugged cable end's stub, mm
-  const S = { store: {}, cur: null, sel: null, past: [], future: [], cam: null, boards: null, boardsErr: '', busy: '', adding: null, picking: null };
+  // root: the system opened from the menu (Overview draws it); cur: the one drawn now, which Detail may
+  // set to a system it places. tab: overview, detail, or wires. focus: what the menu picked inside root's
+  // tree, { kind: 'system' | 'harness', id, path } (path: system ids from root, joined by '>'; for a
+  // harness, the system holding it). hist: each system's undo and camera while another is drawn.
+  const S = { store: {}, cur: null, root: null, tab: 'overview', focus: null, hist: {}, sel: null, past: [], future: [], cam: null, boards: null, boardsErr: '', busy: '', adding: null, picking: null };
   let A = null;                          // the app's hooks
 
   // ── Model ──
@@ -348,7 +352,7 @@
     resolveAll();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      try { localStorage.setItem(NS + 'systems', JSON.stringify(S.store)); localStorage.setItem(NS + 'currentSystem', S.cur || ''); }
+      try { localStorage.setItem(NS + 'systems', JSON.stringify(S.store)); localStorage.setItem(NS + 'currentSystem', S.root || S.cur || ''); }
       catch (e) { A.toast("Couldn't keep this in the browser: " + e.message, 'error'); }
     }, 200);
   }
@@ -400,7 +404,79 @@
     S.sel = selOf(bs, cs); S.pair = null; S.picking = null; S.adding = null;
   }
 
-  function open(id) { S.cur = id; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
+  function open(id) { S.cur = id; S.root = id; S.tab = 'overview'; S.focus = null; S.hist = {}; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
+
+  // ── Overview, Detail, and Wires (Chris, 2026-11-12) ──
+  // The tabs over the canvas. A pick in the menu inside the open system's tree is a focus, not a jump:
+  // Overview selects it in the open system (the block placing it, which lights its cables, or a
+  // harness's cables), Detail draws the system it is (a harness: the system holding it, its cables
+  // selected), and Wires lists it and what it holds. Each system drawn keeps its own undo and camera.
+  function show(id) {
+    if (!id || !S.store[id] || id === S.cur) return;
+    if (S.cur) S.hist[S.cur] = { past: S.past, future: S.future, cam: S.cam };
+    const h = S.hist[id] || { past: [], future: [], cam: null };
+    S.cur = id; S.past = h.past; S.future = h.future; S.cam = h.cam;
+    S.sel = null; S.pending = null; S.pair = null; S.picking = null; S.adding = null;
+  }
+  const pathIds = f => (f && f.path ? String(f.path).split('>') : []);
+  // The system a focus is drawn in on Detail: a system itself, or the one holding a harness.
+  const focusSys = f => { const ids = pathIds(f); return ids.length ? ids[ids.length - 1] : null; };
+  const harnessCables = (s, hid) => s.cables.filter(c => kindOf(c) === 'harness' && c.harness === hid).map(c => c.id);
+  // What Overview selects for a focus: in root, the block placing the first system on its path, or a
+  // harness's own cables there. A harness only used deeper selects the block it's inside.
+  function overviewSel(s, f) {
+    const ids = pathIds(f);
+    if (!s || !f || ids[0] !== s.id) return null;
+    if (f.kind === 'harness' && ids.length === 1) return selOf([], harnessCables(s, f.id));
+    if (ids.length < 2) return null;
+    const b = s.blocks.find(x => x.kind === 'system' && x.system === ids[1]);
+    return b ? { kind: 'block', block: b.id } : null;
+  }
+  // The path of the system drawn now, from root.
+  const curPath = () => (S.cur === S.root ? S.root : S.focus && focusSys(S.focus) === S.cur ? S.focus.path : S.root);
+  // A single placed system or harness cable selected on the canvas becomes the focus when the tab changes,
+  // so a pick on the diagram carries to Detail and Wires as a pick in the menu does.
+  function focusFromSel() {
+    const s = cur(), t = S.sel;
+    // Not the selection a tab made for the focus itself (a harness inside a placed system selects its block).
+    if (!s || !t || JSON.stringify(t) === S.autoSel) return;
+    if (t.kind === 'block') { const b = block(s, t.block); if (b && childOf(b)) S.focus = { kind: 'system', id: b.system, path: curPath() + '>' + b.system }; }
+    else if (t.kind === 'cable') { const c = cable(s, t.id); if (c && kindOf(c) === 'harness' && c.harness) S.focus = { kind: 'harness', id: c.harness, path: curPath() }; }
+  }
+  // Moves the camera so the selected block shows, at the same zoom, when it's out of view.
+  function reveal(s, t) {
+    if (!S.cam || !t || t.kind !== 'block') return;
+    const b = block(s, t.block);
+    if (!b) return;
+    const z = sizeOf(b), cx = (b.x + z.W / 2) * K, cy = (b.y + z.H / 2) * K, c = S.cam;
+    if (cx > c.x && cx < c.x + c.w && cy > c.y && cy < c.y + c.h) return;
+    S.cam = Object.assign({}, c, { x: cx - c.w / 2, y: cy - c.h / 2 });
+  }
+  // Draws what the tab and focus ask for, and selects it. Called when either changes, never on a plain
+  // redraw, so a click on the canvas afterwards is the user's own.
+  function applyTab() {
+    const f = S.focus;
+    if (S.tab === 'overview') { show(S.root); S.sel = overviewSel(cur(), f); reveal(cur(), S.sel); }
+    else if (S.tab === 'detail') {
+      const id = f && S.store[focusSys(f)] ? focusSys(f) : S.root;
+      show(id);
+      S.sel = f && f.kind === 'harness' ? selOf([], harnessCables(cur(), f.id)) : null;
+      if (!S.cam) S.cam = bounds(cur());
+    }
+    S.autoSel = JSON.stringify(S.sel);
+  }
+  function setTab(tab) {
+    if (!['overview', 'detail', 'wires'].includes(tab) || !S.root) return;
+    if (tab !== S.tab) focusFromSel();
+    S.tab = tab; applyTab(); persist(); A.refresh();
+  }
+  // A pick in the menu (app.js, a row under the open system): kind system or harness, its id, and its
+  // path (a harness's: the system holding it). The open system itself clears the focus.
+  function setFocus(kind, id, path) {
+    if (!S.root || pathIds({ path })[0] !== S.root) return;
+    S.focus = kind === 'system' && id === S.root ? null : { kind, id, path };
+    applyTab(); A.refresh();
+  }
   // Back (Chris, 2026-11-12): from any panel straight to the system's own.
   function back() { S.sel = null; S.pair = null; S.picking = null; S.adding = null; S.pending = null; A.refresh(); }
 
@@ -491,12 +567,14 @@
   // Every cable's routes: from its first plugged end to each other plugged end.
   // The layout is kept until the blocks, connectors, cables, or harness ends change, not redone for a
   // selection (a system the size of a machine has dozens of cables over a big drawing).
-  let memo = { key: '', lo: null };
+  // One memo per system, so Overview and Detail switching back and forth don't re-route each other's.
+  const memos = new Map();
   function layout(s, view) {
     const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted, c.tw || 0])]), s.cables.map(c => [c.id, c.kind, c.harness, c.ends, c.routes]), s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
-    if (memo.key === key && memo.lo) return memo.lo;
+    const memo = memos.get(s.id);
+    if (memo && memo.key === key && memo.lo) return memo.lo;
     const lo = layoutNow(s, view);
-    memo = { key, lo };
+    memos.set(s.id, { key, lo });
     return lo;
   }
   // The engine's search grid: 12 units (3 mm), a little coarser than a harness's 10 because a system is
@@ -616,13 +694,15 @@
       // A selected block's cables glow and carry the harness's soft current (as a selected connector's
       // wires do), and the rest fade (Chris, 2026-11-12).
       const linked = !on && !!sel && sel.kind === 'block' && Object.values(cab.ends).some(e => e && e.block === sel.block);
+      // Cables alone selected together (a harness used more than once, picked in the menu) stand out as one does.
+      const cablesOnly = !!sel && sel.kind === 'multi' && !sel.blocks.length;
       const color = colorOf(cab) || (st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)');
       const wire = (d, extra) => `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
         (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : linked ? `<path class="w-pulse soft" pathLength="1" d="${d}"/>` : '');
       // While a cable is selected, however it was picked, the others fade (Chris, 2026-11-12).
-      const dim = !on && !!sel && (sel.kind === 'cable' || (sel.kind === 'block' && !linked));
+      const dim = !on && !!sel && (sel.kind === 'cable' || cablesOnly || (sel.kind === 'block' && !linked));
       // The one selected cable, while the others fade, is drawn half again as wide with a glow (Chris).
-      const solo = on && !!sel && sel.kind === 'cable';
+      const solo = on && !!sel && (sel.kind === 'cable' || cablesOnly);
       html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}${solo ? ' solo' : ''}${linked ? ' linked' : ''}${dim ? ' dim' : ''}" data-cable="${cab.id}">`;
       let mid = null, ring = null, lane = routes.length && routes[0].pts ? laneOfPts(routes[0].pts) : null;
       routes.forEach(r => { html += wire(r.d); });
@@ -893,6 +973,92 @@
       `<button class="pane-help-btn${open ? ' on' : ''}" data-sact="help" title="How it works" aria-label="How it works" aria-expanded="${open}">?</button>`;
   }
 
+  // ── Wires: the focus and what it holds, as a table (Chris, 2026-11-12: a start; not fully designed) ──
+  // A system: each block, its used or plugged connectors, the cables plugged into each, and a harness
+  // cable's wires from that end (pin, signal, color, gauge, far end, and length). A harness: its ends, where
+  // they plug in, and its wires. Read only; the harness's own Wires tab edits them.
+  const natural = (a, b) => String(a).localeCompare(String(b), 'en', { numeric: true });
+  const gaugeMetric = g => (g ? (M.AWG[g] ? `${M.AWG[g]} mm² (${g} AWG)` : `${g} AWG`) : '');
+  function swatchHtml(code) {
+    const c = M.colorInfo(code);
+    if (!c.code) return '<span class="sys-none">—</span>';
+    const bg = c.stripe ? `linear-gradient(135deg, ${c.base} 0 40%, ${c.stripe} 40% 60%, ${c.base} 60%)` : c.base;
+    return `<span class="sys-wsw" style="background:${bg}"></span>${esc(c.name)}`;
+  }
+  const focusAttr = (kind, id, path) => ` data-sfocus="${esc(kind + '|' + id + '|' + path)}"`;
+  // root › … › the system shown, each a link that focuses it.
+  function crumbsHtml(path, tail) {
+    const ids = String(path).split('>');
+    const parts = ids.map((id, i) => { const x = S.store[id]; return x ? `<button class="sys-crumb"${focusAttr('system', id, ids.slice(0, i + 1).join('>'))}>${esc(x.title)}</button>` : ''; });
+    return `<div class="sys-crumbs">${parts.concat(tail ? [`<span>${esc(tail)}</span>`] : []).join('<span class="sep">›</span>')}</div>`;
+  }
+  function wiresHead(eyebrow, title, sub, crumbs, actions) {
+    return `<div class="page-head lm-head"><div class="page-head-text">${crumbs}<div class="eyebrow">${eyebrow}</div><h1 class="page-title">${esc(title)}</h1>${sub ? `<div class="page-sub">${sub}</div>` : ''}</div>${actions ? `<div class="lm-actions">${actions}</div>` : ''}</div>`;
+  }
+  // A harness's analysis (wire lengths), kept until it changes: Wires redraws on every refresh.
+  const ANALYSES = new WeakMap();
+  const an = h => { const k = h.updated + '|' + h.wires.length, x = ANALYSES.get(h); if (x && x.k === k) return x.a; const a = M.analyze(h); ANALYSES.set(h, { k, a }); return a; };
+  const HEAD = '<thead><tr><th>Item</th><th>Pin</th><th>Signal</th><th>Color</th><th>Gauge</th><th>Far end</th><th class="num">Length</th></tr></thead>';
+  const item = (lvl, html) => `<td class="sys-wi" style="--lvl:${lvl}">${html}</td>`;
+  function wiresHtml() {
+    const f = S.focus;
+    if (f && f.kind === 'harness') return harnessWiresHtml(f);
+    const s = S.store[f ? f.id : S.root];
+    if (!s) return '';
+    const path = f ? f.path : S.root;
+    let rows = '', nCab = 0, nWire = 0;
+    const cableRows = (cab, here, lvl, c) => {
+      const h = harnessOf(cab), st = statusOf(cab, h), ends = endsOf(cab, h);
+      const far = ends.filter(n => n.id !== here).map(n => endName(s, cab.ends[n.id]) || `${n.ref} not plugged`)
+        .concat(deviceEnds(h).map(n => `${n.ref} at its device`));
+      const len = cab.lengthMm;
+      const title = h ? `<button class="sys-link"${focusAttr('harness', h.id, path)} title="Show this harness’s wires">${esc(titleOf(cab, h))}</button>` : esc(titleOf(cab, h));
+      nCab++;
+      rows += `<tr class="sys-wr cab">${item(lvl, `<span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span> ${title}${pnOf(h, cab) ? ` <span class="mono sys-wpn">${esc(pnOf(h, cab))}</span>` : ''}`)}<td></td><td class="pc-muted">${esc(KINDS[kindOf(cab)])}</td><td></td><td></td><td>${esc(far.join(', ') || '—')}</td><td class="num">${len ? U.fmtLen(len) : ''}</td></tr>`;
+      const n = h && here && M.node(h, here);
+      if (!n) return;
+      const A0 = an(h);
+      h.wires.map(w => ({ w, at: w.from.node === n.id ? w.from : w.to.node === n.id ? w.to : null, to: w.from.node === n.id ? w.to : w.from }))
+        .filter(x => x.at).sort((a, b) => natural(a.at.pin, b.at.pin)).forEach(({ w, at, to }) => {
+          const pin = c && c.pins.find(p => String(p.pin) === String(at.pin)), net = pin ? pin.label || pin.net || '' : '';
+          const tn = M.node(h, to.node), where = tn && cab.ends[tn.id] ? endName(s, cab.ends[tn.id]) : tn && tn.atDevice ? 'at its device' : '';
+          nWire++;
+          rows += `<tr class="sys-wr wire">${item(lvl + 1, `<span class="mono">${esc(M.wireName(w))}</span>`)}<td class="mono">${esc(at.pin || '')}</td><td>${esc(w.signal || net)}</td><td>${swatchHtml(w.color)}</td><td>${esc(gaugeMetric(w.gauge)) || '<span class="sys-none">—</span>'}</td>` +
+            `<td><span class="mono">${esc(M.endText(h, to))}</span>${where ? ` <span class="pc-muted">· ${esc(where)}</span>` : ''}</td><td class="num">${U.fmtLen(A0.wireLen.get(w.id))}</td></tr>`;
+        });
+    };
+    s.blocks.slice().sort((a, b) => natural(a.ref, b.ref)).forEach(b => {
+      const ch = childOf(b), kind = b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board';
+      const conns = b.conns.filter(c => pluggedAt(s, b.id, c.id).length || (fitted(c) && c.used)).sort((x, y) => natural(x.ref, y.ref));
+      const name = ch ? `<button class="sys-link"${focusAttr('system', ch.id, path + '>' + ch.id)} title="Show what this system holds">${esc(ch.title)}</button>` : esc(b.name || '');
+      rows += `<tr class="sys-wr blk">${item(0, `<b>${esc(b.ref)}</b> ${name}`)}<td colspan="6" class="pc-muted">${kind} · ${conns.length} connector${conns.length === 1 ? '' : 's'} used of ${b.conns.length}</td></tr>`;
+      conns.forEach(c => {
+        const at = pluggedAt(s, b.id, c.id);
+        rows += `<tr class="sys-wr conn">${item(1, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ` <span class="pc-muted">${esc(c.fn)}</span>` : ''}`)}<td colspan="6" class="pc-muted">${c.pins.length} pins${at.length ? '' : c.external ? ' · external: plugged in from ' + esc(parentsOf(s.id).map(p => p.title).join(', ') || 'the systems placing this one') : ' · nothing plugged in'}</td></tr>`;
+        at.forEach(x => cableRows(x.cable, x.node, 2, c));
+      });
+    });
+    const loose = s.cables.filter(cab => !Object.values(cab.ends).some(Boolean));
+    if (loose.length) { rows += `<tr class="sys-wr blk">${item(0, '<b>Not plugged in</b>')}<td colspan="6"></td></tr>`; loose.forEach(cab => cableRows(cab, null, 1, null)); }
+    return `<div class="page wide sys-wpage">` + wiresHead('Wires', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable end${nCab === 1 ? '' : 's'}<span class="sep">·</span>${nWire} wire${nWire === 1 ? '' : 's'}`, crumbsHtml(path)) +
+      `<div class="card table-wrap"><table class="table compact sys-wtable">${HEAD}<tbody>${rows || '<tr><td colspan="7" class="pc-muted">Nothing placed yet.</td></tr>'}</tbody></table></div>` +
+      `<p class="f-hint">Each cable is listed at every connector it plugs into, with its wires from that end. Pick a system or harness in the menu, or its name here, to list just it.</p></div>`;
+  }
+  function harnessWiresHtml(f) {
+    const h = A.harness(f.id), s = S.store[focusSys(f)];
+    if (!h) return `<div class="page wide sys-wpage">${wiresHead('Wires', 'Missing harness', '', crumbsHtml(f.path))}</div>`;
+    const A0 = an(h), cabs = s ? s.cables.filter(c => kindOf(c) === 'harness' && c.harness === h.id) : [];
+    const ends = h.nodes.filter(M.isConn).map(n => {
+      const where = n.atDevice ? 'Its device' : cabs.map(c => endName(s, c.ends[n.id])).filter(Boolean).join(', ') || 'Not plugged in here';
+      return `<tr>${item(0, `<span class="mono">${esc(n.ref)}</span> ${esc(n.name || '')}`)}<td>${M.pinList(n).length} pins</td><td colspan="5">${esc(where)}</td></tr>`;
+    }).join('');
+    const wires = M.fromTo(h, A0).map(r => `<tr>${item(0, `<span class="mono">${esc(r.name)}</span>`)}<td class="mono">${esc(r.from)}</td><td class="mono">${esc(r.to)}</td><td>${esc(r.signal)}</td><td>${swatchHtml(r.wire.color)}</td><td>${esc(gaugeMetric(r.gauge)) || '<span class="sys-none">—</span>'}</td><td class="num">${U.fmtLen(r.length)}</td></tr>`).join('');
+    return `<div class="page wide sys-wpage">` + wiresHead('Wires', h.title, `${esc(h.pn || 'No part number')}<span class="sep">·</span>${h.nodes.filter(M.isConn).length} ends<span class="sep">·</span>${h.wires.length} wire${h.wires.length === 1 ? '' : 's'}`, crumbsHtml(f.path, h.title),
+      `<button class="btn btn-primary" data-sact="open-harness-id" data-harness="${esc(h.id)}">Open the harness</button>`) +
+      `<h4 class="sys-h">Ends</h4><div class="card table-wrap"><table class="table compact sys-wtable"><thead><tr><th>End</th><th>Pins</th><th colspan="5">Plugs into, in ${esc(s ? s.title : 'this system')}</th></tr></thead><tbody>${ends || '<tr><td colspan="7" class="pc-muted">No ends.</td></tr>'}</tbody></table></div>` +
+      `<h4 class="sys-h">Wires</h4><div class="card table-wrap"><table class="table compact sys-wtable"><thead><tr><th>Wire</th><th>From</th><th>To</th><th>Signal</th><th>Color</th><th>Gauge</th><th class="num">Length</th></tr></thead><tbody>${wires || '<tr><td colspan="7" class="pc-muted">No wires yet.</td></tr>'}</tbody></table></div></div>`;
+  }
+
   // ── Render ──
   function render(page) {
     const s = cur();
@@ -902,9 +1068,13 @@
       page.innerHTML = `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
         <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span id="sys-grid-menu"></span></div>
         <div class="hud-br"><label class="seg glass hud-check" title="Show each cable’s name and part number, on a dot you can slide along it"><input type="checkbox" data-slabels id="sys-labels"><span>Cable labels</span></label></div></div>
-        <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div>`;
+        <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div><div class="sys-wires" id="sys-wires" hidden></div>`;
       wire(page);
     }
+    // Wires is a page of its own in place of the canvas, which stays (its listeners are wired once).
+    const wiresOn = S.tab === 'wires', wp = page.querySelector('#sys-wires'), sv = page.querySelector('.sys-view');
+    wp.hidden = !wiresOn; sv.hidden = wiresOn;
+    if (wiresOn) { const keep = wp.scrollTop; wp.innerHTML = wiresHtml(); wp.scrollTop = keep; return; }
     const svg = page.querySelector('#sys-canvas');
     if (!S.cam) S.cam = bounds(s);
     svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`);
@@ -1460,16 +1630,18 @@
         A.toast(`Connected ${endName(s, p)} to ${endName(s, q)}. Say in the panel whether it’s a purchased cable or a Loom harness.`);
         break;
       }
+      case 'open-harness-id': if (el && A.harness(el.dataset.harness)) A.openHarness(el.dataset.harness); break;
       case 'open-harness': { const cab = cable(s, S.sel.id); A.openHarness(cab.harness); break; }
       case 'open-ee': { const b = block(s, S.sel.block); location.href = `../ee_design_review/index.html?project=${encodeURIComponent(b.source.id)}${DEMO ? '&demo' : ''}`; break; }
       case 'delete-system':
         if (!confirm(`Delete ${s.title}? Its harnesses stay.`)) break;
-        s.deleted = true; s.updated = now(); S.cur = null; persist(); A.home(); break;
+        s.deleted = true; s.updated = now(); S.cur = null; S.root = null; persist(); A.home(); break;
     }
   }
   function onKey(e) {
     const mod = e.ctrlKey || e.metaKey, typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
     if (typing) return;
+    if (S.tab === 'wires' && !mod) return;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? swap(S.future, S.past) : swap(S.past, S.future); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); swap(S.future, S.past); return; }
     if (e.key === 'Escape') { if (menuEl) { closeMenu(); return; } if (S.pending) { S.pending = null; A.refresh(); return; } S.sel = null; S.pair = null; S.picking = null; S.adding = null; A.refresh(); return; }
@@ -1570,9 +1742,10 @@
     if (DEMO && (!S.store.sdemo1 || S.store.sdemo1.demoVersion !== DEMO_V)) setTimeout(() => demo(true).then(() => A.refresh()), 0);
     return c;
   }
-  LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; persist(); },
+  LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; },
     externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree,
+    tab: () => S.tab, setTab, setFocus, overviewSel, focused: () => S.focus, root: () => S.root,
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, saveFile, openDoc };
 })(window.LM = window.LM || {});

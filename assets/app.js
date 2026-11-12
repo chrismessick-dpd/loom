@@ -400,13 +400,19 @@
     const list = live().filter(h => !T.used.has(h.id)).sort((a, b) => (b.updated || 0) - (a.updated || 0));
     const systems = roots.map(n => Object.assign({ kind: 'tree', project: n.sys.project }, { node: n }));
     // Does this tree node hold what's open (the system or harness), at any depth?
-    const holdsOpen = n => n.id === LM.system.current() || n.harnesses.includes(S.cur) || n.kids.some(holdsOpen);
+    // Rows under the open system pick (data-sfocus) rather than open: Overview highlights the pick, Detail
+    // draws it, and Wires lists it (Chris, 2026-11-12). The pick's row is the active one, and stays in view.
+    const root = LM.system.root(), fc = LM.system.focused();
+    const holdsOpen = n => n.id === root || n.id === LM.system.current() || n.harnesses.includes(S.cur) || (!!fc && (fc.path === n.path || fc.path.startsWith(n.path + '>'))) || n.kids.some(holdsOpen);
+    const inOpen = path => !!root && path.split('>')[0] === root;
+    const picked = (kind, id, path) => (fc ? fc.kind === kind && fc.id === id && fc.path === path : kind === 'system' && path === root);
     const treeFold = fold.sysTree || {};
     const treeRow = (n, d) => {
       const has = n.kids.length + n.harnesses.length > 0, open = n.path in treeFold ? !!treeFold[n.path] : holdsOpen(n);
       const tog = has ? `<button class="lm-tog" data-act="toggle-sys" data-path="${esc(n.path)}" aria-expanded="${open}" title="${open ? 'Fold' : 'Show'} what it holds"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : '<span class="lm-tog"></span>';
-      return `<div class="lm-tree" style="--d:${d}">${tog}${sysRow(n.sys)}</div>` +
-        (open && has ? n.kids.map(k => treeRow(k, d + 1)).join('') + n.harnesses.map(id => { const h = S.store[id]; return h && !h.deleted ? `<div class="lm-tree" style="--d:${d + 1}"><span class="lm-tog"></span>${row(h)}</div>` : ''; }).join('') : '');
+      const pick = inOpen(n.path);
+      return `<div class="lm-tree" style="--d:${d}">${tog}${sysRow(n.sys, pick ? n.path : null)}</div>` +
+        (open && has ? n.kids.map(k => treeRow(k, d + 1)).join('') + n.harnesses.map(id => { const h = S.store[id]; return h && !h.deleted ? `<div class="lm-tree" style="--d:${d + 1}"><span class="lm-tog"></span>${row(h, pick ? n.path : null)}</div>` : ''; }).join('') : '');
     };
     const dirty = new Set(canSync() ? R.unsynced(S.store).concat(R.sysUnsynced(LM.system.store())) : []);
     // Grouped by client project, as Signoff EE groups boards (none: "No project", last).
@@ -414,22 +420,24 @@
     systems.concat(list).forEach(h => { const k = String(h.project || '').trim(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); });
     const holds = h => (h.kind === 'tree' ? holdsOpen(h.node) : h.id === S.cur);
     const keys = [...groups.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
-    const sysRow = s => {
+    const sysRow = (s, path) => {
       const c = LM.system.checks(s, sysHooks.harness);
+      const active = path ? picked('system', s.id, path) : s.id === root, attr = path ? `data-sfocus="${esc('system|' + s.id + '|' + path)}"` : `data-open-sys="${s.id}"`;
       const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
       // One line (Chris, 2026-11-12: a compact list); the counts are in the tooltip.
-      return `<button class="proj${s.id === LM.system.current() ? ' active' : ''}" data-open-sys="${s.id}" title="${esc(`${s.title}\nSystem · ${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'} · ${s.cables.length} cable${s.cables.length === 1 ? '' : 's'}`)}">
+      return `<button class="proj${active ? ' active' : ''}" ${attr} title="${esc(`${s.title}\nSystem · ${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'} · ${s.cables.length} cable${s.cables.length === 1 ? '' : 's'}`)}">
         <span class="pkg-icon">${ICON.system}</span>
         <span class="proj-body"><span class="proj-name">${esc(s.title)}</span></span>
         <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(s.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
     };
-    const row = h => {
+    const row = (h, path) => {
       if (h.kind === 'tree') return treeRow(h.node, 0);
+      const active = path ? picked('harness', h.id, path) : h.id === S.cur, attr = path ? `data-sfocus="${esc('harness|' + h.id + '|' + path)}"` : `data-open="${h.id}"`;
       const c = M.checks(h);
       const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
       const ends = h.nodes.filter(M.isConn).length;
       // The name, and the part number under it when there is one; the counts are in the tooltip.
-      return `<button class="proj${h.id === S.cur ? ' active' : ''}" data-open="${h.id}" title="${esc(`${h.title}\n${h.pn ? h.pn + ' · ' : ''}${ends} ends · ${h.wires.length} wires`)}">
+      return `<button class="proj${active ? ' active' : ''}" ${attr} title="${esc(`${h.title}\n${h.pn ? h.pn + ' · ' : ''}${ends} ends · ${h.wires.length} wires`)}">
         <span class="pkg-icon">${ICON.harness}</span>
         <span class="proj-body"><span class="proj-name">${esc(h.title)}</span>${h.pn ? `<span class="proj-sub">${esc(h.pn)}</span>` : ''}</span>
         <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(h.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
@@ -545,7 +553,15 @@
   function renderToolbar() {
     const h = H();
     const seg = $('#view-seg');
-    if (LM.system.current()) { seg.innerHTML = ''; seg.hidden = true; $('#toolbar-actions').innerHTML = sysToolbar(); return; }
+    // A system's tabs (Chris, 2026-11-12: as the harness's, over the canvas): Overview, Detail, and Wires.
+    // Not data-view, which is the harness's own.
+    if (LM.system.current()) {
+      const tab = LM.system.tab();
+      seg.hidden = false;
+      seg.innerHTML = [['overview', 'Overview', 'The whole system; a pick in the menu is highlighted here'], ['detail', 'Detail', 'The system picked in the menu, or the one holding the harness picked'], ['wires', 'Wires', 'What’s picked, and its connectors, cables, and wires, as a table']]
+        .map(([v, l, tip]) => `<button class="${tab === v ? 'on' : ''}" data-act="sys-tab" data-tab="${v}" title="${tip}">${l}</button>`).join('');
+      $('#toolbar-actions').innerHTML = sysToolbar(); return;
+    }
     if (!h) { seg.innerHTML = ''; seg.hidden = true; $('#toolbar-actions').innerHTML = ''; return; }
     seg.hidden = false;
     const c = M.checks(h);
@@ -2371,6 +2387,7 @@
       case 'discard': discardChanges(); break;
       case 'save': if (h) U.download(baseName(h) + '.loom.json', JSON.stringify(h, null, 2), 'application/json'); break;
       case 'sync': syncNow(false); break;
+      case 'sys-tab': LM.system.setTab(el.dataset.tab); break;
       case 'sys-undo': LM.system.act('undo'); break;
       case 'sys-redo': LM.system.act('redo'); break;
       case 'sys-discard': discardSystem(); break;
@@ -2488,7 +2505,7 @@
   document.addEventListener('click', e => {
     const t = e.target;
     const app = $('#app');
-    if (app.classList.contains('nav-open') && !t.closest('[data-act="nav"]') && (!t.closest('#sidebar') || t.closest('[data-open], [data-open-sys], [data-act="new"], [data-act="new-system"], [data-act="home"], [data-act="open"], [data-act="guide"], a'))) {
+    if (app.classList.contains('nav-open') && !t.closest('[data-act="nav"]') && (!t.closest('#sidebar') || t.closest('[data-open], [data-open-sys], [data-sfocus], [data-act="new"], [data-act="new-system"], [data-act="home"], [data-act="open"], [data-act="guide"], a'))) {
       app.classList.remove('nav-open');
       if (!t.closest('#sidebar')) return;
     }
@@ -2496,8 +2513,11 @@
     if (a && !a.disabled) { onAct(a.dataset.act, a); return; }
     const v = t.closest('[data-view]');
     if (v) { S.view = v.dataset.view; S.pending = null; renderAll(); return; }
+    // A pick under the open system, in the menu or on its Wires page: kind|id|path.
+    const pk = t.closest('[data-sfocus]');
+    if (pk) { const [kind, id, path] = pk.dataset.sfocus.split('|'); LM.system.setFocus(kind, id, path); return; }
     const os = t.closest('[data-open-sys]');
-    if (os) { if (os.dataset.openSys !== LM.system.current()) openSystem(os.dataset.openSys); return; }
+    if (os) { if (os.dataset.openSys !== LM.system.root()) openSystem(os.dataset.openSys); return; }
     const o = t.closest('[data-open]');
     if (o) {
       // A harness clicked in the menu opens its panel when it's folded away.

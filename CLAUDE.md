@@ -22,6 +22,13 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System tabs: Overview, Detail, and Wires (2026-11-12, Chris: tabs over the system canvas, as the harness
+  editor's; a pick in the menu highlights instead of jumping).** In the toolbar's `#view-seg` (`data-act="sys-tab"`).
+  Rows under the open system pick (`data-sfocus`, `LM.system.setFocus`); Overview selects the pick in `S.root`
+  (`overviewSel`), Detail draws the picked system (`show`, per-system undo and camera in `S.hist`), and Wires is a
+  read-only table (`wiresHtml`). See `docs/system.md`, *Overview, Detail, and Wires*. On branch
+  `system-view-tabs` for review, not `main`. Tests 62.
+
 - **Menu width (2026-11-12, Chris).** The sidebar's right edge drags (`#side-resize`, `sideResize` in `app.js`),
   220 to 560 px, kept in this browser (`fold.sideW`, the `--side-w` variable on `#app`); a double-click goes back to
   272 px. Collapsing still hides it, and it comes back at its width. Not on phones (the drawer).

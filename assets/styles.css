@@ -1020,6 +1020,24 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
 #page.sys-on { display: flex; min-height: 0; }
 .sys-view { flex: 1; display: grid; grid-template-columns: 1fr 340px; height: calc(100dvh - 56px); min-height: 420px; }
 body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
+/* Overview, Detail, and Wires (2026-11-12): Wires is a page in place of the canvas. */
+.sys-view[hidden], .sys-wires[hidden] { display: none; }
+.sys-wires { flex: 1; min-width: 0; overflow: auto; height: calc(100dvh - 56px); }
+body.has-banner .sys-wires { height: calc(100dvh - 56px - 33px); }
+.sys-wpage .sys-h { margin: 22px 0 8px; }
+.sys-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12.5px; color: var(--text-3); margin-bottom: 8px; }
+.sys-crumbs .sep { opacity: 0.6; }
+.sys-crumb { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+.sys-crumb:hover { text-decoration: underline; }
+.sys-wtable .sys-wi { padding-left: calc(12px + var(--lvl, 0) * 20px); white-space: nowrap; }
+.sys-wtable tr.blk td { background: var(--bg-sunk); border-top: 1px solid var(--hair); }
+.sys-wtable tr.conn td { font-weight: 600; }
+.sys-wtable tr.wire td { font-size: 12.5px; }
+.sys-wtable td:nth-child(2), .sys-wtable td:nth-child(4), .sys-wtable td:nth-child(5), .sys-wtable td:nth-child(7) { white-space: nowrap; }
+.sys-wtable td[colspan] { white-space: normal; }
+.sys-wtable .sys-link { font-weight: 600; text-align: left; }
+.sys-wpn { font-size: 11.5px; color: var(--text-3); margin-left: 4px; }
+.sys-wsw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.55); }
 .sys-canvas-wrap { grid-area: auto; }
 .sys-canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
 /* A cable's Color field: a swatch, the menu, and for Custom a picker. */
