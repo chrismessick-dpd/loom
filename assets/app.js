@@ -2320,15 +2320,15 @@
         const cg = Object.assign({}, fold.closedGroups), k = el.dataset.group;
         if (el.getAttribute('aria-expanded') === 'true') cg[k] = true; else delete cg[k];
         fold.closedGroups = cg; saveFold();
-        if (cg[k] && el.hasAttribute('data-holds-open')) { S.cur = null; persist(); renderAll(); } else renderSidebar();
+        if (cg[k] && el.hasAttribute('data-holds-open')) { LM.system.close(); S.cur = null; persist(); renderAll(); } else renderSidebar();
         break;
       }
       case 'fold-groups': {
-        const ks = [...new Set(live().map(h => String(h.project || '').trim().toLowerCase()))];
+        const ks = [...new Set(live().concat(LM.system.tree().roots.map(n => n.sys)).map(h => String(h.project || '').trim().toLowerCase()))];
         const cg = Object.assign({}, fold.closedGroups), unfold = ks.every(k => cg[k]);
         ks.forEach(k => { if (unfold) delete cg[k]; else cg[k] = true; });
         fold.closedGroups = cg; saveFold();
-        if (unfold || !S.cur) renderSidebar(); else { S.cur = null; persist(); renderAll(); }
+        if (unfold || !(S.cur || LM.system.current())) renderSidebar(); else { LM.system.close(); S.cur = null; persist(); renderAll(); }
         break;
       }
       case 'theme': { const t = isDark(readTheme()) ? 'light' : 'dark'; writeTheme(t); applyTheme(t); break; }
