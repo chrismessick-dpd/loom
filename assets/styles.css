@@ -1022,14 +1022,29 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
 body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 /* Overview, Detail, and Wires (2026-11-12): Wires is a page in place of the canvas. */
 .sys-view[hidden], .sys-wires[hidden] { display: none; }
-.sys-wires { flex: 1; min-width: 0; overflow: auto; height: calc(100dvh - 56px); }
-body.has-banner .sys-wires { height: calc(100dvh - 56px - 33px); }
+.sys-canvas-wrap[hidden] { display: none; }
+/* List sits in the canvas's place, beside the panel (2026-11-12). */
+.sys-wires { min-width: 0; min-height: 0; overflow: auto; }
+.sys-wires .sys-wtable { min-width: 880px; }
+.sys-wtable tr[data-ssel] { cursor: pointer; }
+.sys-wtable tr[data-ssel]:hover td { background: var(--accent-soft); }
+.sys-wtable tr.on td { background: var(--accent-soft); box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent); }
+.sys-wtype { display: block; font-size: 11.5px; font-weight: 400; color: var(--text-3); margin-top: 1px; }
+.sys-props { display: grid; gap: 6px; margin: 4px 0 10px; }
+.sys-prop { display: grid; grid-template-columns: 96px 1fr; gap: 8px; font-size: 13px; align-items: baseline; }
+.sys-prop span { color: var(--text-3); font-size: 12px; }
+.sys-prop b { font-weight: 500; overflow-wrap: anywhere; }
+.sys-open-row { margin: 0 0 12px; }
+.sys-wname { font-weight: 600; }
+.sys-drill { margin-left: 4px; padding: 0 6px; border: 1px solid var(--hair); border-radius: 6px; background: none; color: var(--accent); font: 600 13px/18px var(--sans); cursor: pointer; }
+.sys-drill:hover { background: var(--accent-soft); }
 .sys-wpage .sys-h { margin: 22px 0 8px; }
+.sys-wires .page.wide { padding: 24px 24px 80px; }
 .sys-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12.5px; color: var(--text-3); margin-bottom: 8px; }
 .sys-crumbs .sep { opacity: 0.6; }
 .sys-crumb { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
 .sys-crumb:hover { text-decoration: underline; }
-.sys-wtable .sys-wi { padding-left: calc(12px + var(--lvl, 0) * 20px); white-space: nowrap; }
+.sys-wtable .sys-wi { padding-left: calc(12px + var(--lvl, 0) * 20px); min-width: 220px; }
 .sys-wtable tr.blk td { background: var(--bg-sunk); border-top: 1px solid var(--hair); }
 .sys-wtable tr.conn td { font-weight: 600; }
 .sys-wtable tr.wire td { font-size: 12.5px; }

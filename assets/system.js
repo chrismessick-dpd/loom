@@ -385,6 +385,7 @@
     if (t.kind === 'conn') return !!conn(block(s, t.block), t.conn);
     if (t.kind === 'cable') return !!cable(s, t.id);
     if (t.kind === 'multi') return t.blocks.some(id => block(s, id)) || t.cables.some(id => cable(s, id));
+    if (t.kind === 'wire' || t.kind === 'end') return !!A.harness(t.harness);
     return false;
   }
   // Several things selected (Chris, 2026-11-12: drag-select as in the harness): { kind: 'multi', blocks,
@@ -462,11 +463,11 @@
       show(id);
       S.sel = f && f.kind === 'harness' ? selOf([], harnessCables(cur(), f.id)) : null;
       if (!S.cam) S.cam = bounds(cur());
-    }
+    } else if (S.tab === 'list') { show(listSys(f)); S.sel = null; }
     S.autoSel = JSON.stringify(S.sel);
   }
   function setTab(tab) {
-    if (!['overview', 'detail', 'wires'].includes(tab) || !S.root) return;
+    if (!['overview', 'detail', 'list'].includes(tab) || !S.root) return;
     if (tab !== S.tab) focusFromSel();
     S.tab = tab; applyTab(); persist(); A.refresh();
   }
@@ -779,6 +780,8 @@
   function panelHtml(s) {
     const t = S.sel, get = A.harness;
     if (S.adding) return addingHtml();
+    if (t && t.kind === 'wire') return wirePanelHtml(s, t);
+    if (t && t.kind === 'end') return endPanelHtml(s, t);
     if (t && t.kind === 'conn') return connHtml(s, block(s, t.block), conn(block(s, t.block), t.conn));
     if (t && t.kind === 'block') return blockHtml(s, block(s, t.block));
     if (t && t.kind === 'cable') return cableHtml(s, cable(s, t.id));
@@ -973,10 +976,11 @@
       `<button class="pane-help-btn${open ? ' on' : ''}" data-sact="help" title="How it works" aria-label="How it works" aria-expanded="${open}">?</button>`;
   }
 
-  // ── Wires: the focus and what it holds, as a table (Chris, 2026-11-12: a start; not fully designed) ──
+  // ── List: the focus and what it holds, as a table (Chris, 2026-11-12: a start; not fully designed) ──
   // A system: each block, its used or plugged connectors, the cables plugged into each, and a harness
   // cable's wires from that end (pin, signal, color, gauge, far end, and length). A harness: its ends, where
-  // they plug in, and its wires. Read only; the harness's own Wires tab edits them.
+  // they plug in, and its wires. Each item says what it is and its part number beside its name, and a click
+  // shows it in the panel on the right (Chris, 2026-11-12: its full info and settings, and Open in Loom).
   const natural = (a, b) => String(a).localeCompare(String(b), 'en', { numeric: true });
   const gaugeMetric = g => (g ? (M.AWG[g] ? `${M.AWG[g]} mm² (${g} AWG)` : `${g} AWG`) : '');
   function swatchHtml(code) {
@@ -992,18 +996,47 @@
     const parts = ids.map((id, i) => { const x = S.store[id]; return x ? `<button class="sys-crumb"${focusAttr('system', id, ids.slice(0, i + 1).join('>'))}>${esc(x.title)}</button>` : ''; });
     return `<div class="sys-crumbs">${parts.concat(tail ? [`<span>${esc(tail)}</span>`] : []).join('<span class="sep">›</span>')}</div>`;
   }
-  function wiresHead(eyebrow, title, sub, crumbs, actions) {
+  function listHead(eyebrow, title, sub, crumbs, actions) {
     return `<div class="page-head lm-head"><div class="page-head-text">${crumbs}<div class="eyebrow">${eyebrow}</div><h1 class="page-title">${esc(title)}</h1>${sub ? `<div class="page-sub">${sub}</div>` : ''}</div>${actions ? `<div class="lm-actions">${actions}</div>` : ''}</div>`;
   }
-  // A harness's analysis (wire lengths), kept until it changes: Wires redraws on every refresh.
+  // A harness's analysis (wire lengths), kept until it changes: List redraws on every refresh.
   const ANALYSES = new WeakMap();
   const an = h => { const k = h.updated + '|' + h.wires.length, x = ANALYSES.get(h); if (x && x.k === k) return x.a; const a = M.analyze(h); ANALYSES.set(h, { k, a }); return a; };
+  // What each item is, and its part number (or "no P/N").
+  const NOPN = 'no P/N';
+  function blockType(b) {
+    if (b.kind === 'system') return 'System · placed by link';
+    if (b.source) return `Board · Signoff EE · ${b.source.name}${b.source.label ? ' ' + b.source.label : ''}`;
+    return `${b.kind === 'device' ? 'Device' : 'Board'} · generic · ${NOPN}`;
+  }
+  const connType = c => (c.link ? `External connector · inside ${c.inside}` : `Connector · ${[c.mfr, c.mpn].filter(Boolean).join(' ') || NOPN}`);
+  function cableType(cab, h) {
+    const k = kindOf(cab);
+    if (k === 'harness') return `Loom harness · ${h ? h.title : 'missing'} · ${pnOf(h, cab) || NOPN}`;
+    if (k === 'bought') return `Purchased cable · ${cab.pn || NOPN}${cab.mpn ? ' · ' + [cab.mfr, cab.mpn].filter(Boolean).join(' ') : ''}`;
+    return `Generic connection · ${NOPN}`;
+  }
+  const endType = n => `${LM.library ? LM.library.kindName(n) : 'Connector'} · ${n.mpn || NOPN}`;
+  // A small › beside a placed system or harness lists just it (the row itself selects).
+  const drill = (kind, id, path, word) => `<button class="sys-drill"${focusAttr(kind, id, path)} title="List just this ${word}" aria-label="List just this ${word}">›</button>`;
+  const typeHtml = t => `<span class="sys-wtype">${esc(t)}</span>`;
+  // The list's rows select as the canvas does (data-ssel), plus a harness's wires and ends.
+  const selKey = t => (!t ? '' : t.kind === 'block' ? 'block:' + t.block : t.kind === 'conn' ? `conn:${t.block}:${t.conn}` : t.kind === 'cable' ? 'cable:' + t.id
+    : t.kind === 'wire' ? `wire:${t.harness}:${t.wire}:${t.cable || ''}` : t.kind === 'end' ? `end:${t.harness}:${t.node}` : '');
+  function parseSel(key) {
+    const [k, x, y, z] = key.split(':');
+    return k === 'cable' ? { kind: 'cable', id: x } : k === 'block' ? { kind: 'block', block: x } : k === 'conn' ? { kind: 'conn', block: x, conn: y }
+      : k === 'wire' ? { kind: 'wire', harness: x, wire: y, cable: z || null } : k === 'end' ? { kind: 'end', harness: x, node: y } : null;
+  }
+  const rowAttr = (key, cls) => ` class="sys-wr ${cls}${key === selKey(S.sel) ? ' on' : ''}" data-ssel="${esc(key)}"`;
   const HEAD = '<thead><tr><th>Item</th><th>Pin</th><th>Signal</th><th>Color</th><th>Gauge</th><th>Far end</th><th class="num">Length</th></tr></thead>';
   const item = (lvl, html) => `<td class="sys-wi" style="--lvl:${lvl}">${html}</td>`;
-  function wiresHtml() {
+  // The system a list shows: the picked system, the one holding a picked harness, or the open system.
+  const listSys = f => (f ? (f.kind === 'harness' ? focusSys(f) : f.id) : S.root);
+  function listHtml() {
     const f = S.focus;
-    if (f && f.kind === 'harness') return harnessWiresHtml(f);
-    const s = S.store[f ? f.id : S.root];
+    if (f && f.kind === 'harness') return harnessListHtml(f);
+    const s = S.store[listSys(f)];
     if (!s) return '';
     const path = f ? f.path : S.root;
     let rows = '', nCab = 0, nWire = 0;
@@ -1011,10 +1044,9 @@
       const h = harnessOf(cab), st = statusOf(cab, h), ends = endsOf(cab, h);
       const far = ends.filter(n => n.id !== here).map(n => endName(s, cab.ends[n.id]) || `${n.ref} not plugged`)
         .concat(deviceEnds(h).map(n => `${n.ref} at its device`));
-      const len = cab.lengthMm;
-      const title = h ? `<button class="sys-link"${focusAttr('harness', h.id, path)} title="Show this harness’s wires">${esc(titleOf(cab, h))}</button>` : esc(titleOf(cab, h));
+      const title = `<b class="sys-wname">${esc(titleOf(cab, h))}</b>` + (h ? drill('harness', h.id, path, 'harness') : '');
       nCab++;
-      rows += `<tr class="sys-wr cab">${item(lvl, `<span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span> ${title}${pnOf(h, cab) ? ` <span class="mono sys-wpn">${esc(pnOf(h, cab))}</span>` : ''}`)}<td></td><td class="pc-muted">${esc(KINDS[kindOf(cab)])}</td><td></td><td></td><td>${esc(far.join(', ') || '—')}</td><td class="num">${len ? U.fmtLen(len) : ''}</td></tr>`;
+      rows += `<tr${rowAttr('cable:' + cab.id, 'cab')}>${item(lvl, `<span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span> ${title} ${typeHtml(cableType(cab, h))}`)}<td></td><td></td><td></td><td></td><td>${esc(far.join(', ') || '—')}</td><td class="num">${cab.lengthMm ? U.fmtLen(cab.lengthMm) : ''}</td></tr>`;
       const n = h && here && M.node(h, here);
       if (!n) return;
       const A0 = an(h);
@@ -1023,41 +1055,77 @@
           const pin = c && c.pins.find(p => String(p.pin) === String(at.pin)), net = pin ? pin.label || pin.net || '' : '';
           const tn = M.node(h, to.node), where = tn && cab.ends[tn.id] ? endName(s, cab.ends[tn.id]) : tn && tn.atDevice ? 'at its device' : '';
           nWire++;
-          rows += `<tr class="sys-wr wire">${item(lvl + 1, `<span class="mono">${esc(M.wireName(w))}</span>`)}<td class="mono">${esc(at.pin || '')}</td><td>${esc(w.signal || net)}</td><td>${swatchHtml(w.color)}</td><td>${esc(gaugeMetric(w.gauge)) || '<span class="sys-none">—</span>'}</td>` +
+          rows += `<tr${rowAttr(`wire:${h.id}:${w.id}:${cab.id}`, 'wire')}>${item(lvl + 1, `<span class="mono">${esc(M.wireName(w))}</span>`)}<td class="mono">${esc(at.pin || '')}</td><td>${esc(w.signal || net)}</td><td>${swatchHtml(w.color)}</td><td>${esc(gaugeMetric(w.gauge)) || '<span class="sys-none">—</span>'}</td>` +
             `<td><span class="mono">${esc(M.endText(h, to))}</span>${where ? ` <span class="pc-muted">· ${esc(where)}</span>` : ''}</td><td class="num">${U.fmtLen(A0.wireLen.get(w.id))}</td></tr>`;
         });
     };
     s.blocks.slice().sort((a, b) => natural(a.ref, b.ref)).forEach(b => {
-      const ch = childOf(b), kind = b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board';
+      const ch = childOf(b);
       const conns = b.conns.filter(c => pluggedAt(s, b.id, c.id).length || (fitted(c) && c.used)).sort((x, y) => natural(x.ref, y.ref));
-      const name = ch ? `<button class="sys-link"${focusAttr('system', ch.id, path + '>' + ch.id)} title="Show what this system holds">${esc(ch.title)}</button>` : esc(b.name || '');
-      rows += `<tr class="sys-wr blk">${item(0, `<b>${esc(b.ref)}</b> ${name}`)}<td colspan="6" class="pc-muted">${kind} · ${conns.length} connector${conns.length === 1 ? '' : 's'} used of ${b.conns.length}</td></tr>`;
+      const name = ch ? esc(ch.title) + drill('system', ch.id, path + '>' + ch.id, 'system') : esc(b.name || '');
+      rows += `<tr${rowAttr('block:' + b.id, 'blk')}>${item(0, `<b>${esc(b.ref)}</b> ${name} ${typeHtml(blockType(b))}`)}<td colspan="6" class="pc-muted">${conns.length} connector${conns.length === 1 ? '' : 's'} used of ${b.conns.length}</td></tr>`;
       conns.forEach(c => {
         const at = pluggedAt(s, b.id, c.id);
-        rows += `<tr class="sys-wr conn">${item(1, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ` <span class="pc-muted">${esc(c.fn)}</span>` : ''}`)}<td colspan="6" class="pc-muted">${c.pins.length} pins${at.length ? '' : c.external ? ' · external: plugged in from ' + esc(parentsOf(s.id).map(p => p.title).join(', ') || 'the systems placing this one') : ' · nothing plugged in'}</td></tr>`;
+        rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn')}>${item(1, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ` <span class="pc-muted">${esc(c.fn)}</span>` : ''} ${typeHtml(connType(c))}`)}<td colspan="6" class="pc-muted">${c.pins.length} pins${at.length ? '' : c.external ? ' · external: plugged in from ' + esc(parentsOf(s.id).map(p => p.title).join(', ') || 'the systems placing this one') : ' · nothing plugged in'}</td></tr>`;
         at.forEach(x => cableRows(x.cable, x.node, 2, c));
       });
     });
     const loose = s.cables.filter(cab => !Object.values(cab.ends).some(Boolean));
     if (loose.length) { rows += `<tr class="sys-wr blk">${item(0, '<b>Not plugged in</b>')}<td colspan="6"></td></tr>`; loose.forEach(cab => cableRows(cab, null, 1, null)); }
-    return `<div class="page wide sys-wpage">` + wiresHead('Wires', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable end${nCab === 1 ? '' : 's'}<span class="sep">·</span>${nWire} wire${nWire === 1 ? '' : 's'}`, crumbsHtml(path)) +
+    return `<div class="page wide sys-wpage">` + listHead('List', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable end${nCab === 1 ? '' : 's'}<span class="sep">·</span>${nWire} wire${nWire === 1 ? '' : 's'}`, crumbsHtml(path)) +
       `<div class="card table-wrap"><table class="table compact sys-wtable">${HEAD}<tbody>${rows || '<tr><td colspan="7" class="pc-muted">Nothing placed yet.</td></tr>'}</tbody></table></div>` +
-      `<p class="f-hint">Each cable is listed at every connector it plugs into, with its wires from that end. Pick a system or harness in the menu, or its name here, to list just it.</p></div>`;
+      `<p class="f-hint">Click an item to see it in the panel. Each cable is listed at every connector it plugs into, with its wires from that end. Pick a system or harness in the menu, or its name here, to list just it.</p></div>`;
   }
-  function harnessWiresHtml(f) {
+  function harnessListHtml(f) {
     const h = A.harness(f.id), s = S.store[focusSys(f)];
-    if (!h) return `<div class="page wide sys-wpage">${wiresHead('Wires', 'Missing harness', '', crumbsHtml(f.path))}</div>`;
+    if (!h) return `<div class="page wide sys-wpage">${listHead('List', 'Missing harness', '', crumbsHtml(f.path))}</div>`;
     const A0 = an(h), cabs = s ? s.cables.filter(c => kindOf(c) === 'harness' && c.harness === h.id) : [];
     const ends = h.nodes.filter(M.isConn).map(n => {
       const where = n.atDevice ? 'Its device' : cabs.map(c => endName(s, c.ends[n.id])).filter(Boolean).join(', ') || 'Not plugged in here';
-      return `<tr>${item(0, `<span class="mono">${esc(n.ref)}</span> ${esc(n.name || '')}`)}<td>${M.pinList(n).length} pins</td><td colspan="5">${esc(where)}</td></tr>`;
+      return `<tr${rowAttr(`end:${h.id}:${n.id}`, 'end')}>${item(0, `<span class="mono">${esc(n.ref)}</span> ${esc(n.name || '')} ${typeHtml(endType(n))}`)}<td>${M.pinList(n).length} pins</td><td colspan="5">${esc(where)}</td></tr>`;
     }).join('');
-    const wires = M.fromTo(h, A0).map(r => `<tr>${item(0, `<span class="mono">${esc(r.name)}</span>`)}<td class="mono">${esc(r.from)}</td><td class="mono">${esc(r.to)}</td><td>${esc(r.signal)}</td><td>${swatchHtml(r.wire.color)}</td><td>${esc(gaugeMetric(r.gauge)) || '<span class="sys-none">—</span>'}</td><td class="num">${U.fmtLen(r.length)}</td></tr>`).join('');
-    return `<div class="page wide sys-wpage">` + wiresHead('Wires', h.title, `${esc(h.pn || 'No part number')}<span class="sep">·</span>${h.nodes.filter(M.isConn).length} ends<span class="sep">·</span>${h.wires.length} wire${h.wires.length === 1 ? '' : 's'}`, crumbsHtml(f.path, h.title),
-      `<button class="btn btn-primary" data-sact="open-harness-id" data-harness="${esc(h.id)}">Open the harness</button>`) +
+    const wires = M.fromTo(h, A0).map(r => `<tr${rowAttr(`wire:${h.id}:${r.wire.id}:`, 'wire')}>${item(0, `<span class="mono">${esc(r.name)}</span>`)}<td class="mono">${esc(r.from)}</td><td class="mono">${esc(r.to)}</td><td>${esc(r.signal)}</td><td>${swatchHtml(r.wire.color)}</td><td>${esc(gaugeMetric(r.gauge)) || '<span class="sys-none">—</span>'}</td><td class="num">${U.fmtLen(r.length)}</td></tr>`).join('');
+    return `<div class="page wide sys-wpage">` + listHead('List', h.title, `Loom harness<span class="sep">·</span>${esc(h.pn || NOPN)}<span class="sep">·</span>${h.nodes.filter(M.isConn).length} ends<span class="sep">·</span>${h.wires.length} wire${h.wires.length === 1 ? '' : 's'}`, crumbsHtml(f.path, h.title),
+      `<button class="btn btn-primary" data-sact="open-harness-id" data-harness="${esc(h.id)}">Open in Loom</button>`) +
       `<h4 class="sys-h">Ends</h4><div class="card table-wrap"><table class="table compact sys-wtable"><thead><tr><th>End</th><th>Pins</th><th colspan="5">Plugs into, in ${esc(s ? s.title : 'this system')}</th></tr></thead><tbody>${ends || '<tr><td colspan="7" class="pc-muted">No ends.</td></tr>'}</tbody></table></div>` +
       `<h4 class="sys-h">Wires</h4><div class="card table-wrap"><table class="table compact sys-wtable"><thead><tr><th>Wire</th><th>From</th><th>To</th><th>Signal</th><th>Color</th><th>Gauge</th><th class="num">Length</th></tr></thead><tbody>${wires || '<tr><td colspan="7" class="pc-muted">No wires yet.</td></tr>'}</tbody></table></div></div>`;
   }
+  // The panel for a harness's wire or end picked in the list: read only here (a system never edits a
+  // harness), with Open in Loom to edit it in the harness.
+  const prop = (label, value) => `<div class="sys-prop"><span>${label}</span><b>${value || '<span class="sys-none">—</span>'}</b></div>`;
+  function wirePanelHtml(s, t) {
+    const h = A.harness(t.harness), r = h && M.fromTo(h, an(h)).find(x => x.wire.id === t.wire);
+    if (!r) return `<div class="rail-head"><div class="eyebrow">Wire</div><div class="rail-title">Not there any more</div></div>`;
+    const w = r.wire, cab = t.cable && cable(s, t.cable);
+    const where = e => { const n = M.node(h, e.node); return n && cab && cab.ends[n.id] ? ' · ' + endName(s, cab.ends[n.id]) : n && n.atDevice ? ' · at its device' : ''; };
+    return `<div class="rail-head"><div class="eyebrow">Wire · ${esc(h.title)}</div><div class="rail-title">${esc(r.name)}</div></div>` +
+      `<div class="sys-props">${prop('Type', 'Wire in a Loom harness')}${prop('Harness', esc(h.title + ' · ' + (pnOf(h, cab) || h.pn || NOPN)))}${prop('From', esc(r.from + where(w.from)))}${prop('To', esc(r.to + where(w.to)))}` +
+      `${prop('Signal', esc(r.signal))}${prop('Color', M.colorInfo(w.color).code ? swatchHtml(w.color) : '')}${prop('Gauge', esc(gaugeMetric(w.gauge)))}${prop('Length', U.fmtLen(r.length))}${r.sets ? prop('In', esc(r.sets)) : ''}</div>` +
+      `<p class="hint">Its signal, color, gauge, and ends are set in the harness: Open in Loom opens it with this wire selected.</p>`;
+  }
+  function endPanelHtml(s, t) {
+    const h = A.harness(t.harness), n = h && M.node(h, t.node);
+    if (!n) return `<div class="rail-head"><div class="eyebrow">End</div><div class="rail-title">Not there any more</div></div>`;
+    const cabs = s.cables.filter(c => kindOf(c) === 'harness' && c.harness === h.id), plugs = n.atDevice ? 'Its device' : cabs.map(c => endName(s, c.ends[n.id])).filter(Boolean).join(', ');
+    return `<div class="rail-head"><div class="eyebrow">End · ${esc(h.title)}</div><div class="rail-title">${esc(n.ref)} ${esc(n.name || '')}</div></div>` +
+      `<div class="sys-props">${prop('Type', esc(LM.library ? LM.library.kindName(n) : 'Connector'))}${prop('Part number', esc(n.mpn || ''))}${prop('Pins', String(M.pinList(n).length))}${prop('Terminal', esc(n.terminal || ''))}${prop('Mates with', esc(n.mate || ''))}${prop('Plugs into', esc(plugs || 'Not plugged in here'))}</div>` +
+      `<p class="hint">Set in the harness: Open in Loom opens it with this end selected.</p>`;
+  }
+  // Open in Loom, under the panel's head while the list shows: a harness's wire, end, or cable opens the
+  // harness with it selected; a placed system opens on Detail; anything else shows on Detail, selected.
+  function openInLoom() {
+    const s = cur(), t = S.sel;
+    if (!s || !t) return;
+    if (t.kind === 'wire') { A.openHarness(t.harness, { kind: 'wire', ids: [t.wire] }); return; }
+    if (t.kind === 'end') { A.openHarness(t.harness, { kind: 'node', ids: [t.node] }); return; }
+    if (t.kind === 'cable') { const h = harnessOf(cable(s, t.id)); if (h) { A.openHarness(h.id); return; } }
+    if (t.kind === 'block') { const b = block(s, t.block); if (b && childOf(b)) { S.focus = { kind: 'system', id: b.system, path: curPath() + '>' + b.system }; S.tab = 'detail'; applyTab(); A.refresh(); return; } }
+    S.tab = 'detail';
+    if (!S.cam) S.cam = bounds(s);
+    reveal(s, t.kind === 'conn' ? { kind: 'block', block: t.block } : t);
+    A.refresh();
+  }
+  const openInLoomBtn = () => `<button class="btn btn-primary sys-open-loom" data-sact="open-in-loom" title="A harness, its wire, or its end opens in the harness editor; anything else on the Detail canvas">Open in Loom</button>`;
 
   // ── Render ──
   function render(page) {
@@ -1068,26 +1136,34 @@
       page.innerHTML = `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
         <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span id="sys-grid-menu"></span></div>
         <div class="hud-br"><label class="seg glass hud-check" title="Show each cable’s name and part number, on a dot you can slide along it"><input type="checkbox" data-slabels id="sys-labels"><span>Cable labels</span></label></div></div>
-        <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div><div class="sys-wires" id="sys-wires" hidden></div>`;
+        <div class="sys-wires" id="sys-wires" hidden></div>
+        <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div>`;
       wire(page);
     }
-    // Wires is a page of its own in place of the canvas, which stays (its listeners are wired once).
-    const wiresOn = S.tab === 'wires', wp = page.querySelector('#sys-wires'), sv = page.querySelector('.sys-view');
-    wp.hidden = !wiresOn; sv.hidden = wiresOn;
-    if (wiresOn) { const keep = wp.scrollTop; wp.innerHTML = wiresHtml(); wp.scrollTop = keep; return; }
-    const svg = page.querySelector('#sys-canvas');
-    if (!S.cam) S.cam = bounds(s);
-    svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`);
-    redraw(svg);
-    const gs = gridOf(s), style = A.gridStyle ? A.gridStyle() : 'dots';
-    page.querySelector('#sys-grid-menu').innerHTML = `<label class="seg glass hud-grid" title="Blocks and cable runs snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${A.gridIcon ? A.gridIcon() : ''}<select data-sgrid aria-label="Grid">` +
-      `<optgroup label="Spacing">${GRIDS.map(x => `<option value="${x}"${x === gs ? ' selected' : ''}>${x ? 'Grid ' + x + ' mm' : 'Grid off'}</option>`).join('')}</optgroup>` +
-      `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${style === k ? '\u25cf ' : '\u25cb '}${t}</option>`).join('')}</optgroup></select></label>`;
-    page.querySelector('#sys-help').innerHTML = helpHtml();
-    page.querySelector('#sys-labels').checked = labelsOn();
+    // List takes the canvas's place beside the panel; the canvas stays (its listeners are wired once).
+    const listOn = S.tab === 'list', wp = page.querySelector('#sys-wires'), cw = page.querySelector('.sys-canvas-wrap');
+    wp.hidden = !listOn; cw.hidden = listOn;
+    if (listOn) { const keep = wp.scrollTop; wp.innerHTML = listHtml(); wp.scrollTop = keep; }
+    else {
+      const svg = page.querySelector('#sys-canvas');
+      if (!S.cam) S.cam = bounds(s);
+      svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`);
+      redraw(svg);
+      const gs = gridOf(s), style = A.gridStyle ? A.gridStyle() : 'dots';
+      page.querySelector('#sys-grid-menu').innerHTML = `<label class="seg glass hud-grid" title="Blocks and cable runs snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${A.gridIcon ? A.gridIcon() : ''}<select data-sgrid aria-label="Grid">` +
+        `<optgroup label="Spacing">${GRIDS.map(x => `<option value="${x}"${x === gs ? ' selected' : ''}>${x ? 'Grid ' + x + ' mm' : 'Grid off'}</option>`).join('')}</optgroup>` +
+        `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${style === k ? '● ' : '○ '}${t}</option>`).join('')}</optgroup></select></label>`;
+      page.querySelector('#sys-labels').checked = labelsOn();
+    }
+    page.querySelector('#sys-help').innerHTML = listOn ? '' : helpHtml();
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
-    const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'\u2039'} Back</button>` : '';
-    panel.innerHTML = backBtn ? panelHtml(s).replace('<div class="rail-head">', '<div class="rail-head">' + backBtn) : panelHtml(s);
+    const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'‹'} Back</button>` : '';
+    // While the list shows, Open in Loom sits right under the panel's head.
+    const extra = listOn && S.sel && S.sel.kind !== 'multi' ? `<div class="sys-actions sys-open-row">${openInLoomBtn()}</div>` : '';
+    let html = panelHtml(s);
+    if (backBtn) html = html.replace('<div class="rail-head">', '<div class="rail-head">' + backBtn);
+    if (extra) { const i = html.indexOf('<div class="rail-title">'), j = i < 0 ? -1 : html.indexOf('</div></div>', i); if (j >= 0) html = html.slice(0, j + 12) + extra + html.slice(j + 12); }
+    panel.innerHTML = html;
     panel.scrollTop = keep;
   }
   function leave(page) { page.classList.remove('sys-on'); }
@@ -1440,8 +1516,9 @@
       const t = e.target;
       const a = t.closest('[data-sact]');
       if (a && !a.disabled) { act(a.dataset.sact, a); return; }
+      if (t.closest('[data-sfocus]')) return;   // a pick (app.js)
       const sl = t.closest('[data-ssel]');
-      if (sl) { const [k, x, y] = sl.dataset.ssel.split(':'); S.sel = k === 'cable' ? { kind: 'cable', id: x } : k === 'block' ? { kind: 'block', block: x } : { kind: 'conn', block: x, conn: y }; S.picking = null; A.refresh(); return; }
+      if (sl) { const v = parseSel(sl.dataset.ssel); if (v) { S.sel = v; S.picking = null; S.adding = null; A.refresh(); } return; }
       const ck = t.closest('[data-scheck]');
       if (ck) { const c = checks(cur(), A.harness)[+ck.dataset.scheck]; if (c && c.sel) { S.sel = c.sel; A.refresh(); } }
     });
@@ -1630,6 +1707,7 @@
         A.toast(`Connected ${endName(s, p)} to ${endName(s, q)}. Say in the panel whether it’s a purchased cable or a Loom harness.`);
         break;
       }
+      case 'open-in-loom': openInLoom(); break;
       case 'open-harness-id': if (el && A.harness(el.dataset.harness)) A.openHarness(el.dataset.harness); break;
       case 'open-harness': { const cab = cable(s, S.sel.id); A.openHarness(cab.harness); break; }
       case 'open-ee': { const b = block(s, S.sel.block); location.href = `../ee_design_review/index.html?project=${encodeURIComponent(b.source.id)}${DEMO ? '&demo' : ''}`; break; }
@@ -1641,7 +1719,7 @@
   function onKey(e) {
     const mod = e.ctrlKey || e.metaKey, typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
     if (typing) return;
-    if (S.tab === 'wires' && !mod) return;
+    if (S.tab === 'list' && !mod && e.key !== 'Escape') return;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? swap(S.future, S.past) : swap(S.past, S.future); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); swap(S.future, S.past); return; }
     if (e.key === 'Escape') { if (menuEl) { closeMenu(); return; } if (S.pending) { S.pending = null; A.refresh(); return; } S.sel = null; S.pair = null; S.picking = null; S.adding = null; A.refresh(); return; }
