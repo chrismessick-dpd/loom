@@ -478,6 +478,38 @@
     S.focus = kind === 'system' && id === S.root ? null : { kind, id, path };
     applyTab(); A.refresh();
   }
+  // The path from the open system to a system inside its tree: along the one drawn now first (its parents,
+  // or a system it places), else the first found from the top. Null when it isn't in the tree.
+  function pathTo(id) {
+    if (!S.root) return null;
+    if (id === S.root) return S.root;
+    const cp = String(curPath()).split('>'), i = cp.indexOf(id);
+    if (i >= 0) return cp.slice(0, i + 1).join('>');
+    const c = cur();
+    if (c && c.blocks.some(b => b.kind === 'system' && b.system === id && childOf(b))) return cp.concat(id).join('>');
+    const walk = (sid, trail) => {
+      if (trail.length > DEPTH) return null;
+      for (const b of (S.store[sid] ? S.store[sid].blocks : [])) {
+        const ch = childOf(b);
+        if (!ch || trail.includes(ch.id)) continue;
+        if (ch.id === id) return trail.concat(id).join('>');
+        const r = walk(ch.id, trail.concat(ch.id));
+        if (r) return r;
+      }
+      return null;
+    };
+    return walk(S.root, [S.root]);
+  }
+  // Open <system> in a panel (Chris, 2026-11-12: Overview always shows the top system): a system inside the
+  // open one's tree becomes the pick and opens on Detail, and the open system itself goes back to Overview.
+  // Only a system outside the tree is opened as the top one.
+  function openSub(id) {
+    const p = pathTo(id);
+    if (!p) { A.openSystem(id); return; }
+    if (id === S.root) { S.focus = null; S.tab = 'overview'; }
+    else { S.focus = { kind: 'system', id, path: p }; S.tab = 'detail'; }
+    applyTab(); A.refresh();
+  }
   // Back (Chris, 2026-11-12): from any panel straight to the system's own.
   function back() { S.sel = null; S.pair = null; S.picking = null; S.adding = null; S.pending = null; A.refresh(); }
 
@@ -1612,7 +1644,7 @@
         A.toast(`Placed ${ch.title} as ${b.ref}${b.conns.length ? `, with ${b.conns.length} external connector${b.conns.length > 1 ? 's' : ''}` : '. Tick Make external on its connectors to plug into it here'}.`);
         break;
       }
-      case 'open-system': if (el && el.dataset.sys && S.store[el.dataset.sys]) A.openSystem(el.dataset.sys); break;
+      case 'open-system': if (el && el.dataset.sys && S.store[el.dataset.sys]) openSub(el.dataset.sys); break;
       case 'refresh-board': {
         const b0 = block(s, S.sel.block);
         if (!b0 || !b0.source) break;
