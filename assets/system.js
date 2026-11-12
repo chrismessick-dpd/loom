@@ -286,7 +286,7 @@
         // to get out (its exit already leaves the board's side).
         const blocks = rects.filter(r => r.id !== a.b.id && r.id !== b.b.id && r.x1 > lb.x0 && r.x0 < lb.x1 && r.y1 > lb.y0 && r.y0 < lb.y1);
         const kept = cab.routes && cab.routes[b.n.id];
-        let v = kept && RT().fits(T1, T2, kept, STUB_U) ? kept.map(Number) : null;
+        let v = kept && kept.length % 2 === 1 && kept.every(x => isFinite(+x)) ? kept.map(Number) : null;
         if (!v) {
           // A route found before for the same ends among the same blocks is reused, so a drag re-routes
           // only the cables it moves or crosses.
@@ -582,14 +582,15 @@
       } else if (run) {
         const [cid, key, k] = run.dataset.run.split('|'), r = lastLo.get(cid).routes.find(x => x.key === key);
         const R = RT().runs(r.A, r.B, r.v).find(x => x.k === +k);
-        drag = Object.assign(base, { kind: 'run', cab: cable(s, cid), r, k: +k, axis: R && R.axis, v0: r.v.slice() });
+        if (R) drag = Object.assign(base, { kind: 'run', cab: cable(s, cid), r, j: R.j, k: R.k, axis: R.axis, at: { x: (R.a.x + R.b.x) / 2, y: (R.a.y + R.b.y) / 2 } });
+      } else if (cb && !S.pending && (() => { const n = runNear(cb.dataset.cable, p); return n && n.n.d <= 14; })()) {
+        // As the editor's runUnder: a cable's line drags the run under it, selected or not; a click
+        // without moving still selects it.
+        const near = runNear(cb.dataset.cable, p);
+        drag = Object.assign(base, { kind: 'run', cab: cable(s, cb.dataset.cable), r: near.r, j: near.n.j, k: near.n.k, axis: near.n.axis, at: near.n.at, click: cb.dataset.cable });
       } else if (bl && !S.pending) {
         const b = block(s, bl.dataset.block);
         drag = Object.assign(base, { kind: 'block', bx: b.x, by: b.y, b });
-      } else if (cb && !S.pending && S.sel && S.sel.kind === 'cable' && S.sel.id === cb.dataset.cable) {
-        // A drag on a selected cable's line moves the run under it, as in the editor.
-        const near = runNear(cb.dataset.cable, p);
-        drag = near && near.n.k >= 0 ? Object.assign(base, { kind: 'run', cab: cable(s, cb.dataset.cable), r: near.r, k: near.n.k, axis: near.n.axis, v0: near.r.v.slice() }) : Object.assign(base, { kind: 'click' });
       } else drag = Object.assign(base, { kind: bl || cb ? 'click' : 'pan', cam: Object.assign({}, S.cam), k: p.k });
     });
     svg.addEventListener('pointermove', e => {
@@ -614,9 +615,37 @@
         return;
       }
       if (d.kind === 'run') {
-        if (!d.snap) { S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; }
+        // The editor's dragRun: an end run belongs to its connector, so the first move adds a bend in it,
+        // out where it's clear of the connector (at least a stub away), and drags the new section; the
+        // run then moves sideways by the pointer's travel, snapped to the grid (Ctrl: anywhere).
+        if (!d.snap) {
+          const R0 = d.r;
+          let v = R0.v.slice(), k = d.k;
+          if (k < 0) {
+            const at = Object.assign({}, d.at), last = d.j > 0;
+            if (!last) at.x = R0.A.out > 0 ? Math.max(at.x, R0.A.x + STUB_U) : Math.min(at.x, R0.A.x - STUB_U);
+            else at.x = R0.B.in > 0 ? Math.min(at.x, R0.B.x - STUB_U) : Math.max(at.x, R0.B.x + STUB_U);
+            if (!v.length) {
+              // A straight cable: the section from the grab to the far end's corner lifts (route.js
+              // needs a vertical run either side of a level one).
+              const xb = R0.B.x - R0.B.in * STUB_U, xa = R0.A.x + R0.A.out * STUB_U;
+              v = Math.abs(xb - at.x) >= Math.abs(at.x - xa) ? [snapU(at.x), R0.A.y, xb] : [xa, R0.A.y, snapU(at.x)];
+              k = 1;
+            } else {
+              const nb = RT().addBend(R0.A, R0.B, v, d.j, at);
+              if (!nb) { drag = null; return; }
+              v = nb.v; k = nb.k;
+            }
+          }
+          S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true;
+          Object.assign(d, { v0: v, k, axis: k % 2 ? 'h' : 'v' });
+          svg.classList.add('dragging');
+        }
+        const d0 = toWorld(svg, { clientX: d.x, clientY: d.y });
+        let val = d.v0[d.k] + (d.axis === 'v' ? p.x - d0.x : p.y - d0.y);
+        if (!(e.ctrlKey || e.metaKey)) val = snapU(val);
         const v = d.v0.slice();
-        v[d.k] = snapU(d.axis === 'v' ? p.x : p.y);
+        v[d.k] = val;
         keepRoute(d.cab, d.r.key, v);
         redraw(svg);
         return;
@@ -640,7 +669,8 @@
         change(s => { const cab = cable(s, d.cab); cab.ends[d.node] = to; if (to) conn(block(s, to.block), to.conn).used = true; if (cab.routes) delete cab.routes[d.node]; S.sel = { kind: 'cable', id: cab.id }; });
         return;
       }
-      if (d.kind === 'run' && d.moved) { const v = d.cab.routes[d.r.key]; keepRoute(d.cab, d.r.key, RT().tidy(d.r.A, d.r.B, v)); cur().updated = now(); persist(); A.refresh(); return; }
+      if (d.kind === 'run' && !d.moved && d.click) { S.sel = { kind: 'cable', id: d.click }; S.pair = null; S.picking = null; A.refresh(); return; }
+      if (d.kind === 'run' && d.moved && d.snap) { const v = d.cab.routes[d.r.key]; keepRoute(d.cab, d.r.key, RT().tidy(d.r.A, d.r.B, v)); cur().updated = now(); persist(); A.refresh(); return; }
       if (d.kind === 'block' && d.moved) { cur().updated = now(); persist(); A.refresh(); return; }
       if (d.moved || d.button !== 0) return;
       // A click: as the editor's click().

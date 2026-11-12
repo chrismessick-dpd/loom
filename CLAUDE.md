@@ -56,7 +56,13 @@ links to it so far. Before every commit:
   a selection about 0.3 s (mostly the DOM). Routes no longer spread apart from each other (`occupy` is gone).
   Blocks are drawn as the editor's connector cards (2026-11-11, Chris: they blended into the stage): `.cv-conn`
   with `.cv-card`, a `.cv-headbg` header band, `.cv-glass`, `.cv-rim`, and `.cv-frame`, the gradients (`lmfx-conn-head`,
-  `lmfx-glass`, `lmfx-head`) defined in the system's own SVG; a device's frame is dashed. New harness here makes a
+  `lmfx-glass`, `lmfx-head`) defined in the system's own SVG; a device's frame is dashed.
+  **Cable runs drag as the editor's wires do** (2026-11-11, Chris: same engine, exact logic; a straight cable
+  couldn't be pulled up): any cable's line grabs the run under it, selected or not (as `runUnder`), and a click
+  without moving selects it; an end run first gets a bend at the grab, a stub clear of its connector, and the new
+  section drags (as `dragRun`, via `route.addBend`); a straight cable (`v` empty) lifts from the grab to the far
+  end's corner; the run moves by the pointer's travel, on the grid (Ctrl: free); let go, `route.tidy`. A dragged
+  shape is kept, as in the editor, even past the stubs (an odd count of values). New harness here makes a
   placeholder (the board end plus a generic far end), or, with a second connector Shift-picked, a
   board-to-board harness with the shared-net wires (`boards.matches`). Plug in a harness… ranks harnesses
   made from that connector first. Checks: used and unplugged, plugged and not used, two cables on a
