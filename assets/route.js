@@ -135,8 +135,10 @@
   // need: the tightest bend the route's widest wire can take (its half-width and a little). Where the
   // corners and S-curves above still bend tighter (a wide bundle dragged into several small steps),
   // the line is smoothed until none does (ease), keeping its two end runs straight into the pins.
+  // A.from and B.to, when given, are lead-ins drawn before A and after B (a system connector's exit
+  // inside its board, connect.js); a harness has none.
   function shape(A, B, v, r, need) {
-    const raw = corners(A, B, v), C = [];
+    const raw = (A.from ? [A.from] : []).concat(corners(A, B, v), B.to ? [B.to] : []), C = [];
     raw.forEach(p => { const q = C[C.length - 1]; if (!q || Math.hypot(p.x - q.x, p.y - q.y) > 0.01) C.push(p); });
     // Drop points in line with their neighbors (a zero-length run leaves two runs in line).
     for (let i = 1; i < C.length - 1;) {

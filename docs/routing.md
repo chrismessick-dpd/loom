@@ -1,5 +1,39 @@
 # Wire routing (branch `routing`, 2026-11-10)
 
+## One engine for harnesses and systems (2026-11-11)
+
+Chris: anything that joins two blocks is a **Connection**: on a harness, a wire (between connectors and
+splices); in a system, a cable (between connectors on boards and devices), whether a Loom harness, a
+purchased cable, or a generic connection. Both route the same way, and the harness's routing is the
+baseline ("I like how it is working").
+
+- **`assets/connect.js`** (`LM.connect`) is the engine. `routeAll(docKey, rects, list, opts)` is the
+  harness's route-set code moved out of `conn.js` unchanged: end pairs tried and the cheaper kept,
+  shapes kept by key with the sides they were shaped on, Go behind, stability (a route is kept while its
+  ends haven't moved and nothing changed on top of it), biggest first, and `occupy`. `grab`, `slide`,
+  `release`, `bend`, `menuHtml`, and `apply` are the harness editor's run drag, double-click bend, and
+  right-click route menu, which both canvases now call.
+- **The harness** (`conn.js`) builds its boxes' terminals (pins on either edge, breakouts) and hands them
+  over; branches, packing, and labels stay there. **`tests/golden.js`** pins every harness route on the
+  demo and both routing checks through a fixed run of moves, a drag, a shaped run, and Go behind, as
+  hashes taken before the move (`golden-data.js`). It must never change by accident; regenerate it only
+  on purpose (`tests/golden.html`).
+- **A system** (`system.js`) gives the engine its blocks as the parts and each cable end as a terminal:
+  a connector leaving left or right runs level from its exit, with its own stub out past its board's
+  edge; one leaving up or down runs to a lead point past the edge (`A.from`, `B.to`: route.js `shape`
+  draws them) and may turn either way there, the cheaper winning, as a harness connector's two edges. A
+  cable keeps the harness's record per end (`cab.routes[end id] = { v, a, b, mode }`).
+- **Two differences, both parameters:** a system searches on a 12-unit grid (3 mm; a made-up 30-board,
+  60-cable system, `tests/fixture-system.js`, routed in about 1.1 s against 1.7 s at 10, a drag step
+  about 0.1 s), and a system terminal's stub reaches a grid line, since the search rounds its first
+  corner to the grid and a corner rounded back short of the stub made the route give up and run
+  straight (the harness has the same rounding; left as it is, as the baseline).
+- **Fixed for both:** dragging the end of a straight wire (no middle runs) used to add a bend that left an
+  even count of values, drawn wrong. It now lifts the piece from the grab to the far end's corner, as
+  systems did.
+- **Not the same yet:** a cable with three or more ends routes from its first end to each other one; a
+  harness bundle with a breakout has a split point and routed branches.
+
 Chris, 2026-11-10: "I want to be able to place a line point to point, … assume any direction from any
 point. … What I really want is the ability to shape those wires afterward, change and maybe add
 curves. … if we had the wires walk around objects … all the straight parts of the wires could be

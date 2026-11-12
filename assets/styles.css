@@ -1018,7 +1018,8 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-st { width: 16px; flex: none; text-align: center; font-weight: 700; }
 .sys-st.st-wired { color: var(--accent); }
 .sys-st.st-progress, .sys-st.st-missing { color: var(--issue); }
-.sys-st.st-placeholder { color: var(--text-3); }
+.sys-st.st-placeholder, .sys-st.st-link { color: var(--text-3); }
+.sys-st.st-bought { color: var(--text-2); }
 .sys-crow { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
 .sys-ctab .sys-crow { display: grid; grid-template-columns: 4.2em 5.6em 3.2em minmax(0, 1fr); justify-content: stretch; gap: 8px; }
 .sys-ctab .sys-crow > input { justify-self: center; }
@@ -1094,6 +1095,10 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-canvas .sys-w .w-pulse { stroke-width: 4; }
 .sys-canvas .sys-w.st-placeholder .w-base { stroke-dasharray: 10 6; stroke-linecap: butt; }
 .sys-canvas .sys-open .w-base { stroke-dasharray: 5 4; stroke-linecap: butt; }
+/* A generic connection is a thin dashed line (nothing to build or buy yet); a purchased cable is solid,
+   gray, and glossy. Never by hue alone (Chris is colorblind): dashes and weight tell them apart. */
+.sys-canvas .sys-w.st-link .w-base { stroke-dasharray: 7 6; stroke-linecap: butt; stroke-width: 4; }
+.sys-canvas .sys-w.st-link .w-edge { stroke-dasharray: 7 6; stroke-linecap: butt; stroke-width: 6.5; }
 .sys-canvas .sys-w.sel .w-edge { stroke: var(--cv-sel); }
 .sys-ring { fill: var(--bg-elev); stroke: var(--text-2); stroke-width: 2; pointer-events: none; }
 .sys-clabel { font: 600 11px var(--font, sans-serif); fill: var(--text); paint-order: stroke; stroke: var(--bg-elev); stroke-width: 3.5; stroke-linejoin: round; pointer-events: none; }

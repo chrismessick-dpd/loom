@@ -4,6 +4,24 @@ Status: phases 1 to 3 built 2026-11-11 (`assets/system.js`; see Loom's CLAUDE.md
 yet: the board picture under the outline, the system sheet and harness BOM page, sharing, power and bus
 checks, and phase 4.
 
+## Connections (2026-11-11, Chris)
+
+Anything that joins two blocks is a **Connection**, routed exactly as a harness's wires are (one engine,
+`assets/connect.js`; `docs/routing.md`, *One engine*). A cable in a system is one of three kinds
+(`cab.kind`):
+- **Generic connection** (`link`): only a name, with ends A and B. Drawing a cable (a click on one
+  connector, then another) makes one; it's a thin dashed line.
+- **Purchased cable** (`bought`): name, part number, length, maker, and maker's part number, ends A and
+  B; counted in the summary's `cables` (by part number). Solid and gray.
+- **Loom harness** (`harness`): one use of a harness, its ends by the harness's end nodes, as before;
+  colored by its status.
+
+The cable's panel changes the kind (*What it is*). Plugged ends carry over in order, and so does each
+kept route. Made a Loom harness, a new harness is made from the plugged connectors (New harness here,
+with the shared-net wires for two); the old harness stays when a harness is made something else.
+New harness here and Plug in a harness… on a connector are unchanged. Right-click a cable for Walk around
+parts, Go behind parts, Reset route, and Remove.
+
 ## The idea
 
 A **system** is a second kind of Loom document, beside a harness. It places **blocks** (EE boards,

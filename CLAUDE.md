@@ -22,6 +22,20 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **One engine for every Connection (2026-11-11, Chris: "any object that connects two blocks is a
+  Connection"; the harness's routing is the baseline).** `assets/connect.js` (`LM.connect`) routes,
+  shapes, and drags harness wires and system cables alike: `routeAll` is the harness's route-set code
+  moved out of `conn.js` unchanged, and `grab`, `slide`, `release`, `bend`, `menuHtml`, and `apply` are the
+  editor's run drag, bend, and route menu, now called by both canvases. `tests/golden.js` checks the
+  harness routes exactly as before (hashes in `golden-data.js`; regenerate only on purpose with
+  `tests/golden.html`). Systems lost their copies (`rounded`, per-cable grids, `POOL`, `RCACHE`); a cable
+  keeps the harness's record per end (`cab.routes[end] = { v, a, b, mode }`; a bare v is read as `{ v }`),
+  searches on a 12-unit grid, and has the right-click menu. Cables have kinds: generic (`link`, what a
+  drawn cable starts as), purchased (`bought`), and Loom harness; *What it is* in the panel changes it
+  (`rekind`). Dragging a straight wire's end no longer leaves a broken shape. See `docs/routing.md`, *One
+  engine*, and `docs/system.md`, *Connections*. Tests 49. Not the same yet: a cable with three or more
+  ends routes as a star, not a breakout with branches.
+
 - **Systems (2026-11-11, Chris: phases 1 to 3 of `docs/system.md`, on `main`).** A system is a second kind
   of document (`assets/system.js`, `LM.system`) that places blocks (Signoff EE boards, drawn boards, and
   devices) to scale in mm, marks each connector Used with a Function (per placed block; Chris: copies of a

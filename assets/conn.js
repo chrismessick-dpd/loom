@@ -39,8 +39,6 @@
   // as its conductors need: SET_R past its outer wires. They fan in to it from grid spacing and back
   // out over fanLen, and its box keeps LABEL_PAD either side of its wires' labels after the fan-out.
   const PACK = 5, LABEL_PAD = 8;
-  // Routes found for each harness, by box key, so a layout that changes nothing finds none again.
-  const routeCache = new Map();
   const fanLen = sp => Math.max(24, Math.min(90, (sp.i1 - sp.i0) * (PITCH - PACK) * 0.7));
   // The sets that pack their wires: cables, shields, and bundles inside no other (an inner one packs
   // with it).
@@ -674,19 +672,10 @@
     const BREAK = 60, EASE = 60;
     // Which edges of each connector its routed wires use (connSvg puts the pin numbers there).
     const pinSides = new Map();
-    // Routes for every box, biggest first, each keeping clear of those before it.
-    // - A connector end may leave from either edge (Chris, 2026-11-10: P3 jumped its pins to the far
-    //   edge because P2's middle was a little to its right): both are tried and the cheaper route
-    //   wins, the edges facing each other on a tie.
-    // - A route shaped by hand (h.routes[box key]: v, and the edges it was shaped on, a and b) keeps
-    //   its runs. Its edges follow its first and last vertical runs: dragged past a connector, it
-    //   leaves from the other edge. A run inside a part's span fits neither, and the route runs behind
-    //   the part (Chris: drags aren't stopped by parts).
-    // - mode 'behind' (the wire's right-click menu) routes straight past parts, behind them.
-    // - A route found before is kept while its ends haven't moved, it doesn't now run through a
-    //   part, and it doesn't lie along a route that changed before it in this pass (Chris: lines he
-    //   hadn't touched kept changing). view.fast (a part being dragged) re-routes only boxes whose
-    //   ends moved.
+    // Routes for every box: each box is a Connection for the shared engine (connect.js routeAll, which
+    // has the rules: either edge, shapes kept, Go behind, stability). Here, its end pairs: a connector
+    // end may leave from either edge, the edge facing the other end first; a breakout ends where its
+    // wires split.
     function routeAll() {
       const rects = items.filter(i => i.kind === 'conn' || i.kind === 'splice').map(i => ({ id: i.n.id, x0: i.x, y0: i.y, x1: i.x + i.w, y1: i.y + i.h }));
       const all = [];
@@ -712,66 +701,15 @@
         const opts = k => { const t = mk(null, null)[k ? 'B' : 'A']; return t.conn ? [facing(k), facing(k) === 'r' ? 'l' : 'r'] : [null]; };
         const combos = [];
         opts(0).forEach(sa => opts(1).forEach(sb => combos.push(mk(sa, sb))));
-        let kept = null, ends = combos[0];
-        if (shape && Array.isArray(shape.v) && shape.v.every(x => isFinite(+x))) {
-          kept = shape.v.map(Number);
-          const want = combos.find(c => (!c.A.conn || c.A.side === shape.a) && (!c.B.conn || c.B.side === shape.b)) || combos[0];
-          ends = [want].concat(combos.filter(c => c !== want)).find(c => RT.fits(c.A, c.B, kept, stub)) || want;
-        }
-        all.push({ b, A: ends.A, B: ends.B, combos, half, stub, r: half + 10, kept, behind: !!(shape && shape.mode === 'behind') });
+        all.push({ key: b.key, weight: b.wires.length, combos, half, stub, r: half + 10, shape });
       });
-      const sig = o => JSON.stringify(o.combos.map(c => [c.A.x, c.A.y, c.A.out, c.B.x, c.B.y, c.B.in]).flat().concat(o.half, o.behind ? 1 : 0).map(v => Math.round(v * 10) / 10));
-      const whole = JSON.stringify([rects.map(r => [r.x0, r.y0, r.x1, r.y1].map(Math.round)), all.map(o => o.b.key + sig(o) + (o.kept ? o.kept.join(',') + o.A.side + o.B.side : ''))]);
-      const cache = routeCache.get(h.id) || { whole: '', v: new Map(), sig: new Map() };
-      const same = cache.whole === whole;
-      const xs = rects.flatMap(r => [r.x0, r.x1]).concat(all.flatMap(o => o.combos.flatMap(c => [c.A.x, c.B.x]))), ys = rects.flatMap(r => [r.y0, r.y1]).concat(all.flatMap(o => [o.A.y, o.B.y]));
-      const G = RT.grid({ x0: Math.min(0, ...xs) - 300, y0: Math.min(0, ...ys) - 300, x1: Math.max(0, ...xs) + 300, y1: Math.max(0, ...ys) + 300 }, 10);
-      // One order whatever is shaped, so shaping one route moves as few others as it can.
-      all.sort((p, q) => q.b.wires.length - p.b.wires.length || (p.b.key < q.b.key ? -1 : 1));
-      const strict = (p, q, r) => (Math.abs(p.y - q.y) < 0.01
-        ? p.y > r.y0 && p.y < r.y1 && Math.max(p.x, q.x) > r.x0 && Math.min(p.x, q.x) < r.x1
-        : p.x > r.x0 && p.x < r.x1 && Math.max(p.y, q.y) > r.y0 && Math.min(p.y, q.y) < r.y1);
-      const crosses = (A0, B0, v, half) => RT.runs(A0, B0, v).some(r => rects.some(rc => {
-        if (r.k < 0 && (rc.id === A0.node || rc.id === B0.node)) return false;
-        const m = half + 2;
-        return strict(r.a, r.b, { x0: rc.x0 - m, y0: rc.y0 - m, x1: rc.x1 + m, y1: rc.y1 + m });
-      }));
-      const along = (r, s, d) => {
-        if (r.axis !== s.axis) return false;
-        const lv = r.axis === 'h', gap = Math.abs(lv ? r.a.y - s.a.y : r.a.x - s.a.x);
-        const lo = lv ? Math.max(Math.min(r.a.x, r.b.x), Math.min(s.a.x, s.b.x)) : Math.max(Math.min(r.a.y, r.b.y), Math.min(s.a.y, s.b.y));
-        const hi = lv ? Math.min(Math.max(r.a.x, r.b.x), Math.max(s.a.x, s.b.x)) : Math.min(Math.max(r.a.y, r.b.y), Math.max(s.a.y, s.b.y));
-        return gap < d && hi - lo > 1;
-      };
-      const changed = [];
-      const nearChanged = (A0, B0, v, half) => { const mine = RT.runs(A0, B0, v); return changed.some(c => c.runs.some(s => mine.some(r => along(r, s, half + c.half + 1)))); };
-      all.forEach(o => {
-        const prev = cache.v.get(o.b.key);
-        let v = o.kept, A0 = o.A, B0 = o.B;
-        if (!v) {
-          const same1 = prev && cache.sig.get(o.b.key) === sig(o);
-          const pc = prev && o.combos.find(c => c.A.side === prev.a && c.B.side === prev.b);
-          if (pc && (same || (same1 && ((view && view.fast) || (!crosses(pc.A, pc.B, prev.v, o.half) && !nearChanged(pc.A, pc.B, prev.v, o.half)))))) { v = prev.v; A0 = pc.A; B0 = pc.B; }
-          else {
-            const m = o.half + 8, blocks = o.behind ? [] : rects.map(r => ({ x0: r.x0 - m, y0: r.y0 - m, x1: r.x1 + m, y1: r.y1 + m }));
-            let best = null;
-            o.combos.forEach(c => {
-              let cv = RT.auto(G, c.A, c.B, blocks, o.stub, 2 * o.r);
-              if (!cv || !RT.fits(c.A, c.B, cv, o.stub)) cv = null;
-              if (cv && (!best || cv.cost < best.v.cost - 0.5)) best = { v: cv, c };
-            });
-            if (best) { v = best.v; A0 = best.c.A; B0 = best.c.B; }
-            else v = RT.fits(A0, B0, [], o.stub) ? [] : [A0.x + A0.out * o.stub];
-          }
-        }
-        if (!prev || prev.v.join(',') !== v.join(',') || prev.a !== A0.side || prev.b !== B0.side) changed.push({ half: o.half, runs: RT.runs(A0, B0, v) });
-        RT.occupy(G, A0, B0, v, o.half + 6);
-        [A0, B0].forEach(T => { if (T.pins && T.conn) { if (!pinSides.has(T.node)) pinSides.set(T.node, new Set()); pinSides.get(T.node).add(T.side); } });
-        routes.set(o.b.key, { key: o.b.key, A: A0, B: B0, v, half: o.half, stub: o.stub, r: o.r, kept: !!o.kept, behind: o.behind });
+      // The shared engine (connect.js) lays them; a connector end's edge is where its pin numbers go.
+      const res = LM.connect.routeAll(h.id, rects, all, {
+        fast: !!(view && view.fast),
+        onRoute: (A0, B0) => [A0, B0].forEach(T => { if (T.pins && T.conn) { if (!pinSides.has(T.node)) pinSides.set(T.node, new Set()); pinSides.get(T.node).add(T.side); } }),
       });
-      const next = { whole, v: new Map(), sig: new Map() };
-      all.forEach(o => { const R0 = routes.get(o.b.key); next.v.set(o.b.key, { v: R0.v, a: R0.A.side, b: R0.B.side }); next.sig.set(o.b.key, sig(o)); });
-      routeCache.set(h.id, next);
+      res.routes.forEach((R0, k) => routes.set(k, R0));
+      const G = res.G;
       routing = { G, rects };
     }
     let routing = null;

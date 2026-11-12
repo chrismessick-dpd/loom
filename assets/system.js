@@ -1,6 +1,8 @@
 // Loom systems (docs/system.md): a second kind of document that places boards and devices, marks which
-// of their connectors are used and for what, and plugs Loom harnesses into them. A cable is one use of
-// a harness: each of the harness's ends plugs into one connector on one block, or is not plugged yet.
+// of their connectors are used and for what, and joins them with cables. A cable is a Connection
+// (connect.js), routed exactly as a harness's wires are: one use of a Loom harness (each of the harness's
+// ends plugs into one connector on one block, or is not plugged yet), a purchased cable, or a generic
+// connection, each with ends that plug into connectors.
 // Plugging is kept here, on the placed block, never on the EE board or the harness (Chris, 2026-11-07:
 // copies of one board may use different cables). Systems keep their own store and undo; the app hands
 // over #page while one is open (LM.app hooks, `init`).
@@ -24,7 +26,13 @@
     s.blocks = Array.isArray(s.blocks) ? s.blocks : [];
     s.cables = Array.isArray(s.cables) ? s.cables : [];
     s.blocks.forEach(b => { b.conns = Array.isArray(b.conns) ? b.conns : []; b.conns.forEach(c => { c.pins = Array.isArray(c.pins) ? c.pins : []; }); });
-    s.cables.forEach(c => { c.ends = c.ends && typeof c.ends === 'object' ? c.ends : {}; });
+    s.cables.forEach(c => {
+      c.ends = c.ends && typeof c.ends === 'object' ? c.ends : {};
+      if (!KINDS[c.kind]) c.kind = c.harness ? 'harness' : 'link';
+      if (c.kind !== 'harness') TWO.forEach(e => { if (!(e.id in c.ends)) c.ends[e.id] = null; });
+      // A route kept as a bare v (before cables kept the harness's record) becomes { v }.
+      if (c.routes && typeof c.routes === 'object') Object.keys(c.routes).forEach(k => { const r = LM.connect.record(c.routes[k]); if (r) c.routes[k] = r; else delete c.routes[k]; });
+    });
     return s;
   }
   function nextRef(list, prefix) {
@@ -82,6 +90,15 @@
   // Every cable end plugged into a connector: [{ cable, node }].
   const pluggedAt = (s, bid, cid) => s.cables.flatMap(c => Object.keys(c.ends).filter(k => { const e = c.ends[k]; return e && e.block === bid && e.conn === cid; }).map(k => ({ cable: c, node: k })));
   const harnessEnds = h => h ? h.nodes.filter(M.isConn) : [];
+  // What a cable is (Chris, 2026-11-11: anything that joins two blocks is a Connection): one use of a Loom
+  // harness ('harness': cab.harness, ends by the harness's end node ids), a purchased cable ('bought':
+  // name, pn, mfr, mpn, ends a and b), or a generic connection ('link': a name, ends a and b). Drawing a
+  // cable between two connectors makes a generic connection; its panel makes it one of the others.
+  const KINDS = { link: 'Generic connection', bought: 'Purchased cable', harness: 'Loom harness' };
+  const TWO = [{ id: 'a', ref: 'End A', name: '' }, { id: 'b', ref: 'End B', name: '' }];
+  const kindOf = cab => cab.kind || (cab.harness ? 'harness' : 'link');
+  const harnessOf = cab => (kindOf(cab) === 'harness' && A ? A.harness(cab.harness) : null);
+  const endsOf = (cab, h) => (kindOf(cab) === 'harness' ? harnessEnds(h) : TWO);
   // The harness end that best fits a connector: one filled from this board's connector (From a board),
   // then one with as many pins, then any end not plugged yet.
   function bestEnd(s, cab, h, b, c) {
@@ -90,7 +107,15 @@
     return free.find(n => n.board && src && n.board.project === src && n.board.ref === c.ref)
       || free.find(n => M.pinList(n).length === c.pins.length) || free[0] || null;
   }
-  // ○ placeholder (no wires), ● wired with errors, ◉ wired with no errors.
+  // ○ placeholder (no wires), ● wired with errors, ◉ wired with no errors; ◆ a purchased cable, ─ a
+  // generic connection.
+  function statusOf(cab, h) {
+    const k = kindOf(cab);
+    if (k === 'bought') return { key: 'bought', glyph: '◆', text: 'Purchased cable' };
+    if (k === 'link') return { key: 'link', glyph: '─', text: 'Generic connection' };
+    return status(h);
+  }
+  const titleOf = (cab, h) => { const k = kindOf(cab); return k === 'harness' ? (h ? h.title : 'Missing harness') : cab.name || KINDS[k]; };
   function status(h) {
     if (!h) return { key: 'missing', glyph: '✕', text: 'Harness missing' };
     if (!h.wires.length) return { key: 'placeholder', glyph: '○', text: 'Placeholder, no wires yet' };
@@ -99,7 +124,11 @@
   }
   // A placed cable may override its harness's length (Chris, 2026-11-11): it's then the variant
   // <harness PN>-<length in mm>, the same harness at another length.
-  const pnOf = (h, cab) => { const base = (h && h.pn) || ''; return cab.lengthMm ? (base || '(no PN)') + '-' + Math.round(cab.lengthMm) : base; };
+  const pnOf = (h, cab) => {
+    if (kindOf(cab) === 'bought') return cab.pn || cab.mpn || '';
+    if (kindOf(cab) === 'link') return '';
+    const base = (h && h.pn) || ''; return cab.lengthMm ? (base || '(no PN)') + '-' + Math.round(cab.lengthMm) : base;
+  };
   const endName = (s, e) => { const b = e && block(s, e.block), c = b && conn(b, e.conn); return b && c ? `${b.ref} ${c.ref}` : ''; };
 
   function checks(s, get) {
@@ -114,7 +143,12 @@
       if (at.length > 1) add('error', `${where} has ${at.length} cables plugged into it.`, { kind: 'conn', block: b.id, conn: c.id });
     }));
     s.cables.forEach(cab => {
-      const h = get(cab.harness), sel = { kind: 'cable', id: cab.id };
+      const sel = { kind: 'cable', id: cab.id };
+      if (kindOf(cab) !== 'harness') {
+        TWO.forEach(e => { if (!cab.ends[e.id]) add('warn', `${cab.name || KINDS[kindOf(cab)]}: ${e.ref} isn't plugged in.`, sel); });
+        return;
+      }
+      const h = get(cab.harness);
       if (!h) { add('error', `Cable ${cab.label || cab.id} names a harness that isn't here.`, sel); return; }
       harnessEnds(h).forEach(n => {
         const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn);
@@ -134,10 +168,15 @@
   // What a reader of the stored file sees (Signoff PL, phase 4).
   function summarize(sys, get) {
     const c = checks(sys, get), qty = {};
-    sys.cables.forEach(cab => { const h = get(cab.harness), k = cab.harness + '|' + (cab.lengthMm || ''); qty[k] = qty[k] || { harness: cab.harness, pn: pnOf(h, cab), name: h ? h.title : '', qty: 0 }; qty[k].qty++; });
+    const bought = {};
+    sys.cables.forEach(cab => {
+      if (kindOf(cab) === 'bought') { const k = (cab.pn || cab.mpn || cab.name || '').toLowerCase(); bought[k] = bought[k] || { name: cab.name || '', pn: cab.pn || '', mfr: cab.mfr || '', mpn: cab.mpn || '', qty: 0 }; bought[k].qty++; return; }
+      if (kindOf(cab) !== 'harness') return;
+      const h = get(cab.harness), k = cab.harness + '|' + (cab.lengthMm || ''); qty[k] = qty[k] || { harness: cab.harness, pn: pnOf(h, cab), name: h ? h.title : '', qty: 0 }; qty[k].qty++;
+    });
     return { v: 1, tool: 'loom', kind: 'system', name: sys.title, project: sys.project || '', revision: sys.rev || '', archived: !!sys.deleted,
       blocks: sys.blocks.map(b => ({ ref: b.ref, name: b.name, kind: b.kind, ee: b.source && b.source.id || '', used: b.conns.filter(x => x.used).length })),
-      harnesses: Object.values(qty), errors: c.filter(x => x.sev === 'error').length, warnings: c.filter(x => x.sev === 'warn').length };
+      harnesses: Object.values(qty), cables: Object.values(bought), links: sys.cables.filter(c => kindOf(c) === 'link').length, errors: c.filter(x => x.sev === 'error').length, warnings: c.filter(x => x.sev === 'warn').length };
   }
 
   // ── Storage ──
@@ -194,11 +233,15 @@
   // ── Drawing ──
   // The canvas is drawn in the harness editor's units (K per mm), so it takes the editor's look as it
   // is: wires with an edge and gloss (.w-edge, .w-base, .w-gloss), the selection's pulse (.w-pulse),
-  // the wiring ghost (.ghost-w), and draggable runs (.cv-run). Cables route at right angles round the
-  // blocks between them (route.js, as the editor's wires do); a dragged run or an added bend is kept
-  // per cable and end (cab.routes), until Reset route.
-  const K = 4, STUB_U = 24, GRID = 4, RADIUS = 14, CLEAR = 12;
-  const RT = () => LM.route;
+  // the wiring ghost (.ghost-w), and draggable runs (.cv-run). Cables are Connections (connect.js): they
+  // route, shape, and drag exactly as the harness editor's wires, by the same engine (Chris, 2026-11-11:
+  // the harness's routing is the baseline). A dragged run or an added bend is kept per cable and end
+  // (cab.routes[end id], the harness's record: v, a, b, mode), until Reset route.
+  const K = 4, STUB_U = 24, GRID = 4;
+  // A cable's line, as one harness wire's: half its drawn width (.sys-w .w-edge, 8.5), its corner
+  // radius, and how far it runs out before its first corner (conn.js: half + 10, half + 20).
+  const HALF = 4, RADIUS = HALF + 10, STUB_R = HALF + 20;
+  const RT = () => LM.route, CN = () => LM.connect;
   // A tab on the canvas, and where a cable leaves it (Chris, 2026-11-11: out of any side, by default the
   // side of the board edge it's nearest): the exit point (ex, ey) in the middle of that side of the tab,
   // and its direction (dx, dy). A connector's panel can set the side (c.exit). tx and cy alias the exit.
@@ -212,91 +255,85 @@
     const x = (b.x + c.x) * K, y = (b.y + c.y) * K, w = TAB.w * K, h = TAB.h * K, cx = x + w / 2, cy = y + h / 2;
     const side = exitSide(b, c), [dx, dy] = SIDES[side];
     const ex = dx ? (dx < 0 ? x : x + w) : cx, ey = dy ? (dy < 0 ? y : y + h) : cy;
-    // A cable leaving up or down runs out past the block's edge, then turns level (route.js routes
-    // level from there): the lead point.
-    const ly = dy ? (dy < 0 ? b.y * K : (b.y + b.h) * K) + dy * STUB_U : ey;
-    return { x, y, w, h, cx, cy: ey, mid: cy, side, dx, dy, ex, ey, tx: ex, out: dx, lead: dy ? { x: ex, y: ly } : null };
+    // How far the exit is inside its block's edge, the way it leaves.
+    const inside = dx ? (dx < 0 ? ex - b.x * K : (b.x + b.w) * K - ex) : (dy < 0 ? ey - b.y * K : (b.y + b.h) * K - ey);
+    return { x, y, w, h, cx, cy: ey, mid: cy, side, dx, dy, ex, ey, tx: ex, out: dx, inside: Math.max(0, inside) };
   }
-  // A rounded path through right-angle corners, and the point halfway along it.
-  function rounded(C0, r) {
-    const C = [];
-    C0.forEach(p => { const q = C[C.length - 1]; if (!q || Math.hypot(p.x - q.x, p.y - q.y) > 0.01) C.push(p); });
-    for (let i = 1; i < C.length - 1;) { const a = C[i - 1], b = C[i], c = C[i + 1]; if (Math.abs((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)) < 0.01) C.splice(i, 1); else i++; }
-    let d = `M${C[0].x} ${C[0].y}`, total = 0;
-    const L = C.slice(1).map((p, i) => Math.hypot(p.x - C[i].x, p.y - C[i].y));
-    for (let i = 1; i < C.length; i++) {
-      const p = C[i];
-      if (i === C.length - 1) { d += `L${p.x} ${p.y}`; break; }
-      const a = C[i - 1], c = C[i + 1], rr = Math.min(r, L[i - 1] / 2, L[i] / 2);
-      const u = { x: (p.x - a.x) / L[i - 1], y: (p.y - a.y) / L[i - 1] }, v = { x: (c.x - p.x) / L[i], y: (c.y - p.y) / L[i] };
-      d += `L${(p.x - u.x * rr).toFixed(1)} ${(p.y - u.y * rr).toFixed(1)}Q${p.x} ${p.y} ${(p.x + v.x * rr).toFixed(1)} ${(p.y + v.y * rr).toFixed(1)}`;
+  // A tab's terminals for the engine (route.js terminals are level): one leaving left or right runs
+  // level from its exit, out past its block's edge before it turns (its own stub); one leaving up or
+  // down runs to a lead point STUB_U past the block's edge and turns level there, either way (two
+  // choices, the cheaper wins, as a harness connector's two edges). node is the block, whose rectangle
+  // its end runs may cross. B terminals arrive (in) the way A terminals leave (out). A stub reaches a
+  // line of the search grid (step), where the engine's search turns first: one rounded back toward the
+  // connector would fall short of the stub, and the route would give up and run straight.
+  const onGrid = (x, out, need, step) => Math.abs((out > 0 ? Math.ceil((x + need) / step) : Math.floor((x - need) / step)) * step - x);
+  function terminals(g, b, end, toward, step) {
+    const node = b.id;
+    if (g.dx) {
+      const T = { x: g.ex, y: g.ey, pins: true, node, side: g.dx > 0 ? 'r' : 'l', conn: false, stub: onGrid(g.ex, g.dx, g.inside + STUB_U, step) };
+      T[end === 'A' ? 'out' : 'in'] = end === 'A' ? g.dx : -g.dx;
+      return [T];
     }
-    L.forEach(l => { total += l; });
-    let half = total / 2, mid = C[0];
-    for (let i = 0; i < L.length; i++) {
-      if (half <= L[i]) { const t = L[i] ? half / L[i] : 0; mid = { x: C[i].x + (C[i + 1].x - C[i].x) * t, y: C[i].y + (C[i + 1].y - C[i].y) * t }; break; }
-      half -= L[i];
-    }
-    return { d, mid };
+    const ly = g.dy < 0 ? b.y * K - STUB_U : (b.y + b.h) * K + STUB_U, from = { x: g.ex, y: g.ey };
+    const first = toward >= g.ex ? 1 : -1;
+    return [first, -first].map(o => {
+      const T = { x: g.ex, y: ly, pins: true, node, side: o > 0 ? 'r' : 'l', conn: true, stub: onGrid(g.ex, o, RADIUS, step) };
+      if (end === 'A') { T.out = o; T.from = from; } else { T.in = -o; T.to = from; }
+      return T;
+    });
   }
   function cableEnds(s, cab, h) {
-    return harnessEnds(h).map(n => { const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn); return { n, b, c, g: c ? tabGeom(b, c) : null }; });
+    return endsOf(cab, h).map(n => { const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn); return { n, b, c, g: c ? tabGeom(b, c) : null }; });
   }
   const pathOf = pts => 'M' + pts.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('L');
+  // The point halfway along a drawn route (route.js shape samples carry their arc length s).
+  function midOfPts(pts) {
+    const S = pts[pts.length - 1].s, half = S / 2;
+    for (let i = 1; i < pts.length; i++) if (pts[i].s >= half) { const a = pts[i - 1], q = pts[i], t = (half - a.s) / Math.max(1e-6, q.s - a.s); return { x: a.x + (q.x - a.x) * t, y: a.y + (q.y - a.y) * t }; }
+    return pts[0];
+  }
   // Every cable's routes: from its first plugged end to each other plugged end.
-  // Routing is the slow part (a system the size of a machine has dozens of cables over a big grid), so
-  // the layout is kept until the blocks, connectors, cables, or harness ends change, not redone for a
-  // selection; and a big system routes on a coarser grid (about 300k cells at most).
+  // The layout is kept until the blocks, connectors, cables, or harness ends change, not redone for a
+  // selection (a system the size of a machine has dozens of cables over a big drawing).
   let memo = { key: '', lo: null };
-  function layout(s) {
-    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted])]), s.cables, s.cables.map(c => { const h = A.harness(c.harness); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
+  function layout(s, view) {
+    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted])]), s.cables, s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
     if (memo.key === key && memo.lo) return memo.lo;
-    const lo = layoutNow(s);
+    const lo = layoutNow(s, view);
     memo = { key, lo };
     return lo;
   }
-  // route.js's search buffers, shared by every route (a fresh set per route was most of the time): its
-  // generation stamps mean they never need clearing.
-  const POOL = { n: 0, stamp: null, dist: null, prev: null, gen: 0 };
-  const RCACHE = new Map();
-  function gridFor(lb, g) {
-    const x0 = Math.floor(lb.x0 / g) * g, y0 = Math.floor(lb.y0 / g) * g;
-    const W = Math.ceil((lb.x1 - x0) / g) + 1, H = Math.ceil((lb.y1 - y0) / g) + 1, N = W * H * 4;
-    if (POOL.n < N || POOL.gen > 4e9) { POOL.n = N; POOL.stamp = new Uint32Array(N); POOL.dist = new Float32Array(N); POOL.prev = new Int32Array(N); POOL.gen = 0; }
-    return { g, x0, y0, W, H, occ: new Uint8Array(W * H), stamp: POOL.stamp, dist: POOL.dist, prev: POOL.prev, gen: POOL.gen };
+  // The engine's search grid: 12 units (3 mm), a little coarser than a harness's 10 because a system is
+  // drawn at board scale (a made-up 30-board, 60-cable system routed in 1.1 s at 12 and 1.7 s at 10, with
+  // fewer bends), and coarser still on a bigger one so the grid stays about 300k cells.
+  function gridStep(rects) {
+    if (!rects.length) return 12;
+    const x0 = Math.min(0, ...rects.map(r => r.x0)) - 300, x1 = Math.max(0, ...rects.map(r => r.x1)) + 300, y0 = Math.min(0, ...rects.map(r => r.y0)) - 300, y1 = Math.max(0, ...rects.map(r => r.y1)) + 300;
+    return Math.max(12, Math.ceil(Math.sqrt((x1 - x0) * (y1 - y0) / 300000) / 2) * 2);
   }
-  function layoutNow(s) {
+  function layoutNow(s, view) {
     const out = new Map();
     if (!s.blocks.length) return out;
-    const rects = s.blocks.map(x => ({ id: x.id, x0: x.x * K - CLEAR, y0: x.y * K - CLEAR, x1: (x.x + x.w) * K + CLEAR, y1: (x.y + x.h) * K + CLEAR }));
+    // The parts every route walks round: the blocks (the engine keeps each route its half-width and a
+    // little clear of them, as a harness's wires of its connectors).
+    const rects = s.blocks.map(x => ({ id: x.id, x0: x.x * K, y0: x.y * K, x1: (x.x + x.w) * K, y1: (x.y + x.h) * K }));
+    const list = [], per = [], step = gridStep(rects);
     s.cables.forEach(cab => {
-      const h = A.harness(cab.harness), ends = cableEnds(s, cab, h), at = ends.filter(x => x.g), routes = [];
+      const h = harnessOf(cab), ends = cableEnds(s, cab, h), at = ends.filter(x => x.g);
+      per.push({ cab, h, ends, at });
       for (let i = 1; i < at.length; i++) {
         const a = at[0], b = at[i];
-        // Level terminals for route.js: the exit itself for a side exit, else the lead point past the
-        // block's edge, leaving toward the other end.
-        const pa = a.g.lead || { x: a.g.ex, y: a.g.ey }, pb = b.g.lead || { x: b.g.ex, y: b.g.ey }, toward = Math.sign(pb.x - pa.x) || 1;
-        const T1 = { x: pa.x, y: pa.y, out: a.g.dx || toward }, T2 = { x: pb.x, y: pb.y, in: b.g.dx ? -b.g.dx : toward };
-        // Each cable routes on its own grid round its two ends (fast enough to redo while a block is
-        // dragged): their box, plus room to walk round what's between, at most about 25k cells.
-        const m = Math.max(160, 0.35 * Math.max(Math.abs(T1.x - T2.x), Math.abs(T1.y - T2.y)));
-        const lb = { x0: Math.min(T1.x, T2.x) - m, y0: Math.min(T1.y, T2.y) - m, x1: Math.max(T1.x, T2.x) + m, y1: Math.max(T1.y, T2.y) + m };
-        const g = Math.max(GRID, Math.ceil(Math.sqrt((lb.x1 - lb.x0) * (lb.y1 - lb.y0) / 25000) / GRID) * GRID);
-        // Its own two blocks aren't in the way: an end inside its board would otherwise search far
-        // to get out (its exit already leaves the board's side).
-        const blocks = rects.filter(r => r.id !== a.b.id && r.id !== b.b.id && r.x1 > lb.x0 && r.x0 < lb.x1 && r.y1 > lb.y0 && r.y0 < lb.y1);
-        const kept = cab.routes && cab.routes[b.n.id];
-        let v = kept && kept.length % 2 === 1 && kept.every(x => isFinite(+x)) ? kept.map(Number) : null;
-        if (!v) {
-          // A route found before for the same ends among the same blocks is reused, so a drag re-routes
-          // only the cables it moves or crosses.
-          const rk = JSON.stringify([T1, T2, blocks.map(r => [r.x0, r.y0, r.x1, r.y1])]);
-          v = RCACHE.get(rk);
-          if (!v) { const G = gridFor(lb, g); v = RT().auto(G, T1, T2, blocks, STUB_U, 0) || [Math.round((T1.x + T2.x) / 2)]; POOL.gen = G.gen; if (RCACHE.size > 4000) RCACHE.clear(); RCACHE.set(rk, v); }
-        }
-        const C = (a.g.lead ? [{ x: a.g.ex, y: a.g.ey }] : []).concat(RT().corners(T1, T2, v), b.g.lead ? [{ x: b.g.ex, y: b.g.ey }] : []);
-        const rp = rounded(C, RADIUS);
-        routes.push({ key: b.n.id, A: T1, B: T2, v: Array.from(v), d: rp.d, mid: rp.mid });
+        const As = terminals(a.g, a.b, 'A', b.g.ex, step), Bs = terminals(b.g, b.b, 'B', a.g.ex, step), combos = [];
+        As.forEach(A => Bs.forEach(B => combos.push({ A, B })));
+        list.push({ key: cab.id + '|' + b.n.id, weight: h ? Math.max(1, h.wires.length) : 1, combos, half: HALF, stub: STUB_R, r: RADIUS, shape: CN().record(cab.routes && cab.routes[b.n.id]) });
+      }
+    });
+    const res = CN().routeAll(s.id, rects, list, { fast: !!(view && view.fast), grid: step });
+    per.forEach(({ cab, h, ends, at }) => {
+      const routes = [];
+      for (let i = 1; i < at.length; i++) {
+        const R0 = res.routes.get(cab.id + '|' + at[i].n.id), sh = CN().draw(R0);
+        routes.push(Object.assign({}, R0, { end: at[i].n.id, d: pathOf(sh.pts), mid: midOfPts(sh.pts) }));
       }
       out.set(cab.id, { cab, h, ends, at, routes });
     });
@@ -338,10 +375,10 @@
     html += '</g><g class="sys-cables">';
     let labels = '', handles = '';
     (Lo || layout(s)).forEach(({ cab, h, ends, at, routes }) => {
-      const st = status(h), on = isSel('cable', cab.id);
-      const color = st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' ? 'var(--text-3)' : 'var(--issue)';
+      const st = statusOf(cab, h), on = isSel('cable', cab.id);
+      const color = st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)';
       const wire = (d, extra) => `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
-        (st.key === 'placeholder' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : '');
+        (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : '');
       html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}" data-cable="${cab.id}">`;
       let mid = null, ring = null;
       routes.forEach(r => { html += wire(r.d); });
@@ -364,12 +401,11 @@
       });
       const loose = ends.find(x => !x.g);
       if (loose && ring) handles += `<circle class="cv-hitend" data-cend="${cab.id}|${loose.n.id}" data-x="${ring.ax}" data-y="${ring.ay}" cx="${ring.x}" cy="${ring.y}" r="10"><title>${esc(loose.n.ref)} isn't plugged in: drag it onto a connector</title></circle>`;
-      if (mid) labels += `<text class="sys-clabel${on ? ' sel' : ''}" x="${mid.x + 8}" y="${mid.y - 9}">${esc(`${st.glyph} ${h ? h.title : 'Missing harness'}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`)}</text>`;
-      // The selected cable's middle runs drag, as the editor's do.
-      if (on) routes.forEach(r => RT().runs(r.A, r.B, r.v).forEach(R => {
-        if (R.k < 0) return;
+      if (mid) labels += `<text class="sys-clabel${on ? ' sel' : ''}" x="${mid.x + 8}" y="${mid.y - 9}">${esc(`${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`)}</text>`;
+      // The selected cable's middle runs drag, as the editor's wires' do (connect.js handles).
+      if (on) routes.forEach(r => CN().handles(r).forEach(R => {
         const mx = (R.a.x + R.b.x) / 2, my = (R.a.y + R.b.y) / 2, v = R.axis === 'v';
-        handles += `<g class="cv-run ${v ? 'v' : 'h'}" data-run="${cab.id}|${r.key}|${R.k}"><rect class="cv-run-hit" x="${mx - (v ? 8 : 14)}" y="${my - (v ? 14 : 8)}" width="${v ? 16 : 28}" height="${v ? 28 : 16}"/>` +
+        handles += `<g class="cv-run ${v ? 'v' : 'h'}" data-run="${cab.id}|${r.end}|${R.j}"><rect class="cv-run-hit" x="${mx - (v ? 8 : 14)}" y="${my - (v ? 14 : 8)}" width="${v ? 16 : 28}" height="${v ? 28 : 16}"/>` +
           `<rect class="cv-run-bar" x="${mx - (v ? 2.5 : 9)}" y="${my - (v ? 9 : 2.5)}" width="${v ? 5 : 18}" height="${v ? 18 : 5}" rx="2.5"/></g>`;
       }));
     });
@@ -398,7 +434,7 @@
       fld('Title', inp('title', s.title)) + fld('Client project', inp('project', s.project, ' list="sys-projects"') + `<datalist id="sys-projects">${A.projects().map(p => `<option value="${esc(p)}">`).join('')}</datalist>`) + fld('Rev', inp('rev', s.rev)) +
       `<div class="sys-actions">${btn('add-board', 'Add a board from Signoff EE', '', 'btn-primary')}${btn('add-drawn', 'Draw a board')}${btn('add-device', 'Add a device')}</div>` +
       `<h4 class="sys-h">Cables <span class="count">${s.cables.length}</span></h4>` +
-      (s.cables.length ? `<div class="sys-list">${s.cables.map(cab => { const h = get(cab.harness), st = status(h); return `<button class="sys-row" data-ssel="cable:${cab.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(h ? h.title : 'Missing harness')}<small>${esc([pnOf(h, cab), harnessEnds(h).map(n => endName(s, cab.ends[n.id]) || n.ref + ' not plugged').join(' · ')].filter(Boolean).join(' · '))}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Click a connector on a board, mark it used, and plug a harness into it.</p>') +
+      (s.cables.length ? `<div class="sys-list">${s.cables.map(cab => { const h = harnessOf(cab), st = statusOf(cab, h); return `<button class="sys-row" data-ssel="cable:${cab.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(cab, h))}<small>${esc([pnOf(h, cab), endsOf(cab, h).map(n => endName(s, cab.ends[n.id]) || n.ref + ' not plugged').join(' · ')].filter(Boolean).join(' · '))}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Click a connector on a board, then another, to connect them.</p>') +
       `<h4 class="sys-h">Checks <span class="count">${c.length}</span></h4>` + checksHtml(c) +
       `<div class="sys-actions">${btn('delete-system', 'Delete system', '', 'btn-danger')}</div>`;
   }
@@ -441,7 +477,7 @@
       (!b.source || c.placed === 'hand' ? `<div class="field-row">${fld('X on the block, mm', inp('c.x', c.x, ' type="number" step="0.5"'))}${fld('Y, mm', inp('c.y', c.y, ' type="number" step="0.5"'))}</div>` : '') +
       (c.mpn || c.desc ? `<p class="hint">${esc([c.mfr, c.mpn, c.desc].filter(Boolean).join(' · '))}${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · not in the pick-and-place or the netlist, placed by hand' : c.placed === 'netlist' ? ' · not in the pick-and-place (not fitted in its build variant?), placed at its pads in the netlist' : ''}</p>` : '') +
       `<h4 class="sys-h">Plugged in</h4>` +
-      (at.length ? `<div class="sys-list">${at.map(x => { const h = get(x.cable.harness), n = h && M.node(h, x.node), st = status(h); return `<button class="sys-row" data-ssel="cable:${x.cable.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(h ? h.title : 'Missing harness')}<small>${esc(n ? 'its end ' + n.ref : '')}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Nothing yet.</p>') +
+      (at.length ? `<div class="sys-list">${at.map(x => { const h = harnessOf(x.cable), n = endsOf(x.cable, h).find(e => e.id === x.node), st = statusOf(x.cable, h); return `<button class="sys-row" data-ssel="cable:${x.cable.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(x.cable, h))}<small>${esc(n ? 'its end ' + n.ref : '')}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Nothing yet.</p>') +
       (pick ? pickHtml(s, b, c) : `<div class="sys-actions">${btn('new-harness', 'New harness here', '', 'btn-primary')}${btn('pick-harness', 'Plug in a harness…')}</div>`) +
       (S.pair && S.pair.block !== b.id || S.pair && S.pair.conn !== c.id ? '' : '') +
       fld('Cables leave from', `<select class="input" data-sexit="${c.id}">${[['', 'The nearest board edge (' + exitSide(b, Object.assign({}, c, { exit: '' })) + ')'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']].map(([v, l]) => `<option value="${v}"${(c.exit || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`) +
@@ -467,13 +503,49 @@
     return `<h4 class="sys-h">Plug in</h4><div class="sys-list">${list.map(h => { const sc = score(h); return `<button class="sys-row" data-sact="plug" data-harness="${h.id}"><span class="sys-st">${sc === 0 ? '★' : sc === 1 ? '=' : '·'}</span><span>${esc(h.title)}<small>${esc([h.pn, sc === 0 ? 'made from this connector' : sc === 1 ? 'same pin count' : '', h.project].filter(Boolean).join(' · '))}</small></span></button>`; }).join('') || '<p class="hint">No harnesses yet.</p>'}</div>${btn('cancel-pick', 'Cancel')}`;
   }
   function cableHtml(s, cab) {
-    const h = A.harness(cab.harness), st = status(h);
+    const k = kindOf(cab), h = harnessOf(cab), st = statusOf(cab, h);
     const opts = cur => `<option value="">Not plugged</option>` + s.blocks.map(b => b.conns.map(c => `<option value="${b.id}|${c.id}"${cur && cur.block === b.id && cur.conn === c.id ? ' selected' : ''}>${esc(`${b.ref} ${c.ref}${c.fn ? ' · ' + c.fn : ''}`)}</option>`).join('')).join('');
-    return `<div class="rail-head"><div class="eyebrow">Cable</div><div class="rail-title">${esc(h ? h.title : 'Missing harness')}</div></div>` +
+    const kind = fld('What it is', `<select class="input" data-skind="${cab.id}">${Object.keys(KINDS).map(x => `<option value="${x}"${x === k ? ' selected' : ''}>${KINDS[x]}</option>`).join('')}</select>`,
+      k === 'link' ? 'A connection with nothing to build or buy yet. Make it a purchased cable or a Loom harness when you know which.' : k === 'harness' ? '' : 'Bought ready-made: its part number goes in the system’s BOM.');
+    const endsHtml = endsOf(cab, h).map(n => fld(`${esc(n.ref)}${n.name ? ' · ' + esc(n.name) : ''} plugs into`, `<select class="input" data-send="${n.id}">${opts(cab.ends[n.id])}</select>`)).join('');
+    const routes = cab.routes && Object.keys(cab.routes).length ? btn('reset-route', 'Reset route') : '';
+    const head = `<div class="rail-head"><div class="eyebrow">${KINDS[k]}</div><div class="rail-title">${esc(titleOf(cab, h))}</div></div>`;
+    if (k !== 'harness') {
+      return head + kind + fld('Name', inp('cab.name', cab.name || '', k === 'link' ? ' placeholder="USB, 24 VAC, CAN…"' : ' placeholder="USB-C cable, 1 m"')) +
+        (k === 'bought' ? `<div class="field-row">${fld('Part number', inp('cab.pn', cab.pn || ''))}${fld('Length, mm', inp('cab.len', cab.lengthMm || '', ' type="number" min="1"'))}</div>` +
+          `<div class="field-row">${fld('Maker', inp('cab.mfr', cab.mfr || ''))}${fld('Maker’s part number', inp('cab.mpn', cab.mpn || ''))}</div>` : '') +
+        endsHtml + `<div class="sys-actions">${routes}${btn('delete-cable', 'Remove from the system', '', 'btn-danger')}</div>`;
+    }
+    return head + kind +
       `<p class="hint"><span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}${h && h.pn ? ' · ' + esc(h.pn) : ''}</p>` +
-      (h ? harnessEnds(h).map(n => fld(`${esc(n.ref)}${n.name ? ' · ' + esc(n.name) : ''} plugs into`, `<select class="input" data-send="${n.id}">${opts(cab.ends[n.id])}</select>`)).join('') : '') +
+      (h ? endsHtml : '') +
       fld('Length here, mm', inp('cab.len', cab.lengthMm || '', ' type="number" min="1" placeholder="The harness’s own"'), cab.lengthMm ? `A variant at this length: <b>${esc(pnOf(h, cab))}</b>.` : 'Set it to use this harness at another length, as a variant part number.') +
-      `<div class="sys-actions">${h ? btn('open-harness', 'Open the harness', '', 'btn-primary') : ''}${cab.routes && Object.keys(cab.routes).length ? btn('reset-route', 'Reset route') : ''}${btn('delete-cable', 'Remove from the system', '', 'btn-danger')}</div>`;
+      `<div class="sys-actions">${h ? btn('open-harness', 'Open the harness', '', 'btn-primary') : ''}${routes}${btn('delete-cable', 'Remove from the system', '', 'btn-danger')}</div>`;
+  }
+  // A cable made another kind (the panel's What it is): its plugged ends carry over in order, and so
+  // does each kept route, under its new end. To a Loom harness, a new harness is made from the plugged
+  // connectors (as New harness here, with the shared-net wires for two). The old harness stays.
+  function rekind(s, cab, to) {
+    const from = kindOf(cab);
+    if (from === to) return;
+    const h = harnessOf(cab), olds = endsOf(cab, h).map(n => n.id), plugged = olds.filter(id => cab.ends[id]);
+    let news, made = null;
+    if (to === 'harness') {
+      const two = plugged.slice(0, 2).map(id => { const b = block(s, cab.ends[id].block); return { b, c: conn(b, cab.ends[id].conn) }; });
+      if (!two.length) { A.toast('Plug an end into a connector first: the harness is made from it.', 'error'); return; }
+      made = A.newHarness(s, two);
+      news = made.ends;
+    } else news = TWO.map(e => e.id);
+    change(x => {
+      const c = cable(x, cab.id), ends = {}, routes = {};
+      news.forEach(id => { ends[id] = null; });
+      plugged.forEach((id, i) => { if (news[i] != null) { ends[news[i]] = c.ends[id]; if (c.routes && c.routes[id]) routes[news[i]] = c.routes[id]; } });
+      c.kind = to; c.ends = ends;
+      if (Object.keys(routes).length) c.routes = routes; else delete c.routes;
+      if (to === 'harness') { c.harness = made.h.id; c.lengthMm = null; } else delete c.harness;
+      if (from === 'harness' && to !== 'harness' && !c.name && h) c.name = h.title;
+    });
+    if (made) A.toast(`Made ${made.h.title}${made.suggested ? `, with ${made.suggested} wires from shared nets` : ''}. Open it to wire it.`);
   }
 
   // ── Render ──
@@ -493,7 +565,7 @@
     redraw(svg);
     page.querySelector('[data-sact="undo"]').disabled = !S.past.length;
     page.querySelector('[data-sact="redo"]').disabled = !S.future.length;
-    page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to run a cable · drag a cable’s ends · drag a selected cable’s runs · double-click to add a bend' : 'Add a board from the panel';
+    page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to connect them · drag a cable’s ends · drag its runs · double-click to add a bend · right-click for its route' : 'Add a board from the panel';
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     panel.innerHTML = panelHtml(s);
     panel.scrollTop = keep;
@@ -519,19 +591,25 @@
   const snap = v => Math.round(v);
   const snapU = v => Math.round(v / GRID) * GRID;
   let drag = null, lastLo = null;
-  function redraw(svg) { lastLo = layout(cur()); svg.innerHTML = svgHtml(cur(), lastLo); svg.classList.toggle('wiring', !!S.pending); }
+  function redraw(svg, view) { lastLo = layout(cur(), view); svg.innerHTML = svgHtml(cur(), lastLo); svg.classList.toggle('wiring', !!S.pending); }
   const tabAt = e => { const el = document.elementFromPoint(e.clientX, e.clientY); return el && el.closest && el.closest('#sys-canvas [data-conn]'); };
   const tabRef = el => ({ block: el.dataset.block, conn: el.dataset.conn });
   const sameTab = (a, b) => !!a && !!b && a.block === b.block && a.conn === b.conn;
   // The run of a cable nearest a point: { r (its route), n (route.nearestRun) }.
+  // The run of a cable nearest a point (connect.js runAt on each of its routes), or null.
   function runNear(cabId, p) {
     const L = lastLo && lastLo.get(cabId);
     if (!L) return null;
     let best = null;
-    L.routes.forEach(r => { const n = RT().nearestRun(r.A, r.B, r.v, p); if (n && (!best || n.d < best.n.d)) best = { r, n }; });
+    L.routes.forEach(r => { const n = CN().runAt(r, p); if (n && (!best || n.d < best.d)) best = n; });
     return best;
   }
-  function keepRoute(cab, key, v) { cab.routes = Object.assign({}, cab.routes, { [key]: v }); }
+  // A cable's kept route record for one end (the harness's record: v, a, b, mode), set or cleared.
+  function keepRoute(cab, end, rec) {
+    const r = Object.assign({}, cab.routes);
+    if (rec) r[end] = rec; else delete r[end];
+    if (Object.keys(r).length) cab.routes = r; else delete cab.routes;
+  }
   // The cable being drawn: from the connector's terminal, leaving level as a cable would, sagging a
   // little; over another connector it snaps onto that one's terminal.
   function ghost(svg, from, p, snapped) {
@@ -558,13 +636,43 @@
     return null;
   }
   function cancelWire() { S.pending = null; A.refresh(); }
+  // A right click on a cable (no drag): the harness editor's route items (connect.js menuHtml), for the
+  // route under the pointer (each end of a cable with three or more ends has its own).
+  let menuEl = null;
+  function closeMenu() { if (menuEl) { menuEl.remove(); menuEl = null; } }
+  function openMenu(e, cabId, p) {
+    closeMenu();
+    const near = runNear(cabId, p), end = near ? near.route.end : null, cab = cable(cur(), cabId);
+    if (!end || !cab) return;
+    S.sel = { kind: 'cable', id: cabId }; A.refresh();
+    const m = document.createElement('div');
+    m.className = 'menu lm-ctx';
+    m.setAttribute('role', 'menu');
+    m.innerHTML = CN().menuHtml(cab.routes && cab.routes[end]) + '<button data-ctx="delete" role="menuitem"><span>Remove from the system</span><span class="lm-ctx-k">Del</span></button>';
+    m.style.position = 'fixed'; m.style.left = e.clientX + 'px'; m.style.top = e.clientY + 'px'; m.style.zIndex = 90;
+    m.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-ctx]');
+      if (!b) return;
+      closeMenu();
+      const k = b.dataset.ctx;
+      if (k === 'delete') { act('delete-cable'); return; }
+      change(x => { const c = cable(x, cabId); keepRoute(c, end, CN().apply(c.routes && c.routes[end], k)); });
+    });
+    document.body.appendChild(m);
+    menuEl = m;
+    const r = m.getBoundingClientRect();
+    if (r.right > innerWidth - 8) m.style.left = Math.max(8, innerWidth - r.width - 8) + 'px';
+    if (r.bottom > innerHeight - 8) m.style.top = Math.max(8, innerHeight - r.height - 8) + 'px';
+    const off = ev => { if (!m.contains(ev.target)) { closeMenu(); document.removeEventListener('pointerdown', off, true); } };
+    setTimeout(() => document.addEventListener('pointerdown', off, true), 0);
+  }
   // A click on a connector, as on a pin: start, finish, or cancel a cable.
   function clickTab(ref) {
     if (!S.pending) { S.pending = ref; S.sel = Object.assign({ kind: 'conn' }, ref); S.picking = null; A.refresh(); return; }
     if (sameTab(S.pending, ref)) { cancelWire(); return; }
-    S.pair = S.pending; S.pending = null;
-    S.sel = Object.assign({ kind: 'conn' }, ref);
-    act('new-harness');
+    const from = S.pending;
+    S.pending = null;
+    act('new-link', null, [from, ref]);
   }
   function wire(page) {
     const svg = page.querySelector('#sys-canvas');
@@ -580,14 +688,13 @@
         const [cid, node] = endEl.dataset.cend.split('|');
         drag = Object.assign(base, { kind: 'end', cab: cid, node, from: endEl.dataset.from ? JSON.parse(endEl.dataset.from) : null, anchor: { x: +endEl.dataset.x, y: +endEl.dataset.y } });
       } else if (run) {
-        const [cid, key, k] = run.dataset.run.split('|'), r = lastLo.get(cid).routes.find(x => x.key === key);
-        const R = RT().runs(r.A, r.B, r.v).find(x => x.k === +k);
-        if (R) drag = Object.assign(base, { kind: 'run', cab: cable(s, cid), r, j: R.j, k: R.k, axis: R.axis, at: { x: (R.a.x + R.b.x) / 2, y: (R.a.y + R.b.y) / 2 } });
-      } else if (cb && !S.pending && (() => { const n = runNear(cb.dataset.cable, p); return n && n.n.d <= 14; })()) {
+        const [cid, end, j] = run.dataset.run.split('|'), r = lastLo.get(cid).routes.find(x => x.end === end), R = r && CN().runOf(r, +j);
+        if (R) drag = Object.assign(base, { kind: 'run', cab: cable(s, cid), run: R, end });
+      } else if (cb && !S.pending && (() => { const n = runNear(cb.dataset.cable, p); return n && n.d <= n.route.half + 12; })()) {
         // As the editor's runUnder: a cable's line drags the run under it, selected or not; a click
         // without moving still selects it.
         const near = runNear(cb.dataset.cable, p);
-        drag = Object.assign(base, { kind: 'run', cab: cable(s, cb.dataset.cable), r: near.r, j: near.n.j, k: near.n.k, axis: near.n.axis, at: near.n.at, click: cb.dataset.cable });
+        drag = Object.assign(base, { kind: 'run', cab: cable(s, cb.dataset.cable), run: near, end: near.route.end, click: cb.dataset.cable });
       } else if (bl && !S.pending) {
         const b = block(s, bl.dataset.block);
         drag = Object.assign(base, { kind: 'block', bx: b.x, by: b.y, b });
@@ -615,39 +722,20 @@
         return;
       }
       if (d.kind === 'run') {
-        // The editor's dragRun: an end run belongs to its connector, so the first move adds a bend in it,
-        // out where it's clear of the connector (at least a stub away), and drags the new section; the
-        // run then moves sideways by the pointer's travel, snapped to the grid (Ctrl: anywhere).
+        // The editor's dragRun (connect.js): an end run first gets a bend clear of its connector, a
+        // straight cable lifts from the grab to the far end's corner, and the run moves sideways by the
+        // pointer's travel, on the grid (Ctrl: anywhere).
+        const free = e.ctrlKey || e.metaKey;
         if (!d.snap) {
-          const R0 = d.r;
-          let v = R0.v.slice(), k = d.k;
-          if (k < 0) {
-            const at = Object.assign({}, d.at), last = d.j > 0;
-            if (!last) at.x = R0.A.out > 0 ? Math.max(at.x, R0.A.x + STUB_U) : Math.min(at.x, R0.A.x - STUB_U);
-            else at.x = R0.B.in > 0 ? Math.min(at.x, R0.B.x - STUB_U) : Math.max(at.x, R0.B.x + STUB_U);
-            if (!v.length) {
-              // A straight cable: the section from the grab to the far end's corner lifts (route.js
-              // needs a vertical run either side of a level one).
-              const xb = R0.B.x - R0.B.in * STUB_U, xa = R0.A.x + R0.A.out * STUB_U;
-              v = Math.abs(xb - at.x) >= Math.abs(at.x - xa) ? [snapU(at.x), R0.A.y, xb] : [xa, R0.A.y, snapU(at.x)];
-              k = 1;
-            } else {
-              const nb = RT().addBend(R0.A, R0.B, v, d.j, at);
-              if (!nb) { drag = null; return; }
-              v = nb.v; k = nb.k;
-            }
-          }
+          const st = CN().grab(d.run, snapU);
+          if (!st) { drag = null; return; }
           S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true;
-          Object.assign(d, { v0: v, k, axis: k % 2 ? 'h' : 'v' });
+          d.keep = { a: d.run.route.A.side, b: d.run.route.B.side, mode: d.cab.routes && d.cab.routes[d.end] && d.cab.routes[d.end].mode };
+          Object.assign(d, st, { p0: toWorld(svg, { clientX: d.x, clientY: d.y }) });
           svg.classList.add('dragging');
         }
-        const d0 = toWorld(svg, { clientX: d.x, clientY: d.y });
-        let val = d.v0[d.k] + (d.axis === 'v' ? p.x - d0.x : p.y - d0.y);
-        if (!(e.ctrlKey || e.metaKey)) val = snapU(val);
-        const v = d.v0.slice();
-        v[d.k] = val;
-        keepRoute(d.cab, d.r.key, v);
-        redraw(svg);
+        keepRoute(d.cab, d.end, Object.assign({ v: CN().slide(d, d.p0, p, free ? null : snapU) }, d.keep));
+        redraw(svg, { fast: true });
         return;
       }
       if (d.kind === 'block') {
@@ -670,7 +758,13 @@
         return;
       }
       if (d.kind === 'run' && !d.moved && d.click) { S.sel = { kind: 'cable', id: d.click }; S.pair = null; S.picking = null; A.refresh(); return; }
-      if (d.kind === 'run' && d.moved && d.snap) { const v = d.cab.routes[d.r.key]; keepRoute(d.cab, d.r.key, RT().tidy(d.r.A, d.r.B, v)); cur().updated = now(); persist(); A.refresh(); return; }
+      if (d.kind === 'run' && d.moved && d.snap) {
+        // Let go: tidied against the route as it now stands (its sides may have changed in the drag).
+        const rec = d.cab.routes && d.cab.routes[d.end], L = lastLo && lastLo.get(d.cab.id), R1 = L && L.routes.find(x => x.end === d.end);
+        if (rec && R1) keepRoute(d.cab, d.end, CN().release(R1, rec.v, rec));
+        cur().updated = now(); persist(); A.refresh(); return;
+      }
+      if (d.button === 2 && !d.moved) { const cb = d.t.closest && d.t.closest('[data-cable]'); if (cb) openMenu(e, cb.dataset.cable, toWorld(svg, e)); return; }
       if (d.kind === 'block' && d.moved) { cur().updated = now(); persist(); A.refresh(); return; }
       if (d.moved || d.button !== 0) return;
       // A click: as the editor's click().
@@ -690,11 +784,11 @@
       const cb = e.target.closest('[data-cable]');
       if (!cb || S.pending) return;
       const p = toWorld(svg, e), near = runNear(cb.dataset.cable, p);
-      if (!near) return;
-      const r = near.n.axis === 'h' ? { x: snapU(p.x), y: near.n.at.y } : { x: near.n.at.x, y: snapU(p.y) };
-      const got = RT().addBend(near.r.A, near.r.B, near.r.v, near.n.j, r);
-      if (!got) return;
-      change(s => { keepRoute(cable(s, cb.dataset.cable), near.r.key, got.v); S.sel = { kind: 'cable', id: cb.dataset.cable }; });
+      if (!near || near.d > near.route.half + 12) return;
+      const end = near.route.end, c0 = cable(cur(), cb.dataset.cable), rec = CN().bend(near, snapU, c0.routes && c0.routes[end]);
+      if (!rec) return;
+      change(s => { keepRoute(cable(s, cb.dataset.cable), end, rec); S.sel = { kind: 'cable', id: cb.dataset.cable }; });
+      A.toast('Bend added. Drag its new run to shape the cable.');
     });
     svg.addEventListener('wheel', e => {
       e.preventDefault();
@@ -720,6 +814,7 @@
       if (t.dataset.spin) { const [id, i] = t.dataset.spin.split('|'), v = t.value.trim(); change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id && c.pins[+i]) { c.pins[+i].net = v; c.pins[+i].label = v; } })); }); return; }
       if (t.dataset.sused) { const id = t.dataset.sused, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) c.used = on; })); }); return; }
       if (t.dataset.send) { const [bid, cid] = t.value ? t.value.split('|') : []; const node = t.dataset.send; change(s => { const cab = cable(s, S.sel.id); cab.ends[node] = bid ? { block: bid, conn: cid } : null; }); return; }
+      if (t.dataset.skind) { rekind(cur(), cable(cur(), t.dataset.skind), t.value); return; }
       if (t.dataset.sf) setField(t.dataset.sf, t.value);
     });
   }
@@ -738,11 +833,12 @@
       else if ((f === 'c.x' || f === 'c.y') && c && v !== '' && isFinite(+v)) { const k = f.slice(2), lim = k === 'x' ? b.w - TAB.w / 2 : b.h - TAB.h / 2; c[k] = Math.max(-TAB.w / 2, Math.min(lim, +v)); }
       else if (f === 'c.pins' && c && +v >= 1) { const n = Math.min(200, Math.round(+v)); c.pins = Array.from({ length: n }, (_, i) => c.pins[i] || { pin: String(i + 1), net: '', label: '' }); }
       else if (f === 'cab.len') { const cab = cable(s, S.sel.id); cab.lengthMm = +v > 0 ? Math.round(+v) : null; }
+      else if (/^cab\.(name|pn|mfr|mpn)$/.test(f)) cable(s, S.sel.id)[f.slice(4)] = v.trim();
     });
   }
   // A clear spot for a new block: right of everything.
   function freeSpot(s) { return s.blocks.length ? { x: Math.max(...s.blocks.map(b => b.x + b.w)) + 40, y: Math.min(...s.blocks.map(b => b.y)) } : { x: 0, y: 0 }; }
-  async function act(a, el) {
+  async function act(a, el, arg) {
     const s = cur();
     switch (a) {
       case 'undo': swap(S.past, S.future); break;
@@ -803,7 +899,7 @@
       }
       case 'delete-block': change(x => { const id = S.sel.block; x.blocks = x.blocks.filter(b => b.id !== id); x.cables.forEach(c => Object.keys(c.ends).forEach(k => { if (c.ends[k] && c.ends[k].block === id) c.ends[k] = null; })); S.sel = null; }); break;
       case 'delete-conn': change(x => { const b = block(x, S.sel.block), id = S.sel.conn; b.conns = b.conns.filter(c => c.id !== id); x.cables.forEach(c => Object.keys(c.ends).forEach(k => { if (c.ends[k] && c.ends[k].conn === id) c.ends[k] = null; })); S.sel = { kind: 'block', block: b.id }; }); break;
-      case 'reset-route': change(x => { delete cable(x, S.sel.id).routes; }); break;
+      case 'reset-route': change(x => { const cab = cable(x, S.sel.id); Object.keys(cab.routes || {}).forEach(k => { const r = LM.connect.apply(cab.routes[k], 'reset-route'); if (r) cab.routes[k] = r; else delete cab.routes[k]; }); if (cab.routes && !Object.keys(cab.routes).length) delete cab.routes; }); break;
       case 'delete-cable': change(x => { const id = S.sel.id; x.cables = x.cables.filter(c => c.id !== id); S.sel = null; }); break;
       case 'pick-harness': S.picking = { block: S.sel.block, conn: S.sel.conn }; A.refresh(); break;
       case 'cancel-pick': S.picking = null; A.refresh(); break;
@@ -811,7 +907,7 @@
         const h = A.harness(el.dataset.harness), b = block(s, S.sel.block), c = conn(b, S.sel.conn);
         const n = bestEnd(s, null, h, b, c);
         if (!n) break;
-        const id = change(x => { const cab = { id: U.uid('k'), harness: h.id, ends: {}, lengthMm: null }; harnessEnds(h).forEach(e => { cab.ends[e.id] = null; }); cab.ends[n.id] = { block: b.id, conn: c.id }; const k = conn(block(x, b.id), c.id); k.used = true; x.cables.push(cab); return cab.id; });
+        const id = change(x => { const cab = { id: U.uid('k'), kind: 'harness', harness: h.id, ends: {}, lengthMm: null }; harnessEnds(h).forEach(e => { cab.ends[e.id] = null; }); cab.ends[n.id] = { block: b.id, conn: c.id }; const k = conn(block(x, b.id), c.id); k.used = true; x.cables.push(cab); return cab.id; });
         S.picking = null; S.sel = { kind: 'cable', id }; A.refresh();
         A.toast(`${h.title}'s end ${n.ref} plugs into ${b.ref} ${c.ref}. Pick where its other ends go.`);
         break;
@@ -822,13 +918,27 @@
         const two = pc && pc !== c ? [{ b: pb, c: pc }, { b, c }] : [{ b, c }];
         const made = A.newHarness(s, two);
         change(x => {
-          const cab = { id: U.uid('k'), harness: made.h.id, ends: {}, lengthMm: null };
+          const cab = { id: U.uid('k'), kind: 'harness', harness: made.h.id, ends: {}, lengthMm: null };
           made.ends.forEach((nodeId, i) => { if (two[i]) { cab.ends[nodeId] = { block: two[i].b.id, conn: two[i].c.id }; conn(block(x, two[i].b.id), two[i].c.id).used = true; } else cab.ends[nodeId] = null; });
           x.cables.push(cab);
           S.sel = { kind: 'cable', id: cab.id };
         });
         S.pair = null;
         A.toast(two.length > 1 ? `Made ${made.h.title} between ${two[0].b.ref} ${two[0].c.ref} and ${b.ref} ${c.ref}${made.suggested ? `, with ${made.suggested} wires from shared nets` : ''}.` : `Made ${made.h.title}, a placeholder plugged into ${b.ref} ${c.ref}. Open it to wire the far end.`);
+        break;
+      }
+      case 'new-link': {
+        // A generic connection between two connectors (a click on one, then the other, as wiring two
+        // pins); its panel makes it a purchased cable or a Loom harness.
+        const [p, q] = arg;
+        const id = change(x => {
+          const cab = { id: U.uid('k'), kind: 'link', name: '', ends: { a: { block: p.block, conn: p.conn }, b: { block: q.block, conn: q.conn } } };
+          [p, q].forEach(e => { conn(block(x, e.block), e.conn).used = true; });
+          x.cables.push(cab);
+          return cab.id;
+        });
+        S.sel = { kind: 'cable', id }; S.pair = null; A.refresh();
+        A.toast(`Connected ${endName(s, p)} to ${endName(s, q)}. Say in the panel whether it’s a purchased cable or a Loom harness.`);
         break;
       }
       case 'open-harness': { const cab = cable(s, S.sel.id); A.openHarness(cab.harness); break; }
@@ -843,7 +953,7 @@
     if (typing) return;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? swap(S.future, S.past) : swap(S.past, S.future); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); swap(S.future, S.past); return; }
-    if (e.key === 'Escape') { if (S.pending) { S.pending = null; A.refresh(); return; } S.sel = null; S.pair = null; S.picking = null; S.adding = null; A.refresh(); return; }
+    if (e.key === 'Escape') { if (menuEl) { closeMenu(); return; } if (S.pending) { S.pending = null; A.refresh(); return; } S.sel = null; S.pair = null; S.picking = null; S.adding = null; A.refresh(); return; }
     if (e.key.toLowerCase() === 'f' && !mod) { S.cam = bounds(cur()); A.refresh(); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) {
       e.preventDefault();
@@ -882,5 +992,6 @@
     return c;
   }
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; persist(); },
-    store: () => S.store, persist, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, plugsOf, normalize, blank, addBoard, addDrawn, bestEnd, pnOf, TAB };
+    store: () => S.store, persist, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
+    layout: (s, view) => layoutNow(s, view) };
 })(window.LM = window.LM || {});

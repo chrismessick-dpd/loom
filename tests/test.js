@@ -129,6 +129,10 @@
       });
     });
   });
+  test('routes: the harness routes exactly as before the shared engine (golden.js)', () => {
+    const got = LM.golden.hashes(LM.golden.run()), want = LM.goldenData;
+    Object.keys(want).forEach(k => want[k].forEach((x, i) => eq(got[k] && got[k][i], x, `${k}, step ${i}: routes differ (open tests/golden.html here and on the old code to compare)`)));
+  });
   test('routes: a shaped route is kept when its parts move, and Real proportions draws boxes', () => {
     const h = LM.fixtures.fanout(), Lo = LM.conn.layout(h, M.analyze(h), {}), b = Lo.boxes[0], R0 = b.item.path.route;
     const v = R0.v.length ? R0.v.map((x, k) => (k % 2 ? x + 20 : x)) : [R0.A.x + R0.A.out * (R0.stub + 30)];
@@ -626,6 +630,56 @@
     const h = harness('Fan cable', { pn: '2200100-001' });
     return { Y, s, a, d, c, h, get: id => (id === h.id ? h : null) };
   }
+  // ── Connections: one engine for harness wires and system cables (connect.js) ──
+  test('connect: a straight route lifts from the grab to the far corner, and a drag keeps an odd shape', () => {
+    const CN = LM.connect, R0 = { A: { x: 0, y: 0, out: 1 }, B: { x: 400, y: 0, in: 1 }, v: [], stub: 23, half: 3, r: 13 };
+    const st = CN.grab(CN.runAt(R0, { x: 300, y: 0 }), null);
+    eq(st.v0.length % 2, 1, 'a shape has an odd count of values');
+    eq(st.axis, 'h', 'the lifted piece is level, and drags up and down');
+    const v = CN.slide(st, { x: 300, y: 0 }, { x: 300, y: 60 }, null);
+    ok(RT.fits(R0.A, R0.B, v, 23), 'the dragged shape fits its ends: ' + v);
+    eq(CN.release(R0, v, { mode: 'behind' }).mode, 'behind', 'let go, the record keeps its mode');
+  });
+  test('connect: the route menu walks around, goes behind, and resets, as in the harness editor', () => {
+    const CN = LM.connect;
+    ok(/Go behind parts/.test(CN.menuHtml(null)) && !/Reset route/.test(CN.menuHtml(null)), 'nothing shaped: no Reset route');
+    ok(/Reset route/.test(CN.menuHtml({ v: [10] })), 'shaped: Reset route');
+    eq(CN.apply({ v: [10], a: 'r', b: 'l' }, 'behind'), { v: [10], a: 'r', b: 'l', mode: 'behind' });
+    eq(CN.apply({ mode: 'behind' }, 'around'), null, 'nothing left to keep');
+    eq(CN.apply({ v: [10], a: 'r', b: 'l', mode: 'behind' }, 'reset-route'), { mode: 'behind' });
+    eq(CN.record([10, 20, 30]), { v: [10, 20, 30] }, 'a bare v becomes a record');
+  });
+  test('system: every cable routes from its connector, round the boards, and fits its ends (made-up 30-board system)', () => {
+    const s = LM.fixtures.bigSystem(), L = LM.system.layout(s);
+    let n = 0;
+    L.forEach(({ cab, routes, at }) => routes.forEach(r => {
+      n++;
+      ok(RT.fits(r.A, r.B, r.v, r.stub), `${cab.name} fits its ends`);
+      const p0 = LM.route.shape(r.A, r.B, r.v, r.r).pts[0], g = at[0].g;
+      ok(Math.hypot(p0.x - g.ex, p0.y - g.ey) < 0.5, `${cab.name} starts at its connector`);
+    }));
+    eq(n, 60, 'one route per cable');
+  });
+  test('system: a shaped cable keeps its runs, and Go behind runs straight past the boards', () => {
+    const s = LM.fixtures.bigSystem(), Y = LM.system, CN = LM.connect;
+    const L = Y.layout(s), cab = s.cables.find(c => L.get(c.id).routes[0].v.length >= 3), r = L.get(cab.id).routes[0];
+    const st = CN.grab(CN.runOf(r, CN.handles(r)[0].j), null), v = CN.slide(st, { x: 0, y: 0 }, { x: 36, y: 36 }, null);
+    cab.routes = { b: CN.release(r, v, null) };
+    const r2 = Y.layout(s).get(cab.id).routes[0];
+    ok(r2.kept, 'kept as shaped');
+    eq(r2.v, cab.routes.b.v.map(Number), 'its runs stay where they were dragged');
+    cab.routes = { b: { mode: 'behind' } };
+    ok(Y.layout(s).get(cab.id).routes[0].behind, 'behind');
+  });
+  test('system: connections are Loom harnesses, purchased cables, or generic, with ends A and B', () => {
+    const Y = LM.system, s = Y.normalize(Object.assign(Y.blank('Gizmo'), { cables: [{ id: 'k1', ends: {} }, { id: 'k2', kind: 'bought', name: 'USB-C, 1 m', pn: 'CBL-1', ends: {} }, { id: 'k3', harness: 'h1', ends: {}, routes: { x: [5] } }] }));
+    eq(s.cables.map(c => Y.kindOf(c)), ['link', 'bought', 'harness'], 'no kind and no harness: generic');
+    eq(Object.keys(s.cables[0].ends), ['a', 'b'], 'a generic connection has ends A and B');
+    eq(s.cables[2].routes.x, { v: [5] }, 'a bare kept v is read as a record');
+    eq(Y.statusOf(s.cables[1]).key, 'bought');
+    ok(Y.checks(s, () => null).some(x => /USB-C, 1 m: End A isn't plugged in/.test(x.text)), 'open ends are flagged for any kind');
+    eq(Y.summarize(s, () => null).cables, [{ name: 'USB-C, 1 m', pn: 'CBL-1', mfr: '', mpn: '', qty: 1 }], 'purchased cables go in the summary');
+  });
   test('system: checks flag used connectors with nothing plugged in, open ends, and pin counts', () => {
     const { Y, s, a, c, h, get } = sysFixture();
     const t = Y.checks(s, get).map(x => x.text);

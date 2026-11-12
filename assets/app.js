@@ -990,34 +990,25 @@
   // part, and drags the new piece. The first and last vertical runs stay clear of their parts. Let go,
   // a run dragged flush with its neighbor merges into it (route.js tidy). One undo puts it back.
   function dragRun(g, e) {
-    const h = H(), RT = LM.route;
+    const h = H(), CN = LM.connect, gs = gridOf(h), snap = gs ? (x => Math.round(x / gs) * gs) : null;
     if (!g.moved) {
-      const R0 = g.run.route;
-      let v = R0.v.slice(), k = g.run.k;
-      if (k < 0) {
-        const at = Object.assign({}, g.run.at);
-        if (g.run.j === 0) at.x = R0.A.out > 0 ? Math.max(at.x, R0.A.x + R0.stub) : Math.min(at.x, R0.A.x - R0.stub);
-        else at.x = R0.B.in > 0 ? Math.min(at.x, R0.B.x - R0.stub) : Math.max(at.x, R0.B.x + R0.stub);
-        const nb = RT.addBend(R0.A, R0.B, v, g.run.j, at);
-        if (!nb) { gesture = null; return; }
-        v = nb.v; k = nb.k;
-      }
+      // The shared engine's grab (connect.js): an end run first gets a bend clear of its part, and a
+      // straight route lifts from the grab to the far end's corner.
+      const st = CN.grab(g.run, snap);
+      if (!st) { gesture = null; return; }
       snapshot();
       h.routes = h.routes || {};
+      const R0 = g.run.route;
       g.keep = { a: R0.A.side, b: R0.B.side, mode: h.routes[g.run.key] && h.routes[g.run.key].mode };
-      h.routes[g.run.key] = Object.assign({ v }, g.keep);
-      Object.assign(g, { v0: v, k, axis: k % 2 ? 'h' : 'v', p0: toWorld({ clientX: g.x, clientY: g.y }), A: R0.A, B: R0.B, stub: R0.stub });
+      h.routes[g.run.key] = Object.assign({ v: st.v0 }, g.keep);
+      Object.assign(g, st, { p0: toWorld({ clientX: g.x, clientY: g.y }), A: R0.A, B: R0.B, stub: R0.stub });
       svgEl().classList.add('dragging');
     }
     g.moved = true;
-    const q = toWorld(e), gs = gridOf(h), free = e.ctrlKey || e.metaKey || !gs;
-    let val = g.v0[g.k] + (g.axis === 'v' ? q.x - g.p0.x : q.y - g.p0.y);
-    if (!free) val = Math.round(val / gs) * gs;
     // Parts don't stop a run (Chris, 2026-11-10): dragged past a connector, the route leaves from its
-    // other edge, and over one, it runs behind it (conn.js routeAll).
-    const v = g.v0.slice();
-    v[g.k] = val;
-    h.routes[g.run.key] = Object.assign({ v }, g.keep);
+    // other edge, and over one, it runs behind it (connect.js routeAll).
+    const free = e.ctrlKey || e.metaKey || !gs;
+    h.routes[g.run.key] = Object.assign({ v: CN.slide(g, g.p0, toWorld(e), free ? null : snap) }, g.keep);
     renderCanvas();
   }
   // A finger lifting ends a pinch; the one left down does nothing until it lifts too.
@@ -1110,7 +1101,7 @@
     }
     if (g && g.marquee && g.moved) { finishMarquee(g); return; }
     if (g && g.split && g.moved) { svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
-    if (g && g.run && g.moved) { const r = H().routes[g.run.key], R1 = lastLayout && lastLayout.runAt(g.run.key, { x: 0, y: 0 }); if (r && R1) { r.v = LM.route.tidy(R1.route.A, R1.route.B, r.v); r.a = R1.route.A.side; r.b = R1.route.B.side; } svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
+    if (g && g.run && g.moved) { const r = H().routes[g.run.key], R1 = lastLayout && lastLayout.runAt(g.run.key, { x: 0, y: 0 }); if (r && R1) H().routes[g.run.key] = LM.connect.release(R1.route, r.v, r); svgEl().classList.remove('dragging'); H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && (g.setEnd || g.note || g.badge || g.area || g.table) && g.moved) { H().updated = Date.now(); persist(); renderAll(); return; }
     if (g && g.end && g.moved) {
       if (g.target && change(h => M.moveEnd(h, g.end.wire, g.end.which, g.target))) S.sel = { kind: 'wire', ids: new Set([g.end.wire]) };
@@ -1490,10 +1481,7 @@
     // way, walking round them or running straight past behind them, and Reset route once shaped.
     const wEl = !ids.length && !fold.prop && g.t.closest && (g.t.closest('[data-wire]') || g.t.closest('.cv-setarea'));
     const rkey = wEl && lastLayout ? (wEl.dataset.wire ? lastLayout.boxOfWire(wEl.dataset.wire) : lastLayout.boxOfSet(wEl.dataset.set)) : null;
-    const rs = rkey && h.routes && h.routes[rkey], behind = !!(rs && rs.mode === 'behind');
-    const routeItems = rkey ? `<button data-ctx="around" role="menuitemradio" aria-checked="${!behind}"><span>${behind ? '' : '✓ '}Walk around parts</span></button>` +
-      `<button data-ctx="behind" role="menuitemradio" aria-checked="${behind}"><span>${behind ? '✓ ' : ''}Go behind parts</span></button>` +
-      (rs && (rs.v || rs.split0 || rs.split1) ? `<button data-ctx="reset-route" role="menuitem"><span>Reset route</span></button>` : '') + '<hr>' : '';
+    const routeItems = rkey ? LM.connect.menuHtml(h.routes && h.routes[rkey]) : '';
     const m = document.createElement('div');
     m.className = 'menu lm-ctx';
     m.setAttribute('role', 'menu');
@@ -1506,13 +1494,11 @@
       if (!b || b.disabled) return;
       closeCtx();
       const k = b.dataset.ctx;
-      if (k === 'around' || k === 'behind') change(x => {
+      if (k === 'around' || k === 'behind' || k === 'reset-route') change(x => {
         x.routes = x.routes || {};
-        const r = Object.assign({}, x.routes[rkey]);
-        if (k === 'behind') r.mode = 'behind'; else delete r.mode;
-        if (r.v || r.mode) x.routes[rkey] = r; else delete x.routes[rkey];
+        const r = LM.connect.apply(x.routes[rkey], k);
+        if (r) x.routes[rkey] = r; else delete x.routes[rkey];
       });
-      else if (k === 'reset-route') change(x => { const r = x.routes && x.routes[rkey]; if (r) { delete r.v; delete r.a; delete r.b; delete r.split0; delete r.split1; if (!r.mode) delete x.routes[rkey]; } });
       else if (k === 'copy') copyParts(ids);
       // Delete the parts the menu names (Chris, 2026-11-11), as the Delete key does: one undo.
       else if (k === 'delete') change(x => { ids.forEach(id => M.removeNode(x, id)); S.sel = null; });
@@ -2532,14 +2518,9 @@
     const key = e.target.classList.contains('w-hit') ? Lo.boxOfWire(e.target.closest('[data-wire]').dataset.wire) : e.target.classList.contains('cv-setarea') ? Lo.boxOfSet(e.target.dataset.set) : null;
     const r = key && Lo.runAt(key, toWorld(e));
     if (!r || r.d > r.route.half + 12) return;
-    const R0 = r.route, at = Object.assign({}, r.at);
-    if (r.j === 0) at.x = R0.A.out > 0 ? Math.max(at.x, R0.A.x + R0.stub) : Math.min(at.x, R0.A.x - R0.stub);
-    if (r.k < 0 && r.j > 0) at.x = R0.B.in > 0 ? Math.min(at.x, R0.B.x - R0.stub) : Math.max(at.x, R0.B.x + R0.stub);
-    const gs = gridOf(h), snap = v => (gs ? Math.round(v / gs) * gs : v);
-    at.x = snap(at.x); at.y = snap(at.y);
-    const nb = LM.route.addBend(R0.A, R0.B, R0.v, r.j, at);
-    if (!nb) return;
-    change(x => { x.routes = x.routes || {}; x.routes[key] = Object.assign({}, x.routes[key], { v: nb.v, a: R0.A.side, b: R0.B.side }); });
+    const gs = gridOf(h), rec = LM.connect.bend(r, gs ? (v => Math.round(v / gs) * gs) : null, h.routes && h.routes[key]);
+    if (!rec) return;
+    change(x => { x.routes = x.routes || {}; x.routes[key] = rec; });
     toast('Bend added. Drag its new run to shape the wire.');
   });
   svg.addEventListener('pointercancel', e => { if (endTouch(e) || pinch) return; const g = gesture; gesture = null; S.slide = null; svgEl().classList.remove('dragging', 'dragging-end'); if (g && g.end) renderCanvas(); });
