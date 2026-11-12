@@ -74,6 +74,11 @@ open system's own row clears it, and other systems and harnesses still open as b
   harness editor with it selected (`openHarness(id, sel)`), a placed system on Detail, and anything else on
   Detail, selected. The › beside a placed system or harness lists just it; a breadcrumb leads back.
 
+Overview always draws the open (top) system. A panel's **Open <system>** for a system inside its tree picks it
+and switches to Detail (`openSub`, `pathTo`), and *Placed in* back to the open system goes to Overview; only a
+system outside the tree opens as the top one, as a click on it in the menu does (Chris, 2026-11-12: Open
+re-rooted, so Overview then showed the subsystem).
+
 A single placed system or harness cable selected on the canvas becomes the pick when the tab changes, unless
 it's the selection the tab made itself (`S.autoSel`). The tab and pick aren't stored; opening a system starts
 on Overview. List draws the listed system as the current one, so the panel edits it. Screenshots (the made-up nested demo): `docs/screens/system-tabs-*.jpg`.
