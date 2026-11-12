@@ -664,6 +664,21 @@
     delete h.routes[b.key];
     eq(lay().boxes.find(x => x.key === b.key).item.path.route.v, v0, 'back to the route it finds');
   });
+  test('connect: a dragged run snaps straight within 5 grid steps and stays there until dragged past them', () => {
+    const CN = LM.connect, RT2 = LM.route, R0 = { A: { x: 0, y: 0, out: 1 }, B: { x: 600, y: 0, in: 1 }, v: [], stub: 23, half: 3, r: 13 };
+    const snap = x => Math.round(x / 10) * 10, p0 = { x: 300, y: 0 };
+    // A broken piece of a straight route, dragged 120 down, then back up toward straight.
+    const st = CN.grab(CN.runAt(R0, p0), snap, true), at = dy => CN.slide(st, p0, { x: 300, y: dy }, snap, 10)[st.k];
+    eq(at(120), 120, 'far from straight: where it is dragged');
+    eq(at(60), 60, 'six steps away: not yet');
+    eq(at(50), 0, 'five steps away: straight');
+    eq(at(-40), 0, 'held straight while dragged past it, up to five steps');
+    eq(at(-60), -60, 'six steps past: free again');
+    eq(CN.slide(st, p0, { x: 300, y: 40 }, snap, 0)[st.k], 40, 'no step (Ctrl): no snap');
+    const v = CN.slide(st, p0, { x: 300, y: 30 }, snap, 10);
+    eq(CN.release(R0, v, null).v, [], 'let go straight: the bends come out');
+    ok(RT2.fits(R0.A, R0.B, [], 23));
+  });
   test('connect: the route menu walks around, goes behind, and resets, as in the harness editor', () => {
     const CN = LM.connect;
     ok(/Go behind parts/.test(CN.menuHtml(null)) && !/Reset route/.test(CN.menuHtml(null)), 'nothing shaped: no Reset route');

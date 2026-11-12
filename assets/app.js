@@ -1010,7 +1010,8 @@
     // other edge, and over one, it runs behind it (connect.js routeAll). Ctrl places it off the grid,
     // as it does a part.
     const free = e.ctrlKey || e.metaKey || !gs;
-    h.routes[g.run.key] = Object.assign({ v: CN.slide(g, g.p0, toWorld(e), free ? null : snap) }, g.keep);
+    // Near straight, it snaps straight (5 grid steps, or 10-unit steps with the grid off; not with Ctrl).
+    h.routes[g.run.key] = Object.assign({ v: CN.slide(g, g.p0, toWorld(e), free ? null : snap, e.ctrlKey || e.metaKey ? 0 : gs || 10) }, g.keep);
     renderCanvas();
   }
   // A finger lifting ends a pinch; the one left down does nothing until it lifts too.

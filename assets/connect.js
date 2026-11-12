@@ -141,11 +141,11 @@
     let v = R0.v.slice(), k = run.k;
     const sn = x => (snap ? snap(x) : x);
     if (k >= 0) {
-      if (!brk) return { v0: v, k, axis: k % 2 ? 'h' : 'v' };
+      if (!brk) return done(R0, v, k);
       const at = run.axis === 'h' ? { x: sn(run.at.x), y: run.at.y } : { x: run.at.x, y: sn(run.at.y) };
       const nb = RTm.addBend(R0.A, R0.B, v, run.j, at);
       if (!nb) return null;
-      return { v0: nb.v, k: nb.k, axis: nb.k % 2 ? 'h' : 'v' };
+      return done(R0, nb.v, nb.k);
     }
     const stA = Math.max(R0.stub, R0.A.stub || 0), stB = Math.max(R0.stub, R0.B.stub || 0);
     const xa = R0.A.x + R0.A.out * stA, xb = R0.B.x - R0.B.in * stB;
@@ -163,13 +163,33 @@
       if (!nb) return null;
       v = nb.v; k = nb.k;
     }
-    return { v0: v, k, axis: k % 2 ? 'h' : 'v' };
+    return done(R0, v, k);
   }
-  // The shape while dragging: the grabbed value moved by the pointer's travel (p0 to p), snapped.
-  function slide(st, p0, p, snap) {
+  // A grab's drag state: the shape, the value that moves, its axis, and the lines that would make the
+  // route straight there (lines): the runs either side of the dragged one, which it lines up with to take
+  // its two bends out. For a level run, the level runs before and after it (or a terminal's own height);
+  // for a vertical run, the vertical runs before and after it (an end's vertical run has none on its
+  // terminal's side, since that run belongs to the part).
+  function done(R0, v, k) {
+    const n = v.length, lines = [];
+    if (k % 2) { lines.push(k - 2 >= 0 ? +v[k - 2] : R0.A.y, k + 2 < n ? +v[k + 2] : R0.B.y); }
+    else { if (k - 2 >= 0) lines.push(+v[k - 2]); if (k + 2 < n) lines.push(+v[k + 2]); }
+    return { v0: v, k, axis: k % 2 ? 'h' : 'v', lines };
+  }
+  // Within STICK steps of the grid of a line that makes it straight, a dragged run lines up with it, and
+  // stays there until it's dragged more than STICK steps away (Chris, 2026-11-11: a broken line moved
+  // back snaps straight, and resists going back to curved). Let go there, release takes the bends out.
+  const STICK = 5;
+  // The shape while dragging: the grabbed value moved by the pointer's travel (p0 to p), snapped. step:
+  // the grid step for the straight snap (0 or none: no snap, as with Ctrl).
+  function slide(st, p0, p, snap, step) {
     const v = st.v0.slice();
     const val = st.v0[st.k] + (st.axis === 'v' ? p.x - p0.x : p.y - p0.y);
     v[st.k] = snap ? snap(val) : val;
+    if (step > 0 && st.lines && st.lines.length) {
+      const t = st.lines.reduce((m, x) => (Math.abs(x - val) < Math.abs(m - val) ? x : m));
+      if (Math.abs(t - val) <= STICK * step) v[st.k] = t;
+    }
     return v;
   }
   // Let go: a run dragged flush with its neighbor merges into it (route.js tidy). The record to keep,

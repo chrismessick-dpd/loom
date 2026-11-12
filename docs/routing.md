@@ -44,6 +44,10 @@ baseline ("I like how it is working").
   grid, as it does a part. The same in the harness editor and in systems (`connect.js` `grab`). In the
   harness editor a Shift-drag from a wire used to draw a selection box; a box now starts from empty
   canvas only (Shift-click still adds to the selection).
+- **Snaps straight (Chris, 2026-11-11).** A dragged run within 5 grid steps of lining up with the run
+  on either side of it lines up, so the line goes straight, and stays straight until it's dragged more
+  than 5 steps away (`connect.js` `STICK`, `slide`). Let go straight, the bends come out (`release`). A
+  step is the grid: the harness grid (10 units with the grid off), 1 mm in a system. Not with Ctrl.
 - **Not the same yet:** a cable with three or more ends routes from its first end to each other one; a
   harness bundle with a breakout has a split point and routed branches.
 

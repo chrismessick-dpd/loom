@@ -736,7 +736,8 @@
           Object.assign(d, st, { p0: toWorld(svg, { clientX: d.x, clientY: d.y }) });
           svg.classList.add('dragging');
         }
-        keepRoute(d.cab, d.end, Object.assign({ v: CN().slide(d, d.p0, p, free ? null : snapU) }, d.keep));
+        // Near straight, it snaps straight (within 5 grid steps, 5 mm; not with Ctrl).
+        keepRoute(d.cab, d.end, Object.assign({ v: CN().slide(d, d.p0, p, free ? null : snapU, free ? 0 : GRID) }, d.keep));
         redraw(svg, { fast: true });
         return;
       }
