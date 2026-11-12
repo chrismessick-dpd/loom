@@ -80,7 +80,8 @@
     harness: id => { const h = S.store[id]; return h && !h.deleted ? h : null; },
     harnesses: () => live(),
     projects: () => [...new Set(live().map(h => h.project).concat(LM.system.live().map(s => s.project)).map(p => String(p || '').trim()).filter(Boolean))].sort(),
-    openHarness: id => { S.view = 'build'; openHarness(id); },
+    // sel: { kind, ids } to select in it (a system's List opens a wire or end this way).
+    openHarness: (id, sel) => { S.view = 'build'; openHarness(id); if (sel) select(sel.kind, sel.ids); },
     // The grid's Dots or Lines (fold.gridStyle), shared with the harness canvas, and its icon.
     gridStyle: () => (fold.gridStyle === 'lines' ? 'lines' : 'dots'),
     setGridStyle: v => { fold.gridStyle = v === 'lines' ? 'lines' : 'dots'; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } renderAll(); },
@@ -558,7 +559,7 @@
     if (LM.system.current()) {
       const tab = LM.system.tab();
       seg.hidden = false;
-      seg.innerHTML = [['overview', 'Overview', 'The whole system; a pick in the menu is highlighted here'], ['detail', 'Detail', 'The system picked in the menu, or the one holding the harness picked'], ['wires', 'Wires', 'What’s picked, and its connectors, cables, and wires, as a table']]
+      seg.innerHTML = [['overview', 'Overview', 'The whole system; a pick in the menu is highlighted here'], ['detail', 'Detail', 'The system picked in the menu, or the one holding the harness picked'], ['list', 'List', 'What’s picked, and its connectors, cables, and wires, as a table; click one for its properties']]
         .map(([v, l, tip]) => `<button class="${tab === v ? 'on' : ''}" data-act="sys-tab" data-tab="${v}" title="${tip}">${l}</button>`).join('');
       $('#toolbar-actions').innerHTML = sysToolbar(); return;
     }

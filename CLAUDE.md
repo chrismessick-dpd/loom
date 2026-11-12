@@ -22,6 +22,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System List (2026-11-12, Chris: the Wires tab renamed List; each item's type and part number beside it; a click
+  shows it in the panel, with Open in Loom).** List sits beside the panel in the canvas's place; rows select
+  (`data-ssel`, plus `wire:` and `end:` for a harness's own, `parseSel`), and a › lists a system or harness on its own.
+  See `docs/system.md`, *Overview, Detail, and List*.
+
 - **System tabs: Overview, Detail, and Wires (2026-11-12, Chris: tabs over the system canvas, as the harness
   editor's; a pick in the menu highlights instead of jumping).** In the toolbar's `#view-seg` (`data-act="sys-tab"`).
   Rows under the open system pick (`data-sfocus`, `LM.system.setFocus`); Overview selects the pick in `S.root`
