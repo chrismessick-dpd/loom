@@ -2529,6 +2529,10 @@
     else if (e.key === 'c' || e.key === 'C') addEnd('connector');
   });
   const svg = svgEl();
+  // No text drags (Chris, 2026-11-12, as on the system canvas): text selected before (a double-click,
+  // Ctrl+A) is cleared when a press starts here, and the browser's own drag of a selection never starts.
+  svg.addEventListener('dragstart', e => e.preventDefault());
+  svg.addEventListener('pointerdown', () => { const s = getSelection && getSelection(); if (s && !s.isCollapsed) s.removeAllRanges(); });
   svg.addEventListener('pointerdown', onDown);
   // Shift-click on the canvas adds to the selection; it mustn't also select the page's text.
   svg.addEventListener('mousedown', e => { if (e.shiftKey || e.ctrlKey || e.metaKey) { e.preventDefault(); const s = getSelection(); if (s && !s.isCollapsed) s.removeAllRanges(); } });
