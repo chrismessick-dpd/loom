@@ -69,7 +69,7 @@
       const c = mkConn(b, pc.ref, 0, { x: 0, y: 0 });
       c.pins = pc.pins.map(p => ({ pin: p.pin, net: p.net || '', label: p.label || '' }));
       c.mpn = pc.mpn || ''; c.mfr = pc.mfr || ''; c.desc = pc.desc || ''; c.used = false;
-      if (pc.at) { c.x = +(pc.at.x - o.x0 - TAB.w / 2).toFixed(2); c.y = +(o.y1 - pc.at.y - TAB.h / 2).toFixed(2); c.side = pc.at.side; c.placed = 'pnp'; }
+      if (pc.at) { c.x = +(pc.at.x - o.x0 - TAB.w / 2).toFixed(2); c.y = +(o.y1 - pc.at.y - TAB.h / 2).toFixed(2); c.side = pc.at.side; c.placed = pc.at.from === 'netlist' ? 'netlist' : 'pnp'; }
       else { c.x = 2 + (loose++) * (TAB.w + 2); c.y = b.h - TAB.h; c.placed = 'hand'; }
     });
     s.blocks.push(b);
@@ -243,7 +243,7 @@
         const at = pluggedAt(s, b.id, c.id).length, g = tabGeom(b, c);
         const pend = S.pending && S.pending.block === b.id && S.pending.conn === c.id;
         const cls = ['sys-tab', pend ? 'pending' : S.pending ? 'can' : '', c.used ? 'used' : 'unused', at ? 'plugged' : '', c.used && !at ? 'open' : '', c.side === 'bottom' ? 'bottom' : '', isSel('conn', b.id, c.id) ? 'sel' : ''].filter(Boolean).join(' ');
-        html += `<g class="${cls}" data-conn="${c.id}" data-block="${b.id}"><title>${esc(`${b.ref} ${c.ref}${c.fn ? ' · ' + c.fn : ''} · ${c.pins.length} pins${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · placed by hand' : ''} · click, then click another connector, to run a cable`)}</title>` +
+        html += `<g class="${cls}" data-conn="${c.id}" data-block="${b.id}"><title>${esc(`${b.ref} ${c.ref}${c.fn ? ' · ' + c.fn : ''} · ${c.pins.length} pins${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · placed by hand' : c.placed === 'netlist' ? ' · not in the pick-and-place: placed at its pads in the netlist' : ''} · click, then click another connector, to run a cable`)}</title>` +
           `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3"/><text x="${g.cx}" y="${g.cy + 3.5}">${esc(c.ref)}</text></g>`;
       });
       html += '</g>';
@@ -349,7 +349,7 @@
       fld('Function', inp('c.fn', c.fn, ' placeholder="What it connects to: Fan, Display, 24 VAC in…"')) +
       (b.source ? '' : `<div class="field-row">${fld('Ref', inp('c.ref', c.ref))}${fld('Pins', inp('c.pins', c.pins.length, ' type="number" min="1" max="200"'))}</div>`) +
       (!b.source || c.placed === 'hand' ? `<div class="field-row">${fld('X on the block, mm', inp('c.x', c.x, ' type="number" step="0.5"'))}${fld('Y, mm', inp('c.y', c.y, ' type="number" step="0.5"'))}</div>` : '') +
-      (c.mpn || c.desc ? `<p class="hint">${esc([c.mfr, c.mpn, c.desc].filter(Boolean).join(' · '))}${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · not in the pick-and-place, placed by hand' : ''}</p>` : '') +
+      (c.mpn || c.desc ? `<p class="hint">${esc([c.mfr, c.mpn, c.desc].filter(Boolean).join(' · '))}${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · not in the pick-and-place or the netlist, placed by hand' : c.placed === 'netlist' ? ' · not in the pick-and-place (not fitted in its build variant?), placed at its pads in the netlist' : ''}</p>` : '') +
       `<h4 class="sys-h">Plugged in</h4>` +
       (at.length ? `<div class="sys-list">${at.map(x => { const h = get(x.cable.harness), n = h && M.node(h, x.node), st = status(h); return `<button class="sys-row" data-ssel="cable:${x.cable.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(h ? h.title : 'Missing harness')}<small>${esc(n ? 'its end ' + n.ref : '')}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Nothing yet.</p>') +
       (pick ? pickHtml(s, b, c) : `<div class="sys-actions">${btn('new-harness', 'New harness here', '', 'btn-primary')}${btn('pick-harness', 'Plug in a harness…')}</div>`) +

@@ -151,14 +151,63 @@
       try { const p = Fab.assembly.parsePnp(await zip.file(n).async('string'), n); if (p.parts.length && (!pnp || p.parts.length > pnp.parts.length)) pnp = p; } catch (e) { /* not a PnP */ }
     }
     const conns = connectors(net, bom);
-    let outline = null;
-    if (pnp) {
-      const at = new Map(pnp.parts.map(q => [q.des.toUpperCase(), q]));
-      conns.forEach(c => { const q = at.get(c.ref.toUpperCase()); if (q) c.at = { x: q.x, y: q.y, rot: q.rot, side: q.side }; });
-      const xs = pnp.parts.map(q => q.x), ys = pnp.parts.map(q => q.y), m = 4;
-      outline = { x0: Math.min(...xs) - m, y0: Math.min(...ys) - m, x1: Math.max(...xs) + m, y1: Math.max(...ys) + m, from: 'pnp' };
+    const placed = place(conns, net, pnp);
+    return { connectors: conns, netlist: net.name, bom: bom ? bom.name : null, pnp: pnp ? pnp.name : null, outline: placed.outline, fit: placed.fit };
+  }
+
+  // Where each connector sits, in the pick-and-place's mm (y up). The pick-and-place lists only the
+  // parts fitted in its build variant, so a connector it leaves out is placed at the middle of its pads
+  // in the netlist, which lists every pad (Chris, 2026-11-11: unfitted connectors were lined up along
+  // the bottom edge). IPC-356 coordinates are counts in a unit that varies by exporter, so the scale
+  // and offset are fitted on the parts both files list (the median offset at each candidate scale;
+  // the scale whose parts land closest wins). With no pick-and-place, the netlist alone places them.
+  const SCALES = [0.00254, 0.001, 0.0254, 0.01];
+  const median = a => { const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+  function padCenters(net) {
+    const by = new Map();
+    net.recs.forEach(r => {
+      if (!r.des || r.des === 'VIA' || MOUNT.test(r.pin || '')) return;
+      const k = r.des.toUpperCase(), c = by.get(k) || { x: 0, y: 0, n: 0, top: 0, bottom: 0 };
+      c.x += r.xr; c.y += r.yr; c.n++;
+      if (r.access === 1) c.top++; else if (r.access > 1) c.bottom++;
+      by.set(k, c);
+    });
+    by.forEach(c => { c.x /= c.n; c.y /= c.n; });
+    return by;
+  }
+  function fitScale(pads, pnp) {
+    const common = pnp ? pnp.parts.map(q => [q, pads.get(q.des.toUpperCase())]).filter(x => x[1]) : [];
+    if (common.length >= 3) {
+      let best = null;
+      SCALES.forEach(k => {
+        const dx = median(common.map(([q, c]) => q.x - c.x * k)), dy = median(common.map(([q, c]) => q.y - c.y * k));
+        const err = median(common.map(([q, c]) => Math.hypot(q.x - (c.x * k + dx), q.y - (c.y * k + dy))));
+        if (!best || err < best.err) best = { k, dx, dy, err, parts: common.length, from: 'pnp' };
+      });
+      if (best && best.err < 3) return best;
     }
-    return { connectors: conns, netlist: net.name, bom: bom ? bom.name : null, pnp: pnp ? pnp.name : null, outline };
+    // No pick-and-place to fit to: the scale that gives a board of a believable size, else Altium's
+    // usual 0.0001 in.
+    const xs = [...pads.values()].map(c => c.x), ys = [...pads.values()].map(c => c.y);
+    const span = xs.length ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) : 0;
+    const k = SCALES.find(k => span * k >= 5 && span * k <= 1000) || SCALES[0];
+    return { k, dx: 0, dy: 0, err: null, parts: 0, from: 'netlist' };
+  }
+  function place(conns, net, pnp) {
+    const pads = padCenters(net), fit = fitScale(pads, pnp);
+    const at = new Map(pnp ? pnp.parts.map(q => [q.des.toUpperCase(), q]) : []);
+    conns.forEach(c => {
+      const q = at.get(c.ref.toUpperCase()), p = pads.get(c.ref.toUpperCase());
+      if (q) c.at = { x: q.x, y: q.y, rot: q.rot, side: q.side, from: 'pnp' };
+      else if (p) c.at = { x: p.x * fit.k + fit.dx, y: p.y * fit.k + fit.dy, rot: 0, side: p.bottom > p.top ? 'bottom' : 'top', from: 'netlist' };
+    });
+    // The outline: every part and pad placed, plus a margin (Fabcheck's preview has no origin).
+    const xs = [], ys = [];
+    if (pnp) pnp.parts.forEach(q => { xs.push(q.x); ys.push(q.y); });
+    pads.forEach(c => { xs.push(c.x * fit.k + fit.dx); ys.push(c.y * fit.k + fit.dy); });
+    const m = 4;
+    const outline = xs.length ? { x0: Math.min(...xs) - m, y0: Math.min(...ys) - m, x1: Math.max(...xs) + m, y1: Math.max(...ys) + m, from: pnp ? 'pnp+netlist' : 'netlist' } : null;
+    return { outline, fit };
   }
 
   // ── Connectors ──
@@ -211,5 +260,5 @@
     return out;
   }
 
-  LM.boards = { DEMO, token, listBoards, loadBoard, readZip, matches, reset: () => { boardsCache = null; pkgCache.clear(); } };
+  LM.boards = { DEMO, token, listBoards, loadBoard, readZip, matches, place, padCenters, fitScale, reset: () => { boardsCache = null; pkgCache.clear(); } };
 })(window.LM = window.LM || {});

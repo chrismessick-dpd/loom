@@ -669,6 +669,20 @@
     eq(again.pushed, 0, 'a second sync has nothing to push');
   });
 
+  test('boards: a connector missing from the pick-and-place is placed at its pads in the netlist', () => {
+    // Netlist counts in 0.0001 in; the pick-and-place in mm, offset by (2, 3) mm. J9 isn't fitted.
+    const k = 0.00254, rec = (des, pin, x, y) => ({ des, pin, net: 'N' + des + pin, xr: Math.round((x - 2) / k), yr: Math.round((y - 3) / k), access: 0 });
+    const net = { recs: [rec('R1', '1', 10, 10), rec('R1', '2', 12, 10), rec('U1', '1', 40, 30), rec('C1', '1', 60, 50), rec('J1', '1', 90, 20), rec('J1', '2', 90, 22), rec('J9', '1', 5, 40), rec('J9', '2', 5, 44), rec('J9', 'MH1', 50, 50)] };
+    const pnp = { parts: [{ des: 'R1', x: 11, y: 10, rot: 0, side: 'top' }, { des: 'U1', x: 40, y: 30, rot: 0, side: 'top' }, { des: 'C1', x: 60, y: 50, rot: 0, side: 'top' }, { des: 'J1', x: 90, y: 21, rot: 90, side: 'top' }] };
+    const conns = [{ ref: 'J1', pins: [] }, { ref: 'J9', pins: [] }];
+    const res = LM.boards.place(conns, net, pnp);
+    eq(res.fit.k, k, 'the scale fitted on the parts both files list');
+    eq(conns[0].at.from, 'pnp');
+    eq(conns[1].at.from, 'netlist');
+    ok(Math.abs(conns[1].at.x - 5) < 0.01 && Math.abs(conns[1].at.y - 42) < 0.01, 'J9 at the middle of its pads, mounting pads left out: ' + JSON.stringify(conns[1].at));
+    ok(res.outline.x0 <= 5 - 4 + 0.01, 'the outline takes in the netlist-only connector');
+  });
+
   (async () => {
     let failed = 0;
     for (const t of tests) {

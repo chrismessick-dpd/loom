@@ -30,8 +30,11 @@ links to it so far. Before every commit:
   its own store (`loom.v1.systems`, `currentSystem`), undo, canvas, and panel, and takes `#page` while open
   (`renderAll` hands over; `sysHooks` in `app.js` is all it gets from the harness side; `boardEnd` and
   `newHarnessFor` make New harness here). A board block's connectors sit where its package's
-  pick-and-place puts them (`boards.js` `readZip` now returns `c.at` and `outline`, the parts' extent plus
-  4 mm); connectors not in the PnP wait on the bottom edge, placed by hand. New harness here makes a
+  pick-and-place puts them (`boards.js` `readZip` now returns `c.at` and `outline`). A connector the PnP leaves
+  out (not fitted in its build variant) is placed at the middle of its pads in the IPC-356 netlist (`place`,
+  2026-11-11, Chris: they were lined up along the bottom edge): the netlist's unit scale and offset are fitted on
+  the parts both files list (`fitScale`; a real board fitted 283 parts to 0.001 mm), and `c.at.from` says which;
+  the outline is every part and pad plus 4 mm. Only a connector in neither waits on the bottom edge. New harness here makes a
   placeholder (the board end plus a generic far end), or, with a second connector Shift-picked, a
   board-to-board harness with the shared-net wires (`boards.matches`). Plug in a harness… ranks harnesses
   made from that connector first. Checks: used and unplugged, plugged and not used, two cables on a
