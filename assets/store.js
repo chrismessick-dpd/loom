@@ -405,7 +405,47 @@
       try { out[id] = Sy.normalize(s); next[id] = hash(out[id]); } catch (e) { /* not a system */ }
     });
     write('sysCache', res.cache); write('sysSynced', next);
+    await keepSysBase(out);
     return { store: out, before, conflicts, gone: res.gone || [], pushed: res.pushed };
+  }
+  // Each system as the last sync left it, for Discard changes (Chris, 2026-11-12). Kept in IndexedDB
+  // (one record per storage namespace), not localStorage: a big system is about half a megabyte, and a
+  // second copy there would crowd out the systems themselves (writes that don't fit are dropped). known
+  // holds each kept copy's hash, read at start (loadSysBase), so the toolbar can ask without waiting.
+  const SYS_DB = 'loom-sysbase';
+  let sysKnown = {};
+  function sysDb() {
+    return new Promise((res, rej) => {
+      if (typeof indexedDB === 'undefined') { rej(new Error('no IndexedDB')); return; }
+      const r = indexedDB.open(SYS_DB, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('base');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+  async function sysDbDo(mode, fn) {
+    const db = await sysDb();
+    return new Promise((res, rej) => {
+      const t = db.transaction('base', mode), req = fn(t.objectStore('base'));
+      t.oncomplete = () => { db.close(); res(req && req.result); };
+      t.onerror = () => { db.close(); rej(t.error); };
+    });
+  }
+  async function keepSysBase(out) {
+    try { await sysDbDo('readwrite', st => st.put(out, NS)); sysKnown = {}; Object.keys(out).forEach(id => { sysKnown[id] = hash(out[id]); }); }
+    catch (e) { sysKnown = {}; }
+  }
+  async function loadSysBase() {
+    try { const all = (await sysDbDo('readonly', st => st.get(NS))) || {}; sysKnown = {}; Object.keys(all).forEach(id => { sysKnown[id] = hash(all[id]); }); }
+    catch (e) { sysKnown = {}; }
+  }
+  // Whether a system's last synced copy is kept here (and is the one that sync recorded).
+  const hasSysBase = id => !!sysKnown[id] && sysKnown[id] === read('sysSynced', {})[id];
+  // That copy, or null.
+  async function sysBase(id) {
+    if (!hasSysBase(id)) return null;
+    try { const all = (await sysDbDo('readonly', st => st.get(NS))) || {}; const b = all[id]; return b && hash(b) === read('sysSynced', {})[id] ? JSON.parse(JSON.stringify(b)) : null; }
+    catch (e) { return null; }
   }
   const sysUnsynced = store => { const s = read('sysSynced', {}); return Object.keys(store).filter(id => !store[id].demoVersion && (!s[id] || s[id] !== hash(store[id]))); };
 
@@ -435,7 +475,7 @@
 
   LM.store = {
     DEMO, setNamespace: ns => { NS = ns; }, config, token, signedIn: () => !!token(), envelope, unwrap, summarize, makeMerge, slimPl, plIndex, waiting, startFromPl, adoptFromPl, hash,
-    sync, syncSystems, sysUnsynced, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, base, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
+    sync, syncSystems, sysUnsynced, sysBase, hasSysBase, loadSysBase, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, base, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
     access: () => read('who', {}).access || '',
   };
 })(window.LM = window.LM || {});

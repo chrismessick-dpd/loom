@@ -22,6 +22,15 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System toolbar (2026-11-12, Chris: as a harness's, top right).** A system's top right has Undo, Redo,
+  Discard changes, and Save file (`sysToolbar` in `app.js`); the canvas bar keeps Fit. Discard changes shows
+  while the open system has changes since the last sync and this browser kept that sync's copy, needs no
+  dialog, and Ctrl+Z brings the changes back (`LM.system.discardTo`). The copy is kept at every system sync
+  in IndexedDB (`loom-sysbase`, one record per storage namespace: `store.js` `sysBase`, `hasSysBase`,
+  `loadSysBase`), not localStorage, where a second copy of a big system would crowd out the systems. Never
+  in the demo. Save file downloads the system as a `.loom.json`, and Open a file (or a drop) opens one
+  again as a new copy (`openDoc`). Tests 54. Not tried signed in with a real sync.
+
 - **One engine for every Connection (2026-11-11, Chris: "any object that connects two blocks is a
   Connection"; the harness's routing is the baseline).** `assets/connect.js` (`LM.connect`) routes,
   shapes, and drags harness wires and system cables alike: `routeAll` is the harness's route-set code

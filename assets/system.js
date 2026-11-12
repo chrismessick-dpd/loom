@@ -557,7 +557,7 @@
     page.classList.add('sys-on');
     if (!page.querySelector('.sys-view')) {
       page.innerHTML = `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="undo" title="Undo (Ctrl+Z)">↶</button><button class="icon-btn" data-sact="redo" title="Redo (Ctrl+Shift+Z)">↷</button><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span class="sys-hint" id="sys-hint"></span></div></div>
+        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span class="sys-hint" id="sys-hint"></span></div></div>
         <aside class="rail sys-panel" id="sys-panel"></aside></div>`;
       wire(page);
     }
@@ -565,8 +565,6 @@
     if (!S.cam) S.cam = bounds(s);
     svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`);
     redraw(svg);
-    page.querySelector('[data-sact="undo"]').disabled = !S.past.length;
-    page.querySelector('[data-sact="redo"]').disabled = !S.future.length;
     page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to connect them · drag a cable’s ends · drag its runs (Shift breaks one, Ctrl off the grid) · double-click to add a bend · right-click for its route' : 'Add a board from the panel';
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     panel.innerHTML = panelHtml(s);
@@ -989,6 +987,33 @@
     return s;
   }
 
+  // Discard changes (Chris, 2026-11-12, as for a harness): the open system goes back to its last synced
+  // copy (store.js sysBase), as one more undo step, so Ctrl+Z brings the changes back.
+  function discardTo(base) {
+    const s = cur();
+    if (!s || !base || base.id !== s.id) return false;
+    S.past.push(JSON.stringify(s)); if (S.past.length > 120) S.past.shift(); S.future = [];
+    S.store[S.cur] = normalize(base);
+    S.sel = null; S.pending = null; S.pair = null; S.picking = null;
+    persist(); A.refresh();
+    return true;
+  }
+  // Save file: the system as a .loom.json, which Open a file opens again (openDoc).
+  function saveFile() {
+    const s = cur();
+    if (s) U.download(U.fileSafe(s.title || 'system') + '.loom.json', JSON.stringify(s, null, 2), 'application/json');
+  }
+  // A saved system opened from a file: a new copy (a new id if this browser has one by that id), opened.
+  function openDoc(doc) {
+    const s = normalize(JSON.parse(JSON.stringify(doc)));
+    if (S.store[s.id]) s.id = U.uid('s');
+    delete s.deleted;
+    if (!DEMO) delete s.demoVersion;
+    s.updated = now();
+    S.store[s.id] = s;
+    open(s.id);
+    return s;
+  }
   function init(hooks) {
     A = hooks;
     const c = load();
@@ -997,5 +1022,6 @@
   }
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; persist(); },
     store: () => S.store, persist, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
-    layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; } };
+    layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; },
+    canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, saveFile, openDoc };
 })(window.LM = window.LM || {});

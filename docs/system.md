@@ -4,6 +4,12 @@ Status: phases 1 to 3 built 2026-11-11 (`assets/system.js`; see Loom's CLAUDE.md
 yet: the board picture under the outline, the system sheet and harness BOM page, sharing, power and bus
 checks, and phase 4.
 
+## Toolbar (2026-11-12, Chris)
+
+As a harness's, at the top right: Undo, Redo, Discard changes (while the system has changes since the last
+sync; no dialog, and Ctrl+Z brings them back), and Save file (a `.loom.json` that Open a file opens again as
+a system). The canvas bar keeps Fit.
+
 ## Connections (2026-11-11, Chris)
 
 Anything that joins two blocks is a **Connection**, routed exactly as a harness's wires are (one engine,

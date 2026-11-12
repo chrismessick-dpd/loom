@@ -773,6 +773,20 @@
     eq(again.pushed, 0, 'a second sync has nothing to push');
   });
 
+  test('system sync keeps the last synced copy for Discard changes (IndexedDB), and an edit can go back to it', async () => {
+    const hub = setup();
+    const { s, get } = sysFixture();
+    const res = await R.syncSystems({ [s.id]: s }, get, opts(hub));
+    ok(R.hasSysBase(s.id), 'kept after the sync');
+    const edited = JSON.parse(JSON.stringify(res.store[s.id]));
+    edited.title = 'Edited here'; edited.blocks[0].x += 40; edited.updated = Date.now();
+    eq(R.sysUnsynced({ [s.id]: edited }), [s.id], 'the edit is unsynced');
+    const b = await R.sysBase(s.id);
+    eq(b.title, s.title, 'the copy is the synced one');
+    eq(R.sysUnsynced({ [s.id]: b }), [], 'and it is what the sync recorded');
+    await R.loadSysBase();
+    ok(R.hasSysBase(s.id), 'known again after a reload');
+  });
   test('boards: a connector missing from the pick-and-place is placed at its pads in the netlist', () => {
     // Netlist counts in 0.0001 in; the pick-and-place in mm, offset by (2, 3) mm. J9 isn't fitted.
     const k = 0.00254, rec = (des, pin, x, y) => ({ des, pin, net: 'N' + des + pin, xr: Math.round((x - 2) / k), yr: Math.round((y - 3) / k), access: 0 });

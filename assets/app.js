@@ -70,6 +70,8 @@
     // A system (assets/system.js) open last time, or asked for by ?system=, takes the page.
     const sid = LM.system.init(sysHooks);
     if (sid) { LM.system.open(sid); S.cur = null; }
+    // The systems' last synced copies (store.js, IndexedDB), for Discard changes: known once read.
+    if (!DEMO && LM.store.loadSysBase) LM.store.loadSysBase().then(() => { if (LM.system.current()) renderToolbar(); });
   }
   // What a system (assets/system.js) needs from the harness side. It never edits a harness itself:
   // New harness here comes back through newHarnessFor.
@@ -498,9 +500,25 @@
     renderAll();
     toast('Back to the last sync. Ctrl+Z brings your changes back.');
   }
+  // A system's top right (Chris, 2026-11-12: as a harness's): Undo, Redo, Discard changes while it has
+  // changes since the last sync and this browser kept that sync's copy (R.hasSysBase), and Save file.
+  function sysToolbar() {
+    const id = LM.system.current(), s = id && LM.system.get(id), Y = LM.system;
+    const discard = s && canSync() && R.sysUnsynced({ [id]: s }).length && R.hasSysBase(id);
+    return `<button class="icon-btn" data-act="sys-undo" title="Undo (Ctrl+Z)" aria-label="Undo"${Y.canUndo() ? '' : ' disabled'}>${ICON.undo}</button>` +
+      `<button class="icon-btn" data-act="sys-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${Y.canRedo() ? '' : ' disabled'}>${ICON.redo}</button>` +
+      (discard ? `<button class="btn" data-act="sys-discard" title="Put this system back as it was at the last sync (Ctrl+Z brings the changes back)">Discard changes</button>` : '') +
+      `<button class="btn btn-primary" data-act="sys-save" title="Download this system as a .loom.json file">${ICON.save}<span class="btn-label">Save file</span></button>`;
+  }
+  async function discardSystem() {
+    const id = LM.system.current(), b = id && await R.sysBase(id);
+    if (b && LM.system.discardTo(b)) toast('Back to the last sync. Ctrl+Z brings your changes back.');
+    else toast("This browser doesn't have the last synced copy of this system any more.", 'error');
+  }
   function renderToolbar() {
     const h = H();
     const seg = $('#view-seg');
+    if (LM.system.current()) { seg.innerHTML = ''; seg.hidden = true; $('#toolbar-actions').innerHTML = sysToolbar(); return; }
     if (!h) { seg.innerHTML = ''; seg.hidden = true; $('#toolbar-actions').innerHTML = ''; return; }
     seg.hidden = false;
     const c = M.checks(h);
@@ -2221,7 +2239,10 @@
   }
   function openFile(file) {
     file.text().then(t => {
-      const h = M.normalize(JSON.parse(t));
+      const doc = JSON.parse(t);
+      // A saved system (Save file in a system) opens as a system.
+      if (doc && doc.kind === 'system') { const s = LM.system.openDoc(doc); S.cur = null; persist(); renderAll(); toast(`Opened ${s.title}.`); return; }
+      const h = M.normalize(doc);
       if (S.store[h.id]) h.id = U.uid('h');
       delete h.deleted;
       if (!DEMO) delete h.demoVersion;   // a saved demo harness opened outside the demo is an ordinary one
@@ -2280,6 +2301,10 @@
       case 'discard': discardChanges(); break;
       case 'save': if (h) U.download(baseName(h) + '.loom.json', JSON.stringify(h, null, 2), 'application/json'); break;
       case 'sync': syncNow(false); break;
+      case 'sys-undo': LM.system.act('undo'); break;
+      case 'sys-redo': LM.system.act('redo'); break;
+      case 'sys-discard': discardSystem(); break;
+      case 'sys-save': LM.system.saveFile(); break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
       case 'fit': fitGlide(); break;
