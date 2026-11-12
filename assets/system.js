@@ -108,8 +108,10 @@
     const sides = { left: [], right: [], top: [], bottom: [] };
     ext.forEach(e => sides[e.side].push(e));
     const gapV = TAB.h + 2, hd = Math.min(46, b.h * K / 2) / K + 1;
-    const across = list => list.reduce((n, e) => n + tabW(e.ref) + 2, 2);
-    b.h = Math.max(b.h, Math.ceil(Math.max(sides.left.length, sides.right.length) * gapV + hd + 2));
+    // The block grows to hold the tabs it places itself (not ones the parent placed by hand).
+    const auto = list => list.filter(e => !(b.tabs[e.id] && b.tabs[e.id].x != null));
+    const across = list => auto(list).reduce((n, e) => n + tabW(e.ref) + 2, 2);
+    b.h = Math.max(b.h, Math.ceil(Math.max(auto(sides.left).length, auto(sides.right).length) * gapV + hd + 2));
     b.w = Math.max(b.w, Math.ceil(Math.max(across(sides.top), across(sides.bottom))));
     const spot = {};
     Object.keys(sides).forEach(side => {
