@@ -447,6 +447,32 @@
     try { const all = (await sysDbDo('readonly', st => st.get(NS))) || {}; const b = all[id]; return b && hash(b) === read('sysSynced', {})[id] ? JSON.parse(JSON.stringify(b)) : null; }
     catch (e) { return null; }
   }
+  // The exact file the last sync saw, read from GitHub (Chris, 2026-11-12: Discard changes on whatever page
+  // is open, even when this browser kept no copy, as after a sync on an older version): the sync cache
+  // holds each file's blob sha as of that sync, so this is that version, even if the repo has a newer one.
+  function syncedEntry(kind, id) {
+    const c = config();
+    if (kind === 'system') { const e = read('sysCache', {})['systems/projects/' + id + '.json']; return e && e.sha ? { full: c.owner + '/' + c.dataRepo, sha: e.sha } : null; }
+    const full = homeOf(id) || (c.owner + '/' + c.dataRepo), e = (read('caches', {})[full] || {})['projects/' + id + '.json'];
+    return e && e.sha ? { full, sha: e.sha } : null;
+  }
+  async function syncedFromRepo(kind, id, opts) {
+    opts = opts || {};
+    const e = syncedEntry(kind, id), tok = opts.token || token();
+    if (!e || !tok) return null;
+    const st = new SG.GitHubStore({ owner: e.full.split('/')[0], repo: e.full.split('/')[1], branch: 'main', dataPath: '', token: tok }, opts.fetch);
+    const doc = JSON.parse(new TextDecoder().decode(await st.blobBytes(e.sha)));
+    if (kind === 'system') { const s = doc && doc.system; return s && s.id === id ? LM.system.normalize(s) : null; }
+    const h = unwrap(doc);
+    return h && h.id === id ? h : null;
+  }
+  // Discard changes: whether there's a last synced version to go back to (kept here, or on GitHub), and
+  // that version (null when there's none, or GitHub can't be reached).
+  const canDiscard = (kind, id) => (kind === 'system' ? hasSysBase(id) : !!base(id)) || !!syncedEntry(kind, id);
+  async function discardCopy(kind, id, opts) {
+    const kept = kind === 'system' ? await sysBase(id) : base(id);
+    return kept || syncedFromRepo(kind, id, opts);
+  }
   const sysUnsynced = store => { const s = read('sysSynced', {}); return Object.keys(store).filter(id => !store[id].demoVersion && (!s[id] || s[id] !== hash(store[id]))); };
 
   // Harnesses changed since this browser's last sync (never synced counts).
@@ -475,7 +501,7 @@
 
   LM.store = {
     DEMO, setNamespace: ns => { NS = ns; }, config, token, signedIn: () => !!token(), envelope, unwrap, summarize, makeMerge, slimPl, plIndex, waiting, startFromPl, adoptFromPl, hash,
-    sync, syncSystems, sysUnsynced, sysBase, hasSysBase, loadSysBase, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, base, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
+    sync, syncSystems, sysUnsynced, sysBase, hasSysBase, loadSysBase, canDiscard, discardCopy, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, base, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
     access: () => read('who', {}).access || '',
   };
 })(window.LM = window.LM || {});

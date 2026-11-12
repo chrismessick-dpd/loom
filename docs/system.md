@@ -7,7 +7,8 @@ checks, and phase 4.
 ## Toolbar (2026-11-12, Chris)
 
 As a harness's, at the top right: Undo, Redo, Discard changes (while the system has changes since the last
-sync; no dialog, and Ctrl+Z brings them back), and Save file (a `.loom.json` that Open a file opens again as
+sync; no dialog, and Ctrl+Z brings them back; the synced version comes from this browser's kept copy, or
+from GitHub when there's none), and Save file (a `.loom.json` that Open a file opens again as
 a system). The canvas bar keeps Fit.
 
 ## Connections (2026-11-11, Chris)

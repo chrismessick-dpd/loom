@@ -489,10 +489,14 @@
 
   // Discard changes (Chris, 2026-11-10): shown when the open harness has changes since the last sync
   // and this browser kept that sync's copy (R.base). Never in the demo (Reset demo does that there).
-  const canDiscard = h => canSync() && !!R.unsynced({ [h.id]: h }).length && !!R.base(h.id);
-  function discardChanges() {
-    const b = R.base(S.cur);
-    if (!b) return;
+  // Chris, 2026-11-12: on whatever page is open, whenever it has changes since the last sync. When this
+  // browser kept no copy of that sync, the version it saw is read from GitHub (store.js discardCopy).
+  const canDiscard = h => canSync() && !!R.unsynced({ [h.id]: h }).length && R.canDiscard('harness', h.id);
+  async function discardChanges() {
+    const id = S.cur;
+    let b = null;
+    try { b = await R.discardCopy('harness', id); } catch (e) { toast("Couldn't read the last synced version from GitHub: " + e.message, 'error'); return; }
+    if (!b || S.cur !== id) { if (!b) toast("There's no synced version of this harness to go back to.", 'error'); return; }
     snapshot();
     S.store[S.cur] = b;
     S.sel = null; S.pending = null;
@@ -504,16 +508,19 @@
   // changes since the last sync and this browser kept that sync's copy (R.hasSysBase), and Save file.
   function sysToolbar() {
     const id = LM.system.current(), s = id && LM.system.get(id), Y = LM.system;
-    const discard = s && canSync() && R.sysUnsynced({ [id]: s }).length && R.hasSysBase(id);
+    const discard = s && canSync() && R.sysUnsynced({ [id]: s }).length && R.canDiscard('system', id);
     return `<button class="icon-btn" data-act="sys-undo" title="Undo (Ctrl+Z)" aria-label="Undo"${Y.canUndo() ? '' : ' disabled'}>${ICON.undo}</button>` +
       `<button class="icon-btn" data-act="sys-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${Y.canRedo() ? '' : ' disabled'}>${ICON.redo}</button>` +
       (discard ? `<button class="btn" data-act="sys-discard" title="Put this system back as it was at the last sync (Ctrl+Z brings the changes back)">Discard changes</button>` : '') +
       `<button class="btn btn-primary" data-act="sys-save" title="Download this system as a .loom.json file">${ICON.save}<span class="btn-label">Save file</span></button>`;
   }
   async function discardSystem() {
-    const id = LM.system.current(), b = id && await R.sysBase(id);
+    const id = LM.system.current();
+    let b = null;
+    try { b = id && await R.discardCopy('system', id); } catch (e) { toast("Couldn't read the last synced version from GitHub: " + e.message, 'error'); return; }
+    if (LM.system.current() !== id) return;
     if (b && LM.system.discardTo(b)) toast('Back to the last sync. Ctrl+Z brings your changes back.');
-    else toast("This browser doesn't have the last synced copy of this system any more.", 'error');
+    else toast("There's no synced version of this system to go back to.", 'error');
   }
   function renderToolbar() {
     const h = H();

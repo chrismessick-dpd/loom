@@ -27,8 +27,10 @@ links to it so far. Before every commit:
   while the open system has changes since the last sync and this browser kept that sync's copy, needs no
   dialog, and Ctrl+Z brings the changes back (`LM.system.discardTo`). The copy is kept at every system sync
   in IndexedDB (`loom-sysbase`, one record per storage namespace: `store.js` `sysBase`, `hasSysBase`,
-  `loadSysBase`), not localStorage, where a second copy of a big system would crowd out the systems. Never
-  in the demo. Save file downloads the system as a `.loom.json`, and Open a file (or a drop) opens one
+  `loadSysBase`), not localStorage, where a second copy of a big system would crowd out the systems. When
+  this browser kept no copy (a sync on an older version), Discard reads the exact version the last sync saw
+  from GitHub, by the blob sha in the sync cache (`canDiscard`, `discardCopy`; harnesses too, Chris: on
+  whatever page is open). Never synced: no Discard. Never in the demo. Save file downloads the system as a `.loom.json`, and Open a file (or a drop) opens one
   again as a new copy (`openDoc`). Tests 54. Not tried signed in with a real sync.
 
 - **One engine for every Connection (2026-11-11, Chris: "any object that connects two blocks is a

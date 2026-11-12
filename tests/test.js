@@ -787,6 +787,26 @@
     await R.loadSysBase();
     ok(R.hasSysBase(s.id), 'known again after a reload');
   });
+  test('Discard changes reads the last synced version from GitHub when this browser kept none (harness and system)', async () => {
+    const hub = setup();
+    const h = harness('Kept nowhere', { pn: '2200999-001' });
+    const res = await R.sync({ [h.id]: h }, opts(hub));
+    const { s, get } = sysFixture();
+    const rs = await R.syncSystems({ [s.id]: s }, get, opts(hub));
+    // A second sync of each lists the repo, which is when the fake hub learns its blobs (GitHub has them all).
+    await R.sync(res.store, opts(hub)); await R.syncSystems(rs.store, get, opts(hub));
+    // As if the syncs ran on a version that kept no copies.
+    localStorage.removeItem(NSP + 'base');
+    await new Promise((ok2, bad) => { const r = indexedDB.deleteDatabase('loom-sysbase'); r.onsuccess = ok2; r.onerror = bad; r.onblocked = ok2; });
+    await R.loadSysBase();
+    ok(!R.base(h.id) && !R.hasSysBase(s.id), 'no copies kept here');
+    ok(R.canDiscard('harness', h.id) && R.canDiscard('system', s.id), 'still offered: GitHub has them');
+    const hb = await R.discardCopy('harness', h.id, opts(hub)), sb = await R.discardCopy('system', s.id, opts(hub));
+    eq(hb.title, res.store[h.id].title, 'the harness as synced');
+    eq(sb.title, rs.store[s.id].title, 'the system as synced');
+    eq(R.unsynced({ [h.id]: hb }), [], 'and it is what that sync recorded');
+    ok(!R.canDiscard('harness', 'never-synced') && !R.canDiscard('system', 'never-synced'), 'never synced: nothing to go back to');
+  });
   test('boards: a connector missing from the pick-and-place is placed at its pads in the netlist', () => {
     // Netlist counts in 0.0001 in; the pick-and-place in mm, offset by (2, 3) mm. J9 isn't fitted.
     const k = 0.00254, rec = (des, pin, x, y) => ({ des, pin, net: 'N' + des + pin, xr: Math.round((x - 2) / k), yr: Math.round((y - 3) / k), access: 0 });
