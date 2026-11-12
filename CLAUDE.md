@@ -22,6 +22,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System How it works card (2026-11-12, Chris: as the harness editor's).** A ? in the system panel's bottom
+  right opens a card of the moves over the panel's bottom (`helpHtml`, the harness's `.pane-help` styles, in a
+  `.sys-side` wrapper so it doesn't scroll with the panel); open the first time, then remembered in this
+  browser (`<ns>sysHelp`). The floating hint at the canvas's top is gone, wiring and empty-system cases too.
+
 - **System highlights (2026-11-12, Chris).** The one selected cable draws 1.5 times as wide with a soft accent
   glow and a larger bead while the rest fade to 18% (`.sys-w.solo`). A selected block glows (the harness's
   selected-connector frame), each of its cables glows and carries the harness's soft current (`.sys-w.linked`,

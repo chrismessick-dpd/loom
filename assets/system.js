@@ -618,6 +618,21 @@
     if (made) A.toast(`Made ${made.h.title}${made.suggested ? `, with ${made.suggested} wires from shared nets` : ''}. Open it to wire it.`);
   }
 
+  // How it works (Chris, 2026-11-12: as the harness editor's card): a ? in the panel's bottom right opens a
+  // card of the moves over the panel's bottom. Open until closed, remembered in this browser.
+  const helpOpen = () => { try { return localStorage.getItem(NS + 'sysHelp') !== 'closed'; } catch (e) { return true; } };
+  function helpHtml() {
+    const open = helpOpen();
+    return (open ? `<div class="pane-help" role="dialog" aria-label="How it works"><div class="hp-head"><b>How it works</b><button class="hp-close" data-sact="help" title="Close" aria-label="Close">\u00d7</button></div>
+        <p><i>●</i> Click a connector, then another, to connect them. Esc cancels.</p>
+        <p><i>✥</i> Drag a block to move it; it snaps to the grid. Hold Ctrl to place it anywhere. R turns a selected block 90°, Shift+R back.</p>
+        <p><i>⬚</i> Drag on empty canvas to select: left to right picks what's inside, right to left what the box touches. Shift-click adds or removes one. Drag any selected block to move them all.</p>
+        <p><i>⌐</i> Cables find their way round the blocks. Drag a straight run sideways to shape it, Shift-drag to break it where you grab it, and double-click to add a bend. Near straight, it snaps straight.</p>
+        <p><i>○</i> Drag a cable's end dot onto another connector to plug it there, or off to leave it open. Right-click a cable to walk around blocks or go behind them.</p>
+        <p><i>↔</i> Right or middle drag pans, the wheel zooms, and F fits.</p></div>` : '') +
+      `<button class="pane-help-btn${open ? ' on' : ''}" data-sact="help" title="How it works" aria-label="How it works" aria-expanded="${open}">?</button>`;
+  }
+
   // ── Render ──
   function render(page) {
     const s = cur();
@@ -625,8 +640,8 @@
     page.classList.add('sys-on');
     if (!page.querySelector('.sys-view')) {
       page.innerHTML = `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span id="sys-grid-menu"></span><span class="sys-hint" id="sys-hint"></span></div></div>
-        <aside class="rail sys-panel" id="sys-panel"></aside></div>`;
+        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span id="sys-grid-menu"></span></div></div>
+        <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div>`;
       wire(page);
     }
     const svg = page.querySelector('#sys-canvas');
@@ -637,7 +652,7 @@
     page.querySelector('#sys-grid-menu').innerHTML = `<label class="seg glass hud-grid" title="Blocks and cable runs snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${A.gridIcon ? A.gridIcon() : ''}<select data-sgrid aria-label="Grid">` +
       `<optgroup label="Spacing">${GRIDS.map(x => `<option value="${x}"${x === gs ? ' selected' : ''}>${x ? 'Grid ' + x + ' mm' : 'Grid off'}</option>`).join('')}</optgroup>` +
       `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${style === k ? '\u25cf ' : '\u25cb '}${t}</option>`).join('')}</optgroup></select></label>`;
-    page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to connect them · drag a cable’s ends · drag its runs (Shift breaks one, Ctrl off the grid) · double-click to add a bend · right-click for its route · drag on empty canvas to select (left to right: inside, right to left: touching), right-drag to pan' : 'Add a board from the panel';
+    page.querySelector('#sys-help').innerHTML = helpHtml();
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'\u2039'} Back</button>` : '';
     panel.innerHTML = backBtn ? panelHtml(s).replace('<div class="rail-head">', '<div class="rail-head">' + backBtn) : panelHtml(s);
@@ -1024,6 +1039,7 @@
     const s = cur();
     switch (a) {
       case 'back': back(); break;
+      case 'help': try { localStorage.setItem(NS + 'sysHelp', helpOpen() ? 'closed' : 'open'); } catch (e) { /* storage blocked */ } A.refresh(); break;
       case 'rotate-cw': case 'rotate-ccw': {
         const id = arg || (S.sel && S.sel.kind === 'block' && S.sel.block);
         if (id) change(x => rotate(x, block(x, id), a === 'rotate-cw' ? 90 : -90));
