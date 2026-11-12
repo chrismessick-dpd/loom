@@ -1034,32 +1034,37 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-hud { position: absolute; left: 12px; top: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 8px; }
 .sys-hint { font-size: 12px; color: var(--text-3); margin-left: 6px; }
 .sys-plugs { margin-top: 6px; }
-/* The canvas (mm units) */
-.sys-body { fill: var(--bg-elev); stroke: var(--text-3); stroke-width: 0.4; }
+/* The canvas, in the harness editor's units (4 per mm), so .lm-canvas styles the wires, pulse, ghost, and runs */
+.sys-body { fill: var(--bg-elev); stroke: var(--text-3); stroke-width: 1.4; }
 .sys-block.board .sys-body { fill: color-mix(in srgb, var(--accent) 7%, var(--bg-elev)); }
-.sys-block.device .sys-body { stroke-dasharray: 1.5 1; }
-.sys-block.sel .sys-body { stroke: var(--accent); stroke-width: 0.8; }
+.sys-block.device .sys-body { stroke-dasharray: 6 4; }
+.sys-block.sel .sys-body { stroke: var(--accent); stroke-width: 2.6; }
 .sys-block { cursor: move; }
-.sys-ref { font: 700 4px var(--font, sans-serif); fill: var(--text); pointer-events: none; }
-.sys-name { font: 500 3px var(--font, sans-serif); fill: var(--text-2); pointer-events: none; }
-.sys-tab { cursor: pointer; }
-.sys-tab rect { fill: var(--bg-elev); stroke: var(--text-3); stroke-width: 0.35; }
-.sys-tab text { font: 700 2.2px var(--font, sans-serif); text-anchor: middle; fill: var(--text-3); pointer-events: none; }
-.sys-tab.unused { opacity: 0.55; }
-.sys-tab.used rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 0.5; }
+.sys-ref { font: 700 16px var(--font, sans-serif); fill: var(--text); pointer-events: none; }
+.sys-name { font: 500 12px var(--font, sans-serif); fill: var(--text-2); pointer-events: none; }
+.sys-tab { cursor: crosshair; }
+.sys-tab rect { fill: var(--bg-elev); stroke: var(--text-3); stroke-width: 1.3; }
+.sys-tab text { font: 700 9px var(--font, sans-serif); text-anchor: middle; fill: var(--text-3); pointer-events: none; }
+.sys-tab.unused { opacity: 0.6; }
+.sys-tab.used rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.8; }
 .sys-tab.used text { fill: var(--text); }
-.sys-tab.open rect { stroke-dasharray: 1 0.6; }
+.sys-tab.open rect { stroke-dasharray: 4 2.5; }
 .sys-tab.plugged rect { fill: var(--accent); }
 .sys-tab.plugged text { fill: var(--accent-ink, #fff); }
-.sys-tab.bottom rect { stroke-dasharray: 0.6 0.5; }
-.sys-tab.sel rect { stroke: var(--text); stroke-width: 0.9; }
-.sys-cable .hit { stroke: transparent; stroke-width: 4; fill: none; cursor: pointer; }
-.sys-cable .line { stroke: var(--text-2); stroke-width: 0.9; fill: none; stroke-linejoin: round; pointer-events: none; }
-.sys-cable.st-wired .line { stroke: var(--accent); }
-.sys-cable.st-progress .line, .sys-cable.st-missing .line { stroke: var(--issue); }
-.sys-cable.st-placeholder .line { stroke-dasharray: 2 1.2; }
-.sys-cable .line.open { stroke-dasharray: 1.4 1; }
-.sys-cable .ring { fill: var(--bg-elev); stroke: var(--text-2); stroke-width: 0.5; pointer-events: none; }
-.sys-cable.sel .line { stroke-width: 1.6; }
-.sys-clabel { font: 600 2.6px var(--font, sans-serif); fill: var(--text); paint-order: stroke; stroke: var(--bg-elev); stroke-width: 0.8; pointer-events: none; }
+.sys-tab.bottom rect { stroke-dasharray: 2.5 2; }
+.sys-tab.sel rect, .sys-tab.land rect { stroke: var(--text); stroke-width: 3; }
+.sys-tab.land rect { filter: drop-shadow(0 0 4px var(--cv-glow)); }
+.sys-tab:hover rect { filter: drop-shadow(0 0 3px var(--cv-glow)); }
+.sys-canvas .sys-w .sys-hit { stroke: transparent; stroke-width: 16; fill: none; cursor: pointer; }
+.sys-canvas .sys-w.sel .sys-hit { cursor: move; }
+.sys-canvas .sys-w .w-edge { stroke-width: 8.5; }
+.sys-canvas .sys-w .w-base { stroke-width: 6; }
+.sys-canvas .sys-w .w-gloss { stroke-width: 1.4; }
+.sys-canvas .sys-w .w-pulse { stroke-width: 4; }
+.sys-canvas .sys-w.st-placeholder .w-base { stroke-dasharray: 10 6; stroke-linecap: butt; }
+.sys-canvas .sys-open .w-base { stroke-dasharray: 5 4; stroke-linecap: butt; }
+.sys-canvas .sys-w.sel .w-edge { stroke: var(--cv-sel); }
+.sys-ring { fill: var(--bg-elev); stroke: var(--text-2); stroke-width: 2; pointer-events: none; }
+.sys-clabel { font: 600 11px var(--font, sans-serif); fill: var(--text); paint-order: stroke; stroke: var(--bg-elev); stroke-width: 3.5; stroke-linejoin: round; pointer-events: none; }
+.sys-clabel.sel { font-weight: 700; }
 @media (max-width: 860px) { .sys-view { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; } .sys-panel { border-left: none; border-top: 1px solid var(--hair); } }
