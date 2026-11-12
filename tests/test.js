@@ -876,6 +876,12 @@
       eq(sb.conns.map(c => c.id).sort(), [a.id + '/' + j1.id, a.id + '/' + j2.id].sort(), 'a new external connector joins, the old id stays');
       eq(sb.conns.find(c => c.id === a.id + '/' + j1.id).ref, 'A1 P1', 'a rename in the child shows in the parent');
       eq(Y.summarize(top, () => null).blocks.find(b => b.kind === 'system').system, pump.id, 'the summary names the placed system');
+      // The stored summary comes from the file alone: the same before the placed system is here (a first
+      // sync reads the parent first), as a raw file, and after.
+      const withChild = JSON.stringify(Y.summarize(top, () => null)), raw = JSON.parse(JSON.stringify(top));
+      delete Y.store()[pump.id];
+      eq(JSON.stringify(Y.summarize(raw, () => null)), withChild, 'no placed system here, read straight from the file');
+      Y.store()[pump.id] = pump;
     } finally { done(); }
   });
   test('nest: a system can’t hold one that holds it, and the tree lists systems with their systems and harnesses', () => {

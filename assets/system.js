@@ -255,16 +255,20 @@
   };
   const endName = (s, e) => { const b = e && block(s, e.block), c = b && conn(b, e.conn); return b && c ? `${b.ref} ${c.ref}` : ''; };
 
-  function checks(s, get) {
+  // own: only what the system's own file says, never the systems it places or that place it (the stored
+  // summary: a first sync reads a parent before its children are here, and the summary must not change
+  // with what this browser happens to hold).
+  function checks(s, get, own) {
     const out = [];
     const add = (sev, text, sel) => out.push({ sev, text, sel });
-    const ps = parentsOf(s.id);
+    const ps = own ? [] : parentsOf(s.id);
+    const linked = e => own && e && (block(s, e.block) || {}).kind === 'system';
     s.blocks.forEach(b => {
-      if (b.kind !== 'system') return;
+      if (b.kind !== 'system' || own) return;
       if (!childOf(b)) add('error', `${b.ref} places a system that isn't here any more.`, { kind: 'block', block: b.id });
       else if (b.system === s.id || places(childOf(b), s.id)) add('error', `${b.ref} places ${b.name}, which places this system: a loop.`, { kind: 'block', block: b.id });
     });
-    s.blocks.forEach(b => b.conns.forEach(c => {
+    s.blocks.forEach(b => (b.conns || []).forEach(c => {
       const at = pluggedAt(s, b.id, c.id), where = `${b.ref} ${c.ref}`;
       // An external connector is plugged from outside, in the systems that place this one.
       if (c.external && fitted(c)) {
@@ -289,13 +293,14 @@
       const sel = { kind: 'cable', id: cab.id };
       sel0 = sel;
       if (kindOf(cab) !== 'harness') {
-        TWO.forEach(e => { const p = cab.ends[e.id]; if (!p) add('warn', `${cab.name || KINDS[kindOf(cab)]}: ${e.ref} isn't plugged in.`, sel); else if (!conn(block(s, p.block), p.conn)) gone(p, `${cab.name || KINDS[kindOf(cab)]}: ${e.ref}`); });
+        TWO.forEach(e => { const p = cab.ends[e.id]; if (linked(p)) return; if (!p) add('warn', `${cab.name || KINDS[kindOf(cab)]}: ${e.ref} isn't plugged in.`, sel); else if (!conn(block(s, p.block), p.conn)) gone(p, `${cab.name || KINDS[kindOf(cab)]}: ${e.ref}`); });
         return;
       }
       const h = get(cab.harness);
       if (!h) { add('error', `Cable ${cab.label || cab.id} names a harness that isn't here.`, sel); return; }
       harnessEnds(h).forEach(n => {
         const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn);
+        if (linked(e)) return;
         if (!c) { if (e) gone(e, `${h.title}: ${n.ref}`); else add('warn', `${h.title}: ${n.ref} isn't plugged in.`, sel); return; }
         const src = look(b, c).b.source;
         const where = `${h.title} ${n.ref} → ${b.ref} ${c.ref}`;
@@ -311,8 +316,11 @@
     return out;
   }
   // What a reader of the stored file sees (Signoff PL, phase 4).
-  function summarize(sys, get) {
-    const c = checks(sys, get), qty = {};
+  // Built from the file alone (checks' own): a placed system's block lists which system it is, not how
+  // many of its connectors are used, and cables into it aren't checked here (its own summary does that).
+  function summarize(sys0, get) {
+    const sys = normalize(JSON.parse(JSON.stringify(sys0)));
+    const c = checks(sys, get, true), qty = {};
     const bought = {};
     sys.cables.forEach(cab => {
       if (kindOf(cab) === 'bought') { const k = (cab.pn || cab.mpn || cab.name || '').toLowerCase(); bought[k] = bought[k] || { name: cab.name || '', pn: cab.pn || '', mfr: cab.mfr || '', mpn: cab.mpn || '', qty: 0 }; bought[k].qty++; return; }
@@ -320,7 +328,7 @@
       const h = get(cab.harness), k = cab.harness + '|' + (cab.lengthMm || ''); qty[k] = qty[k] || { harness: cab.harness, pn: pnOf(h, cab), name: h ? h.title : '', qty: 0 }; qty[k].qty++;
     });
     return { v: 1, tool: 'loom', kind: 'system', name: sys.title, project: sys.project || '', revision: sys.rev || '', archived: !!sys.deleted,
-      blocks: sys.blocks.map(b => Object.assign({ ref: b.ref, name: b.name, kind: b.kind, ee: b.source && b.source.id || '', used: b.conns.filter(x => x.used).length }, b.kind === 'system' ? { system: b.system } : {})),
+      blocks: sys.blocks.map(b => (b.kind === 'system' ? { ref: b.ref, name: b.name, kind: b.kind, ee: '', system: b.system } : { ref: b.ref, name: b.name, kind: b.kind, ee: b.source && b.source.id || '', used: b.conns.filter(x => x.used).length })),
       harnesses: Object.values(qty), cables: Object.values(bought), links: sys.cables.filter(c => kindOf(c) === 'link').length, errors: c.filter(x => x.sev === 'error').length, warnings: c.filter(x => x.sev === 'warn').length };
   }
 

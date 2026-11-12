@@ -22,6 +22,13 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Sync fixes (2026-11-12, Chris: "sync with problems" and a GitHub rate-limit warning after 90 harnesses arrived
+  at once).** Drawings for Signoff PL go up at most 15 harnesses a sync (`DRAW_MAX` in `store.js`); the rest go at
+  the next syncs (about 200 uploads at once tripped GitHub's limit on creating content, and every sync retried them
+  all). A system's stored summary is built from its own file alone (`summarize` normalizes a copy and runs `checks`
+  with `own`): a placed system's block lists which system it is but no used count, and cables into it aren't
+  checked there. A first sync read a parent before its children, so its summary was dropped, then put back.
+
 - **Device ends (2026-11-12, Chris: a harness built onto its device, a motor, sensor, or flying leads, is one
   Loom harness with that device as an end).** A connector's Properties has *In a system: Plugs in / Is its
   device* (`n.atDevice`). A system never asks for a device end (`harnessEnds` leaves it out, so no open-end

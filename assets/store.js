@@ -211,9 +211,14 @@
   // thumb: { svg(h) → { svg, dark, w, h }, png({ svg, w, h }) → Promise<{ bytes, type, w, h } | null> }, from app.js.
   const DRAWING_DIR = 'drawing/';
   const drawingPaths = id => ({ index: DRAWING_DIR + id + '/preview/index.json', png: DRAWING_DIR + id + '/preview/diagram.png', dark: DRAWING_DIR + id + '/preview/diagram-dark.png' });
+  const DRAW_MAX = 15;
   async function storeDrawings(harnesses, homes, thumb, mk, errors) {
     const done = read('drawings', {}), next = {}, byRepo = {};
     const add = (full, f, key, val) => { const r = byRepo[full] = byRepo[full] || { files: [], keys: {} }; r.files.push(...f); r.keys[key] = val; };
+    // At most DRAW_MAX new drawings a sync (Chris, 2026-11-12: 68 new harnesses at once, about 200 uploads,
+    // hit GitHub's limit on creating content quickly, and every sync retried them all): the rest go up at the
+    // next syncs, as nothing records them yet.
+    let fresh = 0;
     for (const id of Object.keys(harnesses)) {
       const h = harnesses[id], full = homes[id];
       if (!full) continue;
@@ -225,6 +230,7 @@
       try {
         const d = thumb.svg(h), src = fnv(d.svg + d.dark);
         if (done[key] === src) { next[key] = src; continue; }
+        if (++fresh > DRAW_MAX) { if (done[key]) next[key] = done[key]; continue; }
         const img = await thumb.png({ svg: d.svg, w: d.w, h: d.h }), dk = await thumb.png({ svg: d.dark, w: d.w, h: d.h });
         if (!img || !dk || img.type !== 'image/png' || dk.type !== 'image/png') throw new Error('the picture couldn’t be drawn');
         const index = { v: 1, tool: 'loom', id, src, hero: 'diagram', images: [
