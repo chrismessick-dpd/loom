@@ -11,6 +11,11 @@ sync; no dialog, and Ctrl+Z brings them back; the synced version comes from this
 from GitHub when there's none), and Save file (a `.loom.json` that Open a file opens again as
 a system). The canvas bar keeps Fit.
 
+## The panel (2026-11-12, Chris)
+
+A cable picked from a list in the panel stays lit and the others fade. **‹ Back** at the top left of the
+panel goes to the previous panel, one step at a time.
+
 ## Connections (2026-11-11, Chris)
 
 Anything that joins two blocks is a **Connection**, routed exactly as a harness's wires are (one engine,

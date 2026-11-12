@@ -22,6 +22,12 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System panel: Back, and a picked cable stands out (2026-11-12, Chris).** A cable picked from a list in
+  the panel (the system's Cables, or a connector's Plugged in) keeps its selection pulse and every other
+  cable and its label fades (`S.focus`, `.sys-w.dim`) until anything else is selected. The panel has
+  **‹ Back** at the top left of its head whenever there's a previous panel: one step back each time, like a
+  browser (`S.hist`, `notePanel`, `back`; selections that no longer exist are skipped).
+
 - **System toolbar (2026-11-12, Chris: as a harness's, top right).** A system's top right has Undo, Redo,
   Discard changes, and Save file (`sysToolbar` in `app.js`); the canvas bar keeps Fit. Discard changes shows
   while the open system has changes since the last sync and this browser kept that sync's copy, needs no
