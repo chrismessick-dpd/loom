@@ -529,8 +529,8 @@
     });
     const res = CN().routeAll(s.id, rects, list, { fast: !!(view && view.fast), grid: step });
     per.forEach(({ cab, h, ends, at }) => {
-      const routes = [];
-      for (let i = 1; i < at.length; i++) {
+      const routes = [], dv = deviceEnds(h).length > 0;
+      for (let i = 1; i < at.length && !dv; i++) {
         const R0 = res.routes.get(cab.id + '|' + at[i].n.id), sh = CN().draw(R0);
         routes.push(Object.assign({}, R0, { end: at[i].n.id, d: pathOf(sh.pts), mid: midOfPts(sh.pts) }));
       }
