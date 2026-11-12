@@ -237,6 +237,12 @@
   }
   const selBlocks = t => (!t ? [] : t.kind === 'multi' ? t.blocks : t.kind === 'block' ? [t.block] : []);
   const selCables = t => (!t ? [] : t.kind === 'multi' ? t.cables : t.kind === 'cable' ? [t.id] : []);
+  // Shift-click (as in the harness): a block or cable joins the selection, or leaves it if it's in.
+  function toggleSel(kind, id) {
+    const bs = selBlocks(S.sel).slice(), cs = selCables(S.sel).slice(), list = kind === 'block' ? bs : cs, i = list.indexOf(id);
+    if (i >= 0) list.splice(i, 1); else list.push(id);
+    S.sel = selOf(bs, cs); S.pair = null; S.picking = null; S.adding = null;
+  }
 
   function open(id) { S.cur = id; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
   // Back (Chris, 2026-11-12): from any panel straight to the system's own.
@@ -894,7 +900,7 @@
         change(s => { const cab = cable(s, d.cab); cab.ends[d.node] = to; if (to) conn(block(s, to.block), to.conn).used = true; if (cab.routes) delete cab.routes[d.node]; S.sel = { kind: 'cable', id: cab.id }; });
         return;
       }
-      if (d.kind === 'run' && !d.moved && d.click) { S.sel = { kind: 'cable', id: d.click }; S.pair = null; S.picking = null; A.refresh(); return; }
+      if (d.kind === 'run' && !d.moved && d.click) { if (d.brk) toggleSel('cable', d.click); else { S.sel = { kind: 'cable', id: d.click }; S.pair = null; S.picking = null; } A.refresh(); return; }
       if (d.kind === 'run' && d.moved && d.snap) {
         // Let go: tidied against the route as it now stands (its sides may have changed in the drag).
         const rec = d.cab.routes && d.cab.routes[d.end], L = lastLo && lastLo.get(d.cab.id), R1 = L && L.routes.find(x => x.end === d.end);
@@ -917,8 +923,13 @@
         A.refresh(); return;
       }
       if (d.moved || d.button !== 0) return;
-      // A click: as the editor's click().
+      // A click: as the editor's click(). With Shift, the block or cable under it joins or leaves the
+      // selection (on a connector, its block).
       const t = d.t, tab = t.closest('[data-conn]');
+      if (d.brk && !S.pending) {
+        const cb0 = t.closest('[data-cable]'), bl0 = t.closest('[data-block]');
+        if (cb0 || bl0) { if (cb0) toggleSel('cable', cb0.dataset.cable); else toggleSel('block', bl0.dataset.block); A.refresh(); return; }
+      }
       if (tab) { clickTab(tabRef(tab)); return; }
       if (S.pending) { cancelWire(); return; }
       const cb = t.closest('[data-cable]'), bl = t.closest('[data-block]');

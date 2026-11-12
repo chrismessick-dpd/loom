@@ -26,7 +26,8 @@ links to it so far. Before every commit:
   system canvas draws a box: left to right picks blocks and cables wholly inside, right to left what it
   touches (blocks by their turned outline, cables by their drawn line; `marqueePick`, `drawMarquee`, lit with
   the harness's `.mq`); Shift adds. Several things are `S.sel = { kind: 'multi', blocks, cables }` (one alone is
-  selected as itself, `selOf`); the panel lists them, each opening its own, with Delete (`multiHtml`,
+  selected as itself, `selOf`; Shift-click a block or cable to add or remove it, `toggleSel`, and on a connector, its
+  block); the panel lists them, each opening its own, with Delete (`multiHtml`,
   `delete-multi`, the Delete key too). Dragging a selected block moves every selected block, and selected
   cables' stored shapes move with them; a cable with one end moving keeps its shape. Panning is the right or
   middle button now (a left drag on empty canvas used to pan).
