@@ -87,6 +87,7 @@
     gridIcon: () => ICON.grid,
     home: () => { LM.system.close(); S.cur = null; persist(); renderAll(); },
     newHarness: (sys, ends) => newHarnessFor(sys, ends),
+    openSystem: id => openSystem(id),
   };
   // A harness end from a system block's connector, as From a board makes one (addBoardConnector).
   function boardEnd(h, b, c, x, y) {
@@ -392,13 +393,26 @@
   }
   function renderSidebar() {
     renderTools();
-    const list = live().sort((a, b) => (b.updated || 0) - (a.updated || 0));
-    // Systems (assets/system.js) sit first in their client project's group.
-    const systems = LM.system.live().sort((a, b) => String(a.title).localeCompare(String(b.title)));
+    // Systems of systems (Chris, 2026-11-12): the systems placed in no other system sit first in their
+    // client project's group, each with the systems it places and the harnesses it uses under it
+    // (LM.system.tree); a harness no system uses stays in the project list.
+    const T = LM.system.tree(), roots = T.roots.slice().sort((a, b) => String(a.sys.title).localeCompare(String(b.sys.title)));
+    const list = live().filter(h => !T.used.has(h.id)).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    const systems = roots.map(n => Object.assign({ kind: 'tree', project: n.sys.project }, { node: n }));
+    // Does this tree node hold what's open (the system or harness), at any depth?
+    const holdsOpen = n => n.id === LM.system.current() || n.harnesses.includes(S.cur) || n.kids.some(holdsOpen);
+    const treeFold = fold.sysTree || {};
+    const treeRow = (n, d) => {
+      const has = n.kids.length + n.harnesses.length > 0, open = n.path in treeFold ? !!treeFold[n.path] : holdsOpen(n);
+      const tog = has ? `<button class="lm-tog" data-act="toggle-sys" data-path="${esc(n.path)}" aria-expanded="${open}" title="${open ? 'Fold' : 'Show'} what it holds"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : '<span class="lm-tog"></span>';
+      return `<div class="lm-tree" style="--d:${d}">${tog}${sysRow(n.sys)}</div>` +
+        (open && has ? n.kids.map(k => treeRow(k, d + 1)).join('') + n.harnesses.map(id => { const h = S.store[id]; return h && !h.deleted ? `<div class="lm-tree" style="--d:${d + 1}"><span class="lm-tog"></span>${row(h)}</div>` : ''; }).join('') : '');
+    };
     const dirty = new Set(canSync() ? R.unsynced(S.store).concat(R.sysUnsynced(LM.system.store())) : []);
     // Grouped by client project, as Signoff EE groups boards (none: "No project", last).
     const groups = new Map();
     systems.concat(list).forEach(h => { const k = String(h.project || '').trim(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); });
+    const holds = h => (h.kind === 'tree' ? holdsOpen(h.node) : h.id === S.cur);
     const keys = [...groups.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
     const sysRow = s => {
       const c = LM.system.checks(s, sysHooks.harness);
@@ -409,7 +423,7 @@
         <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(s.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
     };
     const row = h => {
-      if (h.kind === 'system') return sysRow(h);
+      if (h.kind === 'tree') return treeRow(h.node, 0);
       const c = M.checks(h);
       const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
       const ends = h.nodes.filter(M.isConn).length;
@@ -424,8 +438,8 @@
     const grouped = keys.length > 1 || !!keys[0], closed = fold.closedGroups || {};
     const gkey = k => k.toLowerCase();
     $('#harness-list').innerHTML = fromPlHtml() + (list.length || systems.length ? (grouped ? keys.map(k => {
-      const holds = groups.get(k).some(h => h.id === S.cur || h.id === LM.system.current()), open = !closed[gkey(k)] || holds;
-      return `<div class="side-group"><button class="side-group-head" data-act="toggle-group" data-group="${esc(gkey(k))}"${holds ? ' data-holds-open' : ''} aria-expanded="${open}" title="Client project">` +
+      const hold = groups.get(k).some(holds), open = !closed[gkey(k)] || hold;
+      return `<div class="side-group"><button class="side-group-head" data-act="toggle-group" data-group="${esc(gkey(k))}"${hold ? ' data-holds-open' : ''} aria-expanded="${open}" title="Client project">` +
         `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>` +
         `<span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></button>` +
         (open ? groups.get(k).map(row).join('') : '') + `</div>`;
@@ -2291,6 +2305,13 @@
       case 'new-system': { const p = h ? h.project : ''; S.cur = null; LM.system.create(p); persist(); renderAll(); toast('Add a board from Signoff EE, or draw one, then click its connectors.'); break; }
       case 'demo-system': LM.system.demo().then(() => { S.cur = null; persist(); renderAll(); }); break;
       // Project groups fold as in Signoff EE: folding the group that holds the open harness goes home.
+      case 'toggle-sys': {
+        // A system's place in the tree folds on its own, by its path (one placed twice folds apart).
+        const t = Object.assign({}, fold.sysTree), k = el.dataset.path;
+        t[k] = el.getAttribute('aria-expanded') !== 'true';
+        fold.sysTree = t; saveFold(); renderSidebar();
+        break;
+      }
       case 'toggle-group': {
         const cg = Object.assign({}, fold.closedGroups), k = el.dataset.group;
         if (el.getAttribute('aria-expanded') === 'true') cg[k] = true; else delete cg[k];

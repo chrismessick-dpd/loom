@@ -25,7 +25,10 @@
     if (!s || s.kind !== 'system' || !s.id) throw new Error('not a system');
     s.blocks = Array.isArray(s.blocks) ? s.blocks : [];
     s.cables = Array.isArray(s.cables) ? s.cables : [];
-    s.blocks.forEach(b => { b.conns = Array.isArray(b.conns) ? b.conns : []; b.conns.forEach(c => { c.pins = Array.isArray(c.pins) ? c.pins : []; }); });
+    s.blocks.forEach(b => {
+      if (b.kind === 'system') { b.tabs = b.tabs && typeof b.tabs === 'object' ? b.tabs : {}; setConns(b, []); return; }
+      b.conns = Array.isArray(b.conns) ? b.conns : []; b.conns.forEach(c => { c.pins = Array.isArray(c.pins) ? c.pins : []; });
+    });
     s.cables.forEach(c => {
       c.ends = c.ends && typeof c.ends === 'object' ? c.ends : {};
       if (!KINDS[c.kind]) c.kind = c.harness ? 'harness' : 'link';
@@ -45,6 +48,116 @@
   const conn = (b, id) => b && b.conns.find(c => c.id === id);
   const cable = (s, id) => s.cables.find(c => c.id === id);
   const pinsOf = n => (n.pins || []).map(p => p.pin);
+
+  // ── Systems of systems (Chris, 2026-11-12) ──
+  // A connector marked external (c.external, Make external in its panel) shows on the block of every
+  // system that places this one. A system block (kind 'system', b.system: the placed system's id) is a
+  // link, not a copy: edits to the placed system show in every parent, and one system may be placed more
+  // than once. A system block's connectors aren't stored: they're the placed system's external connectors,
+  // made fresh (resolveAll) and kept off the stored file (b.conns is not enumerable), each under a path id
+  // (the inner block's id / its connector's id, one more step per level), so a cable in the parent plugs
+  // into one and stays plugged while the child is edited. What the parent sets on a tab (its spot, exit,
+  // Function, or Make external again, to pass it up a level) is kept in b.tabs by that id (keepTabs).
+  const DEPTH = 12;
+  const setConns = (b, list) => Object.defineProperty(b, 'conns', { value: list, enumerable: false, writable: true, configurable: true });
+  const childOf = b => (b && b.kind === 'system' && S.store[b.system] && !S.store[b.system].deleted ? S.store[b.system] : null);
+  // Does system s place target, at any depth?
+  function places(s, target, depth) {
+    if (!s || (depth || 0) > DEPTH) return false;
+    return s.blocks.some(b => b.kind === 'system' && (b.system === target || places(S.store[b.system], target, (depth || 0) + 1)));
+  }
+  const parentsOf = id => live().filter(s => s.id !== id && s.blocks.some(b => b.kind === 'system' && b.system === id));
+  // A tab on a system block stands for a connector inside it: harness ends made from it, and the checks,
+  // look through to that board's connector (c.leaf).
+  const look = (b, c) => (c && c.leaf ? { b: { id: b.id, name: c.leaf.name, ref: c.leaf.block, source: c.leaf.source }, c: Object.assign({}, c, { ref: c.leaf.ref }) } : { b, c });
+  // A tab is as wide as its label needs (a system block's tabs say which block's connector they are).
+  const tabW = ref => Math.max(TAB.w, (String(ref).length * 5.6 + 8) / 4);
+  const tw = c => c.tw || TAB.w;
+  function extentOf(s) {
+    if (!s || !s.blocks.length) return null;
+    const x0 = Math.min(...s.blocks.map(b => b.x)), y0 = Math.min(...s.blocks.map(b => b.y));
+    return { x: x0, y: y0, w: Math.max(1, Math.max(...s.blocks.map(b => b.x + sizeOf(b).W)) - x0), h: Math.max(1, Math.max(...s.blocks.map(b => b.y + sizeOf(b).H)) - y0) };
+  }
+  // A system's external connectors, as its block in a parent shows them: where each sits in the system
+  // and which side it leaves from, so the block keeps their arrangement.
+  function externals(s, trail) {
+    trail = trail || [];
+    if (!s || s.deleted || trail.includes(s.id) || trail.length > DEPTH) return [];
+    const t = trail.concat(s.id), out = [];
+    s.blocks.forEach(b => {
+      if (b.kind === 'system') resolveBlock(b, t);
+      (b.conns || []).forEach(c => {
+        if (!c.external || !fitted(c)) return;
+        const at = tabSpot(b, c);
+        out.push({ id: b.id + '/' + c.id, bid: b.id, cid: c.id, ref: `${b.ref} ${c.ref}`, pins: c.pins.map(p => Object.assign({}, p)), fn: c.fn || '', mpn: c.mpn || '', mfr: c.mfr || '', desc: c.desc || '',
+          leaf: c.leaf || { source: b.source || null, name: b.name, block: b.ref, ref: c.ref },
+          inside: `${s.title} › ${c.inside || b.ref + ' ' + c.ref}`, side: exitSide(b, c), cx: b.x + at.x + tw(c) / 2, cy: b.y + at.y + TAB.h / 2 });
+      });
+    });
+    return out;
+  }
+  // A system block's tabs: each external connector on the side it leaves its system from, as far along
+  // as it sits there, spread so none overlap; the block grows to hold them. A tab the parent placed by hand
+  // stays there.
+  function resolveBlock(b, trail) {
+    const ch = childOf(b), ext = ch ? externals(ch, trail) : [], bd = extentOf(ch) || { x: 0, y: 0, w: 1, h: 1 };
+    if (ch) b.name = ch.title;
+    b.tabs = b.tabs && typeof b.tabs === 'object' ? b.tabs : {};
+    if (!(b.w >= 5)) b.w = 100;
+    if (!(b.h >= 5)) b.h = Math.round(Math.max(40, Math.min(160, 100 * bd.h / bd.w)));
+    const sides = { left: [], right: [], top: [], bottom: [] };
+    ext.forEach(e => sides[e.side].push(e));
+    const gapV = TAB.h + 2, hd = Math.min(46, b.h * K / 2) / K + 1;
+    const across = list => list.reduce((n, e) => n + tabW(e.ref) + 2, 2);
+    b.h = Math.max(b.h, Math.ceil(Math.max(sides.left.length, sides.right.length) * gapV + hd + 2));
+    b.w = Math.max(b.w, Math.ceil(Math.max(across(sides.top), across(sides.bottom))));
+    const spot = {};
+    Object.keys(sides).forEach(side => {
+      const list = sides[side], vert = side === 'left' || side === 'right';
+      if (!list.length) return;
+      const u = e => Math.max(0, Math.min(1, vert ? (e.cy - bd.y) / bd.h : (e.cx - bd.x) / bd.w));
+      list.sort((p, q) => u(p) - u(q));
+      const size = e => (vert ? gapV : tabW(e.ref) + 2), lo = vert ? hd : 2, hi = vert ? b.h - TAB.h - 1 : b.w - 2;
+      const pos = list.map(e => lo + u(e) * Math.max(0, hi - lo - (vert ? 0 : tabW(e.ref))));
+      for (let i = 1; i < pos.length; i++) pos[i] = Math.max(pos[i], pos[i - 1] + size(list[i - 1]));
+      const n = pos.length - 1;
+      pos[n] = Math.min(pos[n], hi - (vert ? 0 : tabW(list[n].ref)));
+      for (let i = n - 1; i >= 0; i--) pos[i] = Math.min(pos[i], pos[i + 1] - size(list[i]));
+      list.forEach((e, i) => {
+        const w = tabW(e.ref), p = +pos[i].toFixed(2);
+        spot[e.id] = side === 'left' ? { x: -w, y: p } : side === 'right' ? { x: b.w, y: p } : side === 'top' ? { x: p, y: -TAB.h } : { x: p, y: b.h };
+      });
+    });
+    setConns(b, ext.map(e => {
+      const t = b.tabs[e.id] || {}, a = spot[e.id];
+      return { id: e.id, ref: e.ref, pins: e.pins, fn: t.fn != null ? t.fn : e.fn, fn0: e.fn, used: true, fitted: true, placed: 'link', link: true,
+        x: t.x != null ? t.x : a.x, y: t.y != null ? t.y : a.y, ax: a.x, ay: a.y, exit: t.exit || undefined, external: !!t.external, side: 'top',
+        mpn: e.mpn, mfr: e.mfr, desc: e.desc, tw: tabW(e.ref), leaf: e.leaf, inside: e.inside };
+    }).map(c => { if (!c.exit) delete c.exit; return c; }));
+  }
+  function resolveAll() { Object.values(S.store).forEach(s => s.blocks.forEach(b => { if (b.kind === 'system') resolveBlock(b, [s.id]); })); }
+  // After a change, what the parent set on its system blocks' tabs goes back into b.tabs.
+  function keepTabs(s) {
+    s.blocks.forEach(b => {
+      if (b.kind !== 'system' || !b.conns) return;
+      const t = b.tabs || {};
+      b.conns.forEach(c => {
+        const o = {};
+        if (Math.abs(c.x - c.ax) > 1e-6 || Math.abs(c.y - c.ay) > 1e-6) { o.x = c.x; o.y = c.y; }
+        if (c.exit) o.exit = c.exit;
+        if (c.external) o.external = true;
+        if (c.fn !== c.fn0) o.fn = c.fn;
+        if (Object.keys(o).length) t[c.id] = o; else delete t[c.id];
+      });
+      b.tabs = t;
+    });
+  }
+  function addSystem(s, child, at) {
+    const b = { id: U.uid('b'), ref: nextRef(s.blocks, 'S'), kind: 'system', system: child.id, name: child.title, source: null, x: at ? at.x : 0, y: at ? at.y : 0, w: 0, h: 0, tabs: {} };
+    s.blocks.push(b);
+    resolveBlock(b, [s.id]);
+    return b;
+  }
   // Populated: set by hand, else from the package (a connector only the netlist placed isn't fitted in
   // the pick-and-place's build variant). An unpopulated connector is drawn faint, can't be clicked, and
   // can't be used, so alternates in one place don't get in each other's way (Chris, 2026-11-11).
@@ -101,7 +214,8 @@
   const endsOf = (cab, h) => (kindOf(cab) === 'harness' ? harnessEnds(h) : TWO);
   // The harness end that best fits a connector: one filled from this board's connector (From a board),
   // then one with as many pins, then any end not plugged yet.
-  function bestEnd(s, cab, h, b, c) {
+  function bestEnd(s, cab, h, b0, c0) {
+    const { b, c } = look(b0, c0);
     const free = harnessEnds(h).filter(n => !cab || !cab.ends[n.id]);
     const src = b.source && b.source.id;
     return free.find(n => n.board && src && n.board.project === src && n.board.ref === c.ref)
@@ -138,33 +252,54 @@
   function checks(s, get) {
     const out = [];
     const add = (sev, text, sel) => out.push({ sev, text, sel });
+    const ps = parentsOf(s.id);
+    s.blocks.forEach(b => {
+      if (b.kind !== 'system') return;
+      if (!childOf(b)) add('error', `${b.ref} places a system that isn't here any more.`, { kind: 'block', block: b.id });
+      else if (b.system === s.id || places(childOf(b), s.id)) add('error', `${b.ref} places ${b.name}, which places this system: a loop.`, { kind: 'block', block: b.id });
+    });
     s.blocks.forEach(b => b.conns.forEach(c => {
       const at = pluggedAt(s, b.id, c.id), where = `${b.ref} ${c.ref}`;
+      // An external connector is plugged from outside, in the systems that place this one.
+      if (c.external && fitted(c)) {
+        const id = b.id + '/' + c.id, outside = ps.some(p => p.blocks.some(pb => pb.kind === 'system' && pb.system === s.id && pluggedAt(p, pb.id, id).length));
+        if (at.length) add('warn', `${where} is external, but a cable here plugs into it too.`, { kind: 'conn', block: b.id, conn: c.id });
+        else if (ps.length && !outside) add('warn', `${where} is external, but nothing plugs into it where ${s.title} is placed (${ps.map(p => p.title).join(', ')}).`, { kind: 'conn', block: b.id, conn: c.id });
+        return;
+      }
       if (!fitted(c) && at.length) { add('error', `${where} isn't populated, but a cable is plugged into it.`, { kind: 'conn', block: b.id, conn: c.id }); return; }
       if (!fitted(c)) return;
       if (c.used && !at.length) add('warn', `${where}${c.fn ? ' (' + c.fn + ')' : ''} is used, but nothing is plugged into it.`, { kind: 'conn', block: b.id, conn: c.id });
       if (!c.used && at.length) add('warn', `${where} has a cable but isn't marked used.`, { kind: 'conn', block: b.id, conn: c.id });
       if (at.length > 1) add('error', `${where} has ${at.length} cables plugged into it.`, { kind: 'conn', block: b.id, conn: c.id });
     }));
+    // An end plugged into a connector that's gone: deleted, or no longer external in the system placed.
+    const gone = (e, what) => {
+      const b = block(s, e.block);
+      add('error', `${what} was plugged into a connector that's gone${b ? ` from ${b.ref}${b.kind === 'system' ? ` (is it still external in ${b.name}?)` : ''}` : ''}.`, sel0);
+    };
+    let sel0 = null;
     s.cables.forEach(cab => {
       const sel = { kind: 'cable', id: cab.id };
+      sel0 = sel;
       if (kindOf(cab) !== 'harness') {
-        TWO.forEach(e => { if (!cab.ends[e.id]) add('warn', `${cab.name || KINDS[kindOf(cab)]}: ${e.ref} isn't plugged in.`, sel); });
+        TWO.forEach(e => { const p = cab.ends[e.id]; if (!p) add('warn', `${cab.name || KINDS[kindOf(cab)]}: ${e.ref} isn't plugged in.`, sel); else if (!conn(block(s, p.block), p.conn)) gone(p, `${cab.name || KINDS[kindOf(cab)]}: ${e.ref}`); });
         return;
       }
       const h = get(cab.harness);
       if (!h) { add('error', `Cable ${cab.label || cab.id} names a harness that isn't here.`, sel); return; }
       harnessEnds(h).forEach(n => {
         const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn);
-        if (!c) { add('warn', `${h.title}: ${n.ref} isn't plugged in.`, sel); return; }
+        if (!c) { if (e) gone(e, `${h.title}: ${n.ref}`); else add('warn', `${h.title}: ${n.ref} isn't plugged in.`, sel); return; }
+        const src = look(b, c).b.source;
         const where = `${h.title} ${n.ref} → ${b.ref} ${c.ref}`;
         const hp = M.pinList(n);
         if (hp.length !== c.pins.length) add('error', `${where}: the harness end has ${hp.length} pins, the connector ${c.pins.length}.`, sel);
         const bad = [];
         c.pins.forEach(p => { const l = (n.pinLabels || {})[p.pin] || ''; if (l && p.label && l !== p.label) bad.push(`${p.pin} ${l} ≠ ${p.label}`); });
         if (bad.length) add('warn', `${where}: pin labels don't match the board's nets (${bad.slice(0, 3).join(', ')}${bad.length > 3 ? ', …' : ''}).`, sel);
-        if (n.board && b.source && n.board.project === b.source.id && n.board.source && b.source.label && n.board.source !== b.source.label)
-          add('warn', `${where}: the end was filled from ${n.board.source}; this block is ${b.source.label}.`, sel);
+        if (n.board && src && n.board.project === src.id && n.board.source && src.label && n.board.source !== src.label)
+          add('warn', `${where}: the end was filled from ${n.board.source}; ${b.kind === 'system' ? 'the board inside is' : 'this block is'} ${src.label}.`, sel);
       });
     });
     return out;
@@ -179,7 +314,7 @@
       const h = get(cab.harness), k = cab.harness + '|' + (cab.lengthMm || ''); qty[k] = qty[k] || { harness: cab.harness, pn: pnOf(h, cab), name: h ? h.title : '', qty: 0 }; qty[k].qty++;
     });
     return { v: 1, tool: 'loom', kind: 'system', name: sys.title, project: sys.project || '', revision: sys.rev || '', archived: !!sys.deleted,
-      blocks: sys.blocks.map(b => ({ ref: b.ref, name: b.name, kind: b.kind, ee: b.source && b.source.id || '', used: b.conns.filter(x => x.used).length })),
+      blocks: sys.blocks.map(b => Object.assign({ ref: b.ref, name: b.name, kind: b.kind, ee: b.source && b.source.id || '', used: b.conns.filter(x => x.used).length }, b.kind === 'system' ? { system: b.system } : {})),
       harnesses: Object.values(qty), cables: Object.values(bought), links: sys.cables.filter(c => kindOf(c) === 'link').length, errors: c.filter(x => x.sev === 'error').length, warnings: c.filter(x => x.sev === 'warn').length };
   }
 
@@ -187,6 +322,7 @@
   function load() {
     try { S.store = JSON.parse(localStorage.getItem(NS + 'systems') || '{}') || {}; } catch (e) { S.store = {}; }
     Object.keys(S.store).forEach(id => { try { normalize(S.store[id]); } catch (e) { delete S.store[id]; } });
+    resolveAll();
     let c = null;
     try { c = localStorage.getItem(NS + 'currentSystem'); } catch (e) { /* storage blocked */ }
     const want = new URLSearchParams(location.search).get('system');
@@ -195,6 +331,7 @@
   }
   let saveTimer = null;
   function persist() {
+    resolveAll();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try { localStorage.setItem(NS + 'systems', JSON.stringify(S.store)); localStorage.setItem(NS + 'currentSystem', S.cur || ''); }
@@ -210,6 +347,7 @@
     if (!s) return null;
     S.past.push(JSON.stringify(s)); if (S.past.length > 120) S.past.shift(); S.future = [];
     const r = fn(s);
+    keepTabs(s);
     s.updated = now();
     if (A.login()) s.updatedBy = A.login();
     persist(); A.refresh();
@@ -284,19 +422,19 @@
   const turnSide = (side, deg) => { let s0 = side; for (let i = 0; i < ((deg % 360) + 360) % 360 / 90; i++) s0 = TURN[s0]; return s0; };
   // A connector's tab, top left in the turned block (mm).
   function tabSpot(b, c) {
-    const cx = c.x + TAB.w / 2, cy = c.y + TAB.h / 2, r = rotOf(b);
+    const cx = c.x + tw(c) / 2, cy = c.y + TAB.h / 2, r = rotOf(b);
     const [x, y] = r === 90 ? [b.h - cy, cx] : r === 180 ? [b.w - cx, b.h - cy] : r === 270 ? [cy, b.w - cx] : [cx, cy];
-    return { x: x - TAB.w / 2, y: y - TAB.h / 2 };
+    return { x: x - tw(c) / 2, y: y - TAB.h / 2 };
   }
   function exitSide(b, c) {
     if (c.exit && SIDES[c.exit]) return turnSide(c.exit, rotOf(b));
     const t = tabSpot(b, c), { W, H } = sizeOf(b);
-    const d = { left: t.x, right: W - t.x - TAB.w, top: t.y, bottom: H - t.y - TAB.h };
+    const d = { left: t.x, right: W - t.x - tw(c), top: t.y, bottom: H - t.y - TAB.h };
     return Object.keys(d).sort((p, q) => d[p] - d[q])[0];
   }
   function tabGeom(b, c) {
     const t = tabSpot(b, c), { W, H } = sizeOf(b);
-    const x = (b.x + t.x) * K, y = (b.y + t.y) * K, w = TAB.w * K, h = TAB.h * K, cx = x + w / 2, cy = y + h / 2;
+    const x = (b.x + t.x) * K, y = (b.y + t.y) * K, w = tw(c) * K, h = TAB.h * K, cx = x + w / 2, cy = y + h / 2;
     const side = exitSide(b, c), [dx, dy] = SIDES[side];
     const ex = dx ? (dx < 0 ? x : x + w) : cx, ey = dy ? (dy < 0 ? y : y + h) : cy;
     // How far the exit is inside its block's edge, the way it leaves.
@@ -341,7 +479,7 @@
   // selection (a system the size of a machine has dozens of cables over a big drawing).
   let memo = { key: '', lo: null };
   function layout(s, view) {
-    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted])]), s.cables, s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
+    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted, c.tw || 0])]), s.cables, s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
     if (memo.key === key && memo.lo) return memo.lo;
     const lo = layoutNow(s, view);
     memo = { key, lo };
@@ -412,19 +550,22 @@
         `<line class="sys-headrule" x1="${X}" y1="${Y + hd}" x2="${X + W}" y2="${Y + hd}"/>` +
         `<rect class="cv-glass" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/><rect class="cv-rim" x="${X + 1}" y="${Y + 1}" width="${W - 2}" height="${Hh - 2}" rx="${r - 1}"/>` +
         `<rect class="cv-frame" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/>` +
+        (b.kind === 'system' ? `<rect class="sys-nest" x="${X + 5}" y="${Y + 5}" width="${Math.max(0, W - 10)}" height="${Math.max(0, Hh - 10)}" rx="${r - 3}"/>` : '') +
         // The ref alone at the top left, as tall as the two rows it shares with nothing now, and the name
         // large in the middle, upright and as big as the block allows (Chris, 2026-11-12).
         `<text class="sys-ref" x="${X + 10}" y="${Y + Math.min(36, hd - 6)}" style="font-size:${Math.max(14, Math.min(30, hd - 12)).toFixed(0)}px">${esc(b.ref)}</text>` +
         (() => {
-          const name = String(b.name || ''), fs = Math.max(7, Math.min(44, (W - 20) / Math.max(1, U.textW(name, 1)), (Hh - hd) * 0.42));
+          const name = String(b.kind === 'system' && !childOf(b) ? 'Missing system' : b.name || ''), fs = Math.max(7, Math.min(44, (W - 20) / Math.max(1, U.textW(name, 1)), (Hh - hd) * 0.42));
           return name ? `<text class="sys-center" x="${X + W / 2}" y="${Y + hd + (Hh - hd) / 2}" style="font-size:${fs.toFixed(1)}px">${esc(name)}</text>` : '';
         })();
       b.conns.filter(c => !fitted(c)).concat(b.conns.filter(fitted)).forEach(c => {
         const at = pluggedAt(s, b.id, c.id).length, g = tabGeom(b, c), fit = fitted(c);
         const pend = S.pending && S.pending.block === b.id && S.pending.conn === c.id;
-        const cls = ['sys-tab', !fit ? 'unfitted' : '', pend ? 'pending' : S.pending && fit ? 'can' : '', c.used ? 'used' : 'unused', at ? 'plugged' : '', c.used && !at ? 'open' : '', c.side === 'bottom' ? 'bottom' : '', isSel('conn', b.id, c.id) ? 'sel' : ''].filter(Boolean).join(' ');
-        html += `<g class="${cls}" data-conn="${c.id}" data-block="${b.id}"><title>${esc(`${b.ref} ${c.ref}${c.fn ? ' · ' + c.fn : ''} · ${c.pins.length} pins${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · placed by hand' : c.placed === 'netlist' ? ' · not in the pick-and-place: placed at its pads in the netlist' : ''}${fit ? ' · click, then click another connector, to run a cable' : ' · not populated'}`)}</title>` +
-          `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3"/><text x="${g.cx}" y="${g.cy + 3.5}">${esc(c.ref)}</text></g>`;
+        const cls = ['sys-tab', c.external ? 'ext' : '', c.link ? 'link' : '', !fit ? 'unfitted' : '', pend ? 'pending' : S.pending && fit ? 'can' : '', c.used ? 'used' : 'unused', at ? 'plugged' : '', c.used && !at ? 'open' : '', c.side === 'bottom' ? 'bottom' : '', isSel('conn', b.id, c.id) ? 'sel' : ''].filter(Boolean).join(' ');
+        // An external connector has a small arrow out of its exit: it's plugged from the systems placing this one.
+        const mark = c.external ? (() => { const ax = g.ex + g.dx * 2, ay = g.ey + g.dy * 2, px = -g.dy, py = g.dx; return `<path class="sys-extmark" d="M${ax + px * 4} ${ay + py * 4}L${ax - px * 4} ${ay - py * 4}L${ax + g.dx * 7} ${ay + g.dy * 7}Z"/>`; })() : '';
+        html += `<g class="${cls}" data-conn="${c.id}" data-block="${b.id}"><title>${esc(`${b.ref} ${c.ref}${c.inside ? ' · inside ' + c.inside : ''}${c.external ? ' · external' : ''}${c.fn ? ' · ' + c.fn : ''} · ${c.pins.length} pins${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · placed by hand' : c.placed === 'netlist' ? ' · not in the pick-and-place: placed at its pads in the netlist' : ''}${fit ? ' · click, then click another connector, to run a cable' : ' · not populated'}`)}</title>` +
+          `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3"/><text x="${g.cx}" y="${g.cy + 3.5}">${esc(c.ref)}</text>${mark}</g>`;
       });
       html += '</g>';
     });
@@ -496,11 +637,20 @@
     const c = checks(s, get);
     return `<div class="rail-head"><div class="eyebrow">System</div><div class="rail-title">${esc(s.title)}</div></div>` +
       fld('Title', inp('title', s.title)) + fld('Client project', inp('project', s.project, ' list="sys-projects"') + `<datalist id="sys-projects">${A.projects().map(p => `<option value="${esc(p)}">`).join('')}</datalist>`) + fld('Rev', inp('rev', s.rev)) +
-      `<div class="sys-actions">${btn('add-board', 'Add a board from Signoff EE', '', 'btn-primary')}${btn('add-drawn', 'Draw a board')}${btn('add-device', 'Add a device')}</div>` +
+      `<div class="sys-actions">${btn('add-board', 'Add a board from Signoff EE', '', 'btn-primary')}${btn('add-drawn', 'Draw a board')}${btn('add-device', 'Add a device')}${btn('add-system', 'Place a system')}</div>` +
+      placedHtml(s) +
       `<h4 class="sys-h">Cables <span class="count">${s.cables.length}</span></h4>` +
       (s.cables.length ? `<div class="sys-list">${s.cables.map(cab => { const h = harnessOf(cab), st = statusOf(cab, h); return `<button class="sys-row" data-ssel="cable:${cab.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(cab, h))}<small>${esc([pnOf(h, cab), endsOf(cab, h).map(n => endName(s, cab.ends[n.id]) || n.ref + ' not plugged').join(' · ')].filter(Boolean).join(' · '))}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Click a connector on a board, then another, to connect them.</p>') +
       `<h4 class="sys-h">Checks <span class="count">${c.length}</span></h4>` + checksHtml(c) +
       `<div class="sys-actions">${btn('delete-system', 'Delete system', '', 'btn-danger')}</div>`;
+  }
+  // Where this system is placed, and the connectors it shows there.
+  function placedHtml(s) {
+    const ps = parentsOf(s.id), ex = externals(s);
+    return (ps.length ? `<h4 class="sys-h">Placed in <span class="count">${ps.length}</span></h4><div class="sys-list">${ps.map(p => `<button class="sys-row" data-sact="open-system" data-sys="${p.id}"><span class="sys-st">${'\u25a3'}</span><span>${esc(p.title)}<small>${esc(p.blocks.filter(b => b.kind === 'system' && b.system === s.id).map(b => b.ref).join(', '))}</small></span></button>`).join('')}</div>` : '') +
+      `<h4 class="sys-h">External connectors <span class="count">${ex.length}</span></h4>` +
+      (ex.length ? `<div class="sys-list">${ex.map(e => `<button class="sys-row" data-ssel="conn:${e.bid}:${e.cid}"><span class="sys-st">${'\u25b8'}</span><span>${esc(e.ref)}<small>${esc([e.fn, e.pins.length + ' pins'].filter(Boolean).join(' · '))}</small></span></button>`).join('')}</div>`
+        : '<p class="hint">Tick Make external on a connector to show it on this system’s block when it’s placed in another system.</p>');
   }
   // Several selected: a row for each, which opens it, and Delete for them all.
   function multiHtml(s, t) {
@@ -517,6 +667,13 @@
     return `<div class="sys-checks">${c.map((x, i) => `<button class="sys-check ${x.sev}" data-scheck="${i}"><span class="sev">${x.sev === 'error' ? '■' : '▲'}</span>${esc(x.text)}</button>`).join('')}</div>`;
   }
   function addingHtml() {
+    if (S.adding === 'system') {
+      const s = cur(), list = live().filter(x => x.id !== s.id && !places(x, s.id)).sort((a, b) => String(a.title).localeCompare(String(b.title)));
+      return `<div class="rail-head"><div class="eyebrow">Place a system</div><div class="rail-title">In ${esc(s.title)}</div></div>` +
+        '<p class="hint">Placed by link: edits to it show here and wherever else it’s placed. Its block’s connectors are its external ones.</p>' +
+        (list.length ? `<div class="sys-list">${list.map(x => { const n = externals(x).length; return `<button class="sys-row" data-sact="place-system" data-sys="${x.id}"><span class="sys-st">${'\u25a3'}</span><span>${esc(x.title)}<small>${esc([x.project, n + ' external connector' + (n === 1 ? '' : 's')].filter(Boolean).join(' · '))}</small></span></button>`; }).join('')}</div>` : '<p class="hint">No other system can go here (a system can’t hold one that holds it).</p>') +
+        btn('cancel-add', 'Cancel');
+    }
     const head = `<div class="rail-head"><div class="eyebrow">Add a board</div><div class="rail-title">From Signoff EE</div></div>`;
     if (S.busy) return head + `<p class="hint">${esc(S.busy)}</p>`;
     if (S.boardsErr) return head + `<p class="hint">${esc(S.boardsErr)}</p>` + btn('cancel-add', 'Back');
@@ -527,7 +684,20 @@
       [...groups].map(([k, list]) => `<h4 class="sys-h">${esc(k)}</h4><div class="sys-list">${list.map(b => `<button class="sys-row" data-sact="pick-board" data-board="${esc(b.id)}"><span class="sys-st">▭</span><span>${esc(b.name)}</span></button>`).join('')}</div>`).join('') +
       btn('cancel-add', 'Cancel');
   }
+  function sysBlockHtml(s, b) {
+    const ch = childOf(b);
+    return `<div class="rail-head"><div class="eyebrow">System ${esc(b.ref)}</div><div class="rail-title">${esc(ch ? ch.title : 'Missing system')}</div></div>` +
+      fld('Ref', inp('b.ref', b.ref)) +
+      (ch ? `<p class="hint">Placed by link: edits to ${esc(ch.title)} show here and wherever else it’s placed.</p><div class="sys-actions">${btn('open-system', 'Open ' + esc(ch.title), ` data-sys="${ch.id}"`, 'btn-primary')}</div>`
+        : '<p class="hint">The system it placed isn’t here any more.</p>') +
+      `<div class="field-row">${fld('Width, mm', inp('b.w', b.w, ' type="number" min="5"'))}${fld('Height, mm', inp('b.h', b.h, ' type="number" min="5"'))}</div>` +
+      `<h4 class="sys-h">Connectors <span class="count">${b.conns.length} external</span></h4>` +
+      (b.conns.length ? `<div class="sys-list">${b.conns.map(c => `<button class="sys-row" data-ssel="conn:${b.id}:${c.id}"><span class="sys-st">${pluggedAt(s, b.id, c.id).length ? '\u25cf' : '\u25cb'}</span><span>${esc(c.ref)}<small>${esc([c.fn, c.pins.length + ' pins'].filter(Boolean).join(' · '))}</small></span></button>`).join('')}</div>`
+        : `<p class="hint">None yet: open ${esc(ch ? ch.title : 'it')} and tick Make external on the connectors it shares.</p>`) +
+      `<div class="sys-actions">${btn('dup-block', 'Copy this block')}${btn('delete-block', 'Delete', '', 'btn-danger')}</div>`;
+  }
   function blockHtml(s, b) {
+    if (b.kind === 'system') return sysBlockHtml(s, b);
     const used = b.conns.filter(c => fitted(c) && c.used).length, pop = b.conns.filter(fitted).length;
     return `<div class="rail-head"><div class="eyebrow">${b.kind === 'device' ? 'Device' : 'Board'} ${esc(b.ref)}</div><div class="rail-title">${esc(b.name)}</div></div>` +
       fld('Ref', inp('b.ref', b.ref)) + fld('Name', inp('b.name', b.name)) +
@@ -542,12 +712,16 @@
   function connHtml(s, b, c) {
     const at = pluggedAt(s, b.id, c.id), get = A.harness;
     const pick = S.picking && S.picking.block === b.id && S.picking.conn === c.id;
+    const linkTab = b.kind === 'system', ps = parentsOf(s.id);
+    const extTick = `<label class="tick sys-used" title="Show it on this system’s block wherever it’s placed in another system"><input type="checkbox" data-sext="${c.id}"${c.external ? ' checked' : ''}${fitted(c) ? '' : ' disabled'}> Make external</label>`;
     return `<div class="rail-head"><div class="eyebrow">${esc(b.ref)} · ${esc(b.name)}</div><div class="rail-title">${esc(c.ref)}</div></div>` +
-      `<div class="sys-flags"><label class="tick sys-used"><input type="checkbox" data-sfit="${c.id}"${fitted(c) ? ' checked' : ''}> Populated</label>` +
-      `<label class="tick sys-used"><input type="checkbox" data-sused="${c.id}"${fitted(c) && c.used ? ' checked' : ''}${fitted(c) ? '' : ' disabled'}> Used</label></div>` +
+      (linkTab ? `<p class="hint">Inside ${esc(c.inside)}.</p><div class="sys-actions">${btn('open-system', 'Open ' + esc(b.name), ` data-sys="${b.system}"`)}</div><div class="sys-flags">${extTick}</div>`
+        : `<div class="sys-flags"><label class="tick sys-used"><input type="checkbox" data-sfit="${c.id}"${fitted(c) ? ' checked' : ''}> Populated</label>` +
+          `<label class="tick sys-used"><input type="checkbox" data-sused="${c.id}"${fitted(c) && c.used ? ' checked' : ''}${fitted(c) ? '' : ' disabled'}> Used</label>${extTick}</div>`) +
+      (c.external ? `<p class="hint">External: shown on ${esc(s.title)}’s block ${ps.length ? 'in ' + esc(ps.map(p => p.title).join(', ')) : 'wherever it’s placed (it isn’t placed in another system yet)'}, where a cable plugs into it.</p>` : '') +
       (fitted(c) ? '' : `<p class="hint">Not populated${c.placed === 'netlist' && c.fitted == null ? ': it isn’t in the pick-and-place, so it isn’t fitted in that build variant' : ''}. It’s drawn faint and can’t take a cable.</p>`) +
       fld('Function', inp('c.fn', c.fn, ' placeholder="What it connects to: Fan, Display, 24 VAC in…"')) +
-      (b.source ? '' : `<div class="field-row">${fld('Ref', inp('c.ref', c.ref))}${fld('Pins', inp('c.pins', c.pins.length, ' type="number" min="1" max="200"'))}</div>`) +
+      (b.source || linkTab ? '' : `<div class="field-row">${fld('Ref', inp('c.ref', c.ref))}${fld('Pins', inp('c.pins', c.pins.length, ' type="number" min="1" max="200"'))}</div>`) +
       (!b.source || c.placed === 'hand' ? `<div class="field-row">${fld('X on the block, mm', inp('c.x', c.x, ' type="number" step="0.5"'))}${fld('Y, mm', inp('c.y', c.y, ' type="number" step="0.5"'))}</div>` : '') +
       (c.mpn || c.desc ? `<p class="hint">${esc([c.mfr, c.mpn, c.desc].filter(Boolean).join(' · '))}${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · not in the pick-and-place or the netlist, placed by hand' : c.placed === 'netlist' ? ' · not in the pick-and-place (not fitted in its build variant?), placed at its pads in the netlist' : ''}</p>` : '') +
       `<h4 class="sys-h">Plugged in</h4>` +
@@ -556,23 +730,25 @@
       (S.pair && S.pair.block !== b.id || S.pair && S.pair.conn !== c.id ? '' : '') +
       fld('Cables leave from', `<select class="input" data-sexit="${c.id}">${[['', 'The nearest board edge (' + exitSide(b, Object.assign({}, c, { exit: '' })) + ')'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']].map(([v, l]) => `<option value="${v}"${(c.exit ? turnSide(c.exit, rotOf(b)) : '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`) +
       pinoutHtml(b, c) +
-      (b.source ? '' : `<div class="sys-actions">${btn('delete-conn', 'Delete connector', '', 'btn-danger')}</div>`);
+      (b.source || linkTab ? '' : `<div class="sys-actions">${btn('delete-conn', 'Delete connector', '', 'btn-danger')}</div>`);
   }
   // The pinout: each pin and its net name, from a Signoff EE board's netlist (Chris, 2026-11-11: pin and
   // net name only, for checking connections later). A drawn block's pins take net names by hand.
   function pinoutHtml(b, c) {
     const rows = c.pins.map((p, i) => {
       const net = p.label || p.net || '';
-      const cell = b.source ? (net ? esc(net) : '<span class="sys-none">no net</span>') : `<input class="input sys-pinnet" data-spin="${c.id}|${i}" value="${esc(net)}" placeholder="Net name">`;
+      const cell = b.source || c.link ? (net ? esc(net) : '<span class="sys-none">no net</span>') : `<input class="input sys-pinnet" data-spin="${c.id}|${i}" value="${esc(net)}" placeholder="Net name">`;
       return `<tr><td class="sys-pin">${esc(p.pin)}</td><td class="sys-net">${cell}</td></tr>`;
     }).join('');
-    const src = b.source ? `From ${esc(b.source.name)}’s netlist${b.source.label ? ', ' + esc(b.source.label) : ''}.` : 'Name each pin’s net, as the far end calls it.';
+    const L = look(b, c).b.source;
+    const src = c.link ? `From ${esc(c.inside)}${L ? ', ' + esc(L.name) + '’s netlist' : ''}.` : b.source ? `From ${esc(b.source.name)}’s netlist${b.source.label ? ', ' + esc(b.source.label) : ''}.` : 'Name each pin’s net, as the far end calls it.';
     return `<h4 class="sys-h">Pinout <span class="count">${c.pins.length} pins</span></h4><p class="hint">${src}</p>` +
       `<div class="sys-pinwrap"><table class="sys-pintab"><thead><tr><th>Pin</th><th>Net</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   function pickHtml(s, b, c) {
     const list = A.harnesses().filter(h => harnessEnds(h).length);
-    const score = h => { const n = bestEnd(s, null, h, b, c); return n && n.board && b.source && n.board.project === b.source.id && n.board.ref === c.ref ? 0 : n && M.pinList(n).length === c.pins.length ? 1 : 2; };
+    const L = look(b, c);
+    const score = h => { const n = bestEnd(s, null, h, b, c); return n && n.board && L.b.source && n.board.project === L.b.source.id && n.board.ref === L.c.ref ? 0 : n && M.pinList(n).length === c.pins.length ? 1 : 2; };
     list.sort((x, y) => score(x) - score(y) || String(x.title).localeCompare(String(y.title)));
     return `<h4 class="sys-h">Plug in</h4><div class="sys-list">${list.map(h => { const sc = score(h); return `<button class="sys-row" data-sact="plug" data-harness="${h.id}"><span class="sys-st">${sc === 0 ? '★' : sc === 1 ? '=' : '·'}</span><span>${esc(h.title)}<small>${esc([h.pn, sc === 0 ? 'made from this connector' : sc === 1 ? 'same pin count' : '', h.project].filter(Boolean).join(' · '))}</small></span></button>`; }).join('') || '<p class="hint">No harnesses yet.</p>'}</div>${btn('cancel-pick', 'Cancel')}`;
   }
@@ -615,7 +791,7 @@
     const h = harnessOf(cab), olds = endsOf(cab, h).map(n => n.id), plugged = olds.filter(id => cab.ends[id]);
     let news, made = null;
     if (to === 'harness') {
-      const two = plugged.slice(0, 2).map(id => { const b = block(s, cab.ends[id].block); return { b, c: conn(b, cab.ends[id].conn) }; });
+      const two = plugged.slice(0, 2).map(id => { const b = block(s, cab.ends[id].block); return look(b, conn(b, cab.ends[id].conn)); }).filter(x => x.c);
       if (!two.length) { A.toast('Plug an end into a connector first: the harness is made from it.', 'error'); return; }
       made = A.newHarness(s, two);
       news = made.ends;
@@ -977,6 +1153,8 @@
     svg.addEventListener('pointercancel', up);
     svg.addEventListener('dblclick', e => {
       const cb = e.target.closest('[data-cable]');
+      const sb = !cb && e.target.closest('.sys-block.system'), sysB = sb && block(cur(), sb.dataset.block);
+      if (sysB && childOf(sysB) && !S.pending) { A.openSystem(sysB.system); return; }
       if (!cb || S.pending) return;
       const p = toWorld(svg, e), near = runNear(cb.dataset.cable, p);
       if (!near || near.d > near.route.half + 12) return;
@@ -1002,12 +1180,16 @@
       const ck = t.closest('[data-scheck]');
       if (ck) { const c = checks(cur(), A.harness)[+ck.dataset.scheck]; if (c && c.sel) { S.sel = c.sel; A.refresh(); } }
     });
+    // The blocks a panel's connector field edits: the selected block's (two placements of one system share
+    // their tabs' ids), else every block.
+    const mine = s => s.blocks.filter(b => !(S.sel && S.sel.block) || b.id === S.sel.block);
     page.addEventListener('change', e => {
       const t = e.target;
-      if (t.dataset.sfit) { const id = t.dataset.sfit, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) { c.fitted = on; if (!on) c.used = false; } })); }); return; }
-      if (t.dataset.sexit) { const id = t.dataset.sexit, v = t.value; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) { if (v) c.exit = turnSide(v, 360 - rotOf(b)); else delete c.exit; } })); s.cables.forEach(cab => { delete cab.routes; }); }); return; }
-      if (t.dataset.spin) { const [id, i] = t.dataset.spin.split('|'), v = t.value.trim(); change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id && c.pins[+i]) { c.pins[+i].net = v; c.pins[+i].label = v; } })); }); return; }
-      if (t.dataset.sused) { const id = t.dataset.sused, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) c.used = on; })); }); return; }
+      if (t.dataset.sext) { const id = t.dataset.sext, on = t.checked; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { c.external = on; if (on && !c.link) c.used = true; } })); }); return; }
+      if (t.dataset.sfit) { const id = t.dataset.sfit, on = t.checked; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { c.fitted = on; if (!on) c.used = false; } })); }); return; }
+      if (t.dataset.sexit) { const id = t.dataset.sexit, v = t.value; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { if (v) c.exit = turnSide(v, 360 - rotOf(b)); else delete c.exit; } })); s.cables.forEach(cab => { delete cab.routes; }); }); return; }
+      if (t.dataset.spin) { const [id, i] = t.dataset.spin.split('|'), v = t.value.trim(); change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id && c.pins[+i]) { c.pins[+i].net = v; c.pins[+i].label = v; } })); }); return; }
+      if (t.dataset.sused) { const id = t.dataset.sused, on = t.checked; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) c.used = on; })); }); return; }
       if (t.dataset.send) { const [bid, cid] = t.value ? t.value.split('|') : []; const node = t.dataset.send; change(s => { const cab = cable(s, S.sel.id); cab.ends[node] = bid ? { block: bid, conn: cid } : null; }); return; }
       if (t.hasAttribute('data-sgrid')) {
         if (t.value === 'dots' || t.value === 'lines') { if (A.setGridStyle) A.setGridStyle(t.value); return; }
@@ -1070,7 +1252,7 @@
       case 'fit': S.cam = bounds(s); A.refresh(); break;
       case 'add-drawn': case 'add-device': { const b = change(x => addDrawn(x, a === 'add-device' ? 'device' : 'board', freeSpot(x))); S.sel = { kind: 'block', block: b.id }; S.cam = null; A.refresh(); break; }
       case 'add-board':
-        S.adding = true; S.boardsErr = ''; A.refresh();
+        S.adding = 'board'; S.boardsErr = ''; A.refresh();
         if (!S.boards) {
           try { S.boards = await LM.boards.listBoards(); }
           catch (e) { S.boardsErr = e.code === 'signin' ? 'Sign in to GitHub in Settings to read Signoff EE’s boards.' : e.message; }
@@ -1078,6 +1260,16 @@
         }
         break;
       case 'cancel-add': S.adding = null; A.refresh(); break;
+      case 'add-system': S.adding = 'system'; S.sel = null; A.refresh(); break;
+      case 'place-system': {
+        const ch = S.store[el.dataset.sys];
+        if (!ch || ch.id === s.id || places(ch, s.id)) break;
+        const b = change(x => addSystem(x, ch, freeSpot(x)));
+        S.adding = null; S.sel = { kind: 'block', block: b.id }; S.cam = null; A.refresh();
+        A.toast(`Placed ${ch.title} as ${b.ref}${b.conns.length ? `, with ${b.conns.length} external connector${b.conns.length > 1 ? 's' : ''}` : '. Tick Make external on its connectors to plug into it here'}.`);
+        break;
+      }
+      case 'open-system': if (el && el.dataset.sys && S.store[el.dataset.sys]) A.openSystem(el.dataset.sys); break;
       case 'refresh-board': {
         const b0 = block(s, S.sel.block);
         if (!b0 || !b0.source) break;
@@ -1118,7 +1310,7 @@
       }
       case 'add-conn': { const c = change(x => mkConn(block(x, S.sel.block))); S.sel = { kind: 'conn', block: S.sel.block, conn: c.id }; A.refresh(); break; }
       case 'dup-block': {
-        const b2 = change(x => { const b = block(x, S.sel.block), c = JSON.parse(JSON.stringify(b)); c.id = U.uid('b'); c.ref = nextRef(x.blocks, b.kind === 'device' ? 'D' : 'A'); c.x = b.x + 20; c.y = b.y + sizeOf(b).H + 20; c.conns.forEach(k => { k.id = U.uid('c'); }); x.blocks.push(c); return c; });
+        const b2 = change(x => { const b = block(x, S.sel.block), c = JSON.parse(JSON.stringify(b)); c.id = U.uid('b'); c.ref = nextRef(x.blocks, b.kind === 'device' ? 'D' : b.kind === 'system' ? 'S' : 'A'); c.x = b.x + 20; c.y = b.y + sizeOf(b).H + 20; if (b.kind === 'system') setConns(c, []); else c.conns.forEach(k => { k.id = U.uid('c'); }); x.blocks.push(c); return c; });
         S.sel = { kind: 'block', block: b2.id }; A.refresh(); break;
       }
       case 'delete-block': change(x => { const id = S.sel.block; x.blocks = x.blocks.filter(b => b.id !== id); x.cables.forEach(c => Object.keys(c.ends).forEach(k => { if (c.ends[k] && c.ends[k].block === id) c.ends[k] = null; })); S.sel = null; }); break;
@@ -1147,7 +1339,7 @@
         const b = block(s, S.sel.block), c = conn(b, S.sel.conn);
         const pb = S.pair && block(s, S.pair.block), pc = pb && conn(pb, S.pair.conn);
         const two = pc && pc !== c ? [{ b: pb, c: pc }, { b, c }] : [{ b, c }];
-        const made = A.newHarness(s, two);
+        const made = A.newHarness(s, two.map(e => look(e.b, e.c)));
         change(x => {
           const cab = { id: U.uid('k'), kind: 'harness', harness: made.h.id, ends: {}, lengthMm: null };
           made.ends.forEach((nodeId, i) => { if (two[i]) { cab.ends[nodeId] = { block: two[i].b.id, conn: two[i].c.id }; conn(block(x, two[i].b.id), two[i].c.id).used = true; } else cab.ends[nodeId] = null; });
@@ -1190,7 +1382,8 @@
     if (e.key.toLowerCase() === 'r' && !mod && S.sel && S.sel.kind === 'block') { e.preventDefault(); act(e.shiftKey ? 'rotate-ccw' : 'rotate-cw'); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) {
       e.preventDefault();
-      act(S.sel.kind === 'multi' ? 'delete-multi' : S.sel.kind === 'block' ? 'delete-block' : S.sel.kind === 'cable' ? 'delete-cable' : (block(cur(), S.sel.block) || {}).source ? '' : 'delete-conn');
+      const sb = block(cur(), S.sel.block) || {};
+      act(S.sel.kind === 'multi' ? 'delete-multi' : S.sel.kind === 'block' ? 'delete-block' : S.sel.kind === 'cable' ? 'delete-cable' : sb.source || sb.kind === 'system' ? '' : 'delete-conn');
     }
   }
   // Where a harness end plugs in, across every system (the harness editor's rail shows it).
@@ -1198,6 +1391,27 @@
     const out = [];
     live().forEach(s => s.cables.forEach(c => { if (c.harness !== hid) return; const e = c.ends[nodeId]; const where = endName(s, e); if (where) { const b = block(s, e.block); out.push({ system: s, text: `${b.name} ${conn(b, e.conn).ref} in ${s.title}` }); } }));
     return out;
+  }
+
+  // The sidebar's tree (Chris, 2026-11-12): systems placed in no other system at the top; under each, the
+  // systems it places, then the harnesses its cables use. A system placed twice shows under both parents
+  // (keyed by its path, so each folds on its own), and a harness under every system using it. used: every
+  // harness some system uses (the rest stay in the project list).
+  function tree() {
+    const L = live(), placed = new Set(), used = new Set(), reached = new Set();
+    L.forEach(s => s.blocks.forEach(b => { if (childOf(b) && b.system !== s.id) placed.add(b.system); }));
+    const node = (s, trail) => {
+      reached.add(s.id);
+      const kids = [], seen = new Set(), hs = [];
+      if (trail.length <= DEPTH) s.blocks.forEach(b => { const c = childOf(b); if (!c || seen.has(c.id) || trail.includes(c.id)) return; seen.add(c.id); kids.push(node(c, trail.concat(c.id))); });
+      s.cables.forEach(cab => { if (kindOf(cab) === 'harness' && cab.harness && !hs.includes(cab.harness)) hs.push(cab.harness); });
+      hs.forEach(h => used.add(h));
+      return { id: s.id, sys: s, path: trail.join('>'), kids, harnesses: hs };
+    };
+    const roots = L.filter(s => !placed.has(s.id)).map(s => node(s, [s.id]));
+    // Systems only reached through a loop still show, at the top.
+    L.filter(s => !reached.has(s.id)).forEach(s => roots.push(node(s, [s.id])));
+    return { roots, used };
   }
 
   // ── The demo: the Smart Thermostat's two boards and its wall wiring ──
@@ -1254,5 +1468,6 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; persist(); },
     store: () => S.store, persist, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; },
+    externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree,
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, saveFile, openDoc };
 })(window.LM = window.LM || {});

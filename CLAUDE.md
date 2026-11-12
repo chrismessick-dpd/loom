@@ -22,6 +22,16 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Systems of systems (2026-11-12, Chris).** *Make external* on a connector shows it on the block of every
+  system that places this one; *Place a system* (by link, never a copy; no loops) adds a system block
+  (`kind: 'system'`, `b.system`) whose tabs are the placed system's external connectors, derived and never
+  stored (`resolveAll`; path ids `<block>/<conn>`, one step per level; the parent's spots, exits, and
+  Function in `b.tabs`). Cables plug into tabs; checks and New harness here look through to the board
+  connector inside (`look`, `c.leaf`). The sidebar is a tree (`LM.system.tree`): top systems, the systems
+  they place, and the harnesses each uses (a harness under every system using it; the rest stay in the
+  project list), folded by path (`fold.sysTree`). See `docs/system.md`, *Systems of systems*. Tests 60.
+  Restructuring the imported real system into board systems is a separate data step, not done.
+
 - **Cable colors (2026-11-12, Chris).** Every kind of cable has Color in its panel (before Length on a harness
   cable): its state's color (unset), one of Loom's twelve wire colors (`M.COLORS`, solid, no stripe), or Custom
   with a picker (`cab.color`, a code or `#rrggbb`; `colorOf`, `colorField`). Set, the cable draws in it whatever

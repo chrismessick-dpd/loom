@@ -849,6 +849,90 @@
     ok(Y.checks(s, get).some(x => x.sev === 'error' && /isn't populated, but a cable is plugged into it/.test(x.text)));
   });
 
+  // ── Systems of systems: Make external, system blocks by link, and the sidebar tree ──
+  // A made-up two-level machine: a Pump system (a board whose J1 is external) placed in a Gizmo system.
+  function nestFixture() {
+    const Y = LM.system, store = Y.store();
+    const pump = Y.blank('Gizmo'); pump.title = 'Pump module';
+    const a = Y.addDrawn(pump, 'board', { x: 0, y: 0 });
+    a.conns.length = 0;
+    const j1 = Y.mkConn(a, 'J1', 2, { x: -3, y: 20 }), j2 = Y.mkConn(a, 'J2', 4, { x: 40, y: 20 });
+    j1.pins[0].label = 'VIN'; j1.pins[1].label = 'GND'; j1.exit = 'left'; j1.external = true; j1.fn = 'Power in';
+    const top = Y.blank('Gizmo'); top.title = 'Gizmo machine';
+    const psu = Y.addDrawn(top, 'device', { x: -80, y: 0 });
+    store[pump.id] = pump; store[top.id] = top;
+    const sb = Y.addSystem(top, pump, { x: 0, y: 0 });
+    const done = () => { delete store[pump.id]; delete store[top.id]; };
+    return { Y, store, pump, top, a, j1, j2, psu, sb, done };
+  }
+  test('nest: a placed system shows its external connectors on its block, under ids that stay put, and never stores them', () => {
+    const { Y, pump, top, a, j1, j2, sb, done } = nestFixture();
+    try {
+      eq(sb.kind, 'system'); eq(sb.ref, 'S1'); eq(sb.name, 'Pump module');
+      eq(sb.conns.map(c => [c.id, c.ref, c.pins.length, c.fn]), [[a.id + '/' + j1.id, 'A1 J1', 2, 'Power in']], 'only the external connector, named by its block and ref');
+      ok(sb.conns[0].x < 0, 'it leaves its system to the left, so it sits on the left edge');
+      ok(!/"conns"/.test(JSON.stringify(sb)), 'the stored block keeps no connectors');
+      j1.ref = 'P1'; a.x = 300; j2.external = true; Y.resolve();
+      eq(sb.conns.map(c => c.id).sort(), [a.id + '/' + j1.id, a.id + '/' + j2.id].sort(), 'a new external connector joins, the old id stays');
+      eq(sb.conns.find(c => c.id === a.id + '/' + j1.id).ref, 'A1 P1', 'a rename in the child shows in the parent');
+      eq(Y.summarize(top, () => null).blocks.find(b => b.kind === 'system').system, pump.id, 'the summary names the placed system');
+    } finally { done(); }
+  });
+  test('nest: a system can’t hold one that holds it, and the tree lists systems with their systems and harnesses', () => {
+    const { Y, store, pump, top, done } = nestFixture();
+    const h = harness('Pump power', { pn: '2200300-001' });
+    try {
+      ok(Y.places(top, pump.id) && !Y.places(pump, top.id), 'the machine places the pump, not the other way');
+      eq(Y.parentsOf(pump.id).map(s => s.id), [top.id]);
+      pump.cables.push({ id: 'k1', kind: 'harness', harness: h.id, ends: {} });
+      const t = Y.tree();
+      const root = t.roots.find(n => n.id === top.id);
+      ok(root && !t.roots.some(n => n.id === pump.id), 'only the machine is at the top');
+      eq(root.kids.map(n => [n.id, n.path]), [[pump.id, top.id + '>' + pump.id]], 'the pump sits under it, keyed by its path');
+      eq(root.kids[0].harnesses, [h.id], 'its harness sits under the pump');
+      ok(t.used.has(h.id), 'and leaves the project list');
+      // A file with a loop doesn't hang: both still show.
+      const back = Y.addSystem(pump, top, { x: 400, y: 0 });
+      ok(Y.checks(pump, () => null).some(x => x.sev === 'error' && /a loop/.test(x.text)), 'a loop is an error');
+      ok(Y.tree().roots.length >= 1, 'the tree still builds');
+      pump.blocks = pump.blocks.filter(b => b !== back);
+    } finally { done(); }
+  });
+  test('nest: a system placed in another, placed in a third, passes a connector up when its tab is made external', () => {
+    const { Y, store, pump, top, a, j1, sb, done } = nestFixture();
+    const plant = Y.blank('Gizmo'); plant.title = 'Plant';
+    store[plant.id] = plant;
+    try {
+      const s2 = Y.addSystem(plant, top, { x: 0, y: 0 });
+      eq(s2.conns.length, 0, 'the machine shares nothing yet');
+      sb.tabs[sb.conns[0].id] = { external: true }; Y.resolve();
+      eq(s2.conns.map(c => c.id), [sb.id + '/' + a.id + '/' + j1.id], 'one more step in the path per level');
+      eq(s2.conns[0].ref, 'S1 A1 J1');
+      eq(s2.conns[0].inside, 'Gizmo machine › Pump module › A1 J1', 'it says where it really is');
+      eq(s2.conns[0].leaf.ref, 'J1', 'and looks through to the board connector');
+      eq(s2.conns[0].pins.map(p => p.label), ['VIN', 'GND'], 'with its pins and nets');
+    } finally { delete store[plant.id]; done(); }
+  });
+  test('nest: checks look through a system block, and flag an external connector nothing plugs into, a gone end, and a missing system', () => {
+    const { Y, store, pump, top, a, j1, psu, sb, done } = nestFixture();
+    const h = harness('Pump power', { pn: '2200300-001' }), get = id => (id === h.id ? h : null), ends = h.nodes.filter(M.isConn);
+    try {
+      let t = Y.checks(pump, get).map(x => x.text);
+      ok(t.some(x => /A1 J1 \(Power in\) is external|A1 J1 is external, but nothing plugs into it where Pump module is placed \(Gizmo machine\)/.test(x)), 'nothing plugs into it in the machine');
+      ok(!t.some(x => /A1 J1.*is used, but nothing is plugged/.test(x)), 'an external connector is plugged from outside, not here');
+      const tab = sb.conns[0];
+      top.cables.push({ id: 'k1', kind: 'harness', harness: h.id, ends: { [ends[0].id]: { block: sb.id, conn: tab.id }, [ends[1].id]: { block: psu.id, conn: psu.conns[0].id } } });
+      t = Y.checks(pump, get).map(x => x.text);
+      ok(!t.some(x => /A1 J1 is external, but nothing/.test(x)), 'plugged in the machine now');
+      const pins = Y.checks(top, get).filter(x => /S1 A1 J1/.test(x.text) && /pins, the connector 2/.test(x.text));
+      eq(pins.length > 0, M.pinList(ends[0]).length !== 2, 'pin counts compared with the board connector inside');
+      j1.external = false; Y.resolve();
+      ok(Y.checks(top, get).some(x => x.sev === 'error' && /plugged into a connector that's gone from S1 \(is it still external in Pump module\?\)/.test(x.text)), 'a connector no longer external is a gone end');
+      delete store[pump.id]; Y.resolve();
+      ok(Y.checks(top, get).some(x => x.sev === 'error' && /S1 places a system that isn't here any more/.test(x.text)), 'a missing system');
+    } finally { done(); }
+  });
+
   (async () => {
     let failed = 0;
     for (const t of tests) {

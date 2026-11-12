@@ -20,6 +20,14 @@
 .pkg-icon { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
 .proj.active .pkg-icon { background: rgba(255, 255, 255, 0.2); color: #fff; }
 .pkg-icon svg { width: 16px; height: 16px; }
+/* The sidebar's system tree (systems of systems): each level indented, with its own fold. */
+.lm-tree { display: flex; align-items: center; padding-left: calc(var(--d, 0) * 12px); }
+.lm-tree > .proj { flex: 1; min-width: 0; }
+.lm-tog { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 24px; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; }
+span.lm-tog { cursor: default; }
+.lm-tog:hover { color: var(--text-2); }
+.lm-tog svg { width: 12px; height: 12px; transition: transform 0.15s; }
+.lm-tog[aria-expanded="false"] svg { transform: rotate(-90deg); }
 /* The sidebar's client-project groups fold as Signoff EE's (suite.css .side-group-head); From Signoff
    PL's heading doesn't. The footer's sync pill is EE's too. */
 .lm-group-head { cursor: default; }
@@ -1082,6 +1090,10 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-tab.used text { fill: var(--cv-ink); }
 .sys-tab.open rect { stroke-dasharray: 4 2.5; }
 .sys-tab.plugged rect { fill: var(--accent); }
+/* Systems of systems: a placed system's block has an inner frame; an external connector an arrow out of its exit. */
+.sys-block.system .sys-nest { fill: none; stroke: var(--cv-conn-edge); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; pointer-events: none; }
+.sys-tab.ext rect { stroke-width: 2.4; }
+.sys-extmark { fill: var(--accent); stroke: var(--cv-conn-edge); stroke-width: 0.8; pointer-events: none; }
 .sys-tab.plugged text { fill: #04252a; font-weight: 800; }
 .sys-tab.bottom rect { stroke-dasharray: 2.5 2; }
 .sys-tab.sel rect, .sys-tab.land rect { stroke: var(--text); stroke-width: 3; }

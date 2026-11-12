@@ -4,6 +4,45 @@ Status: phases 1 to 3 built 2026-11-11 (`assets/system.js`; see Loom's CLAUDE.md
 yet: the board picture under the outline, the system sheet and harness BOM page, sharing, power and bus
 checks, and phase 4.
 
+## Systems of systems (2026-11-12, Chris)
+
+A system can be placed in another as a block, and wired to there through the connectors it makes
+external. Chris's decisions: a **link**, not a copy (edits show in every parent, and one system may be
+placed more than once); a board's system holds the board, the devices only it connects to, and the
+harnesses between them, with board-to-board harnesses in the parent; in the sidebar a harness shows
+**under each system using it**; built straight on `main`.
+
+- **Make external** (a connector's panel, `c.external`): the connector shows on the block of every system
+  that places this one. It's plugged from outside, so the child's checks don't warn that it's used with
+  nothing plugged in; they warn if nothing plugs into it in any parent placing the child, or if a cable
+  inside plugs into it too. An external connector has a small arrow out of its exit.
+- **Place a system** (the system panel): any other system that doesn't hold this one, at any depth (no
+  loops; a file with one shows the error and still loads). It becomes a block `{ kind: 'system', system:
+  <id>, ref: 'S1', w, h, tabs }`, drawn with an inner dashed frame and the placed system's title, kept up
+  to date. Double-click it, or Open in its panel, to open the placed system; that system's panel lists
+  where it's placed.
+- **Its connectors are derived** (`resolveAll`, `resolveBlock`, `externals`): never stored (`b.conns` is
+  not enumerable, so the file, undo, and sync hashes leave them out). Each is one external connector of
+  the placed system under a path id, `<inner block id>/<connector id>`, one more step per level, so it
+  stays put while the child is edited. A tab is named for its inner block and connector ("A3 J5"), as wide
+  as that needs (`c.tw`), and sits on the side its connector leaves the placed system from, as far along
+  that side as it sits there, spread so none overlap; the block grows to hold them. What the parent sets
+  on a tab (X and Y, its exit, Function, or Make external again, to pass it up a level) is kept in
+  `b.tabs[path]` (`keepTabs`). A tab has no Populated, Used, ref, pin, or Delete fields; its pinout is the
+  inner connector's.
+- **Cables plug into tabs** like any connector (`{ block: <system block id>, conn: <path> }`). The checks
+  and New harness here look through to the board connector inside (`c.leaf`, `look`): pin counts, net
+  labels, and the package a harness end was filled from. A cable end on a tab that's gone (no longer
+  external, or deleted) is an error, and so is a system block whose system is gone.
+- **The sidebar** (`LM.system.tree`): systems placed in no other system sit first in their client
+  project's group; under each, the systems it places and then the harnesses its cables use, each level
+  indented with its own fold (kept in this browser by path, `fold.sysTree`, so a system placed twice folds
+  apart; what's open unfolds its way down). Harnesses no system uses stay in the project list.
+- **The summary** names each placed system (`blocks[].system`).
+- Not done: restructuring the imported real system into board systems (data in `loom_data`, a separate
+  step to confirm with Chris), a parent's BOM rolling up its children's harnesses, and dragging a tab along its
+  block (X and Y in the panel for now).
+
 ## Toolbar (2026-11-12, Chris)
 
 As a harness's, at the top right: Undo, Redo, Discard changes (while the system has changes since the last
