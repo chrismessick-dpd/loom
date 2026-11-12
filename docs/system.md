@@ -10,7 +10,8 @@ Anything that joins two blocks is a **Connection**, routed exactly as a harness'
 `assets/connect.js`; `docs/routing.md`, *One engine*). A cable in a system is one of three kinds
 (`cab.kind`):
 - **Generic connection** (`link`): only a name, with ends A and B. Drawing a cable (a click on one
-  connector, then another) makes one; it's a thin dashed line.
+  connector, then another) makes one (Chris, 2026-11-11: drawn cables start generic, not as a Loom
+  harness); it's a thin dashed line.
 - **Purchased cable** (`bought`): name, part number, length, maker, and maker's part number, ends A and
   B; counted in the summary's `cables` (by part number). Solid and gray.
 - **Loom harness** (`harness`): one use of a harness, its ends by the harness's end nodes, as before;
