@@ -22,6 +22,10 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Compact harness list (2026-11-12, Chris: so many items).** Rows are 26 px (18 px icons, less padding; `#harness-list`
+  rules in `styles.css`): a system is one line, and a harness its name with only its part number under it. Counts
+  (blocks and cables; ends and wires) moved to each row's tooltip.
+
 - **Cable labels move (2026-11-12, Chris: as the harness editor's wire labels).** Each cable's label hangs from a
   small dot on the cable with a leader line. The dot drags along the cable's first route (or its stub),
   `cab.labelAt` 0 to 1, and the label comes along; the label drags anywhere, `cab.labelOff` `{ dx, dy }` in mm from

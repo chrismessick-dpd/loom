@@ -417,9 +417,10 @@
     const sysRow = s => {
       const c = LM.system.checks(s, sysHooks.harness);
       const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
-      return `<button class="proj${s.id === LM.system.current() ? ' active' : ''}" data-open-sys="${s.id}">
+      // One line (Chris, 2026-11-12: a compact list); the counts are in the tooltip.
+      return `<button class="proj${s.id === LM.system.current() ? ' active' : ''}" data-open-sys="${s.id}" title="${esc(`${s.title}\nSystem · ${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'} · ${s.cables.length} cable${s.cables.length === 1 ? '' : 's'}`)}">
         <span class="pkg-icon">${ICON.system}</span>
-        <span class="proj-body"><span class="proj-name">${esc(s.title)}</span><span class="proj-sub">System · ${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'} · ${s.cables.length} cable${s.cables.length === 1 ? '' : 's'}</span></span>
+        <span class="proj-body"><span class="proj-name">${esc(s.title)}</span></span>
         <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(s.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
     };
     const row = h => {
@@ -427,9 +428,10 @@
       const c = M.checks(h);
       const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
       const ends = h.nodes.filter(M.isConn).length;
-      return `<button class="proj${h.id === S.cur ? ' active' : ''}" data-open="${h.id}">
+      // The name, and the part number under it when there is one; the counts are in the tooltip.
+      return `<button class="proj${h.id === S.cur ? ' active' : ''}" data-open="${h.id}" title="${esc(`${h.title}\n${h.pn ? h.pn + ' · ' : ''}${ends} ends · ${h.wires.length} wires`)}">
         <span class="pkg-icon">${ICON.harness}</span>
-        <span class="proj-body"><span class="proj-name">${esc(h.title)}</span><span class="proj-sub">${esc(h.pn ? h.pn + ' · ' : '')}${ends} ends · ${h.wires.length} wires</span></span>
+        <span class="proj-body"><span class="proj-name">${esc(h.title)}</span>${h.pn ? `<span class="proj-sub">${esc(h.pn)}</span>` : ''}</span>
         <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(h.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
     };
     // Groups fold as Signoff EE's do (Chris, 2026-11-11): a click on a group's heading, kept in this
