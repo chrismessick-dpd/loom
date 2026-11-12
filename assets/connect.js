@@ -128,7 +128,7 @@
   function handles(R0) { return RT().runs(R0.A, R0.B, R0.v).filter(r => r.k >= 0 && Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) > 0.5); }
   // A drag's start on run (from runAt or runOf): the shape it drags and which of its values (k) moves,
   // on which axis. snap rounds a value to the grid. null: nothing to drag there.
-  // Chris, 2026-11-11: a drag moves the whole straight run under the pointer; Ctrl-drag (brk) breaks it
+  // Chris, 2026-11-11: a drag moves the whole straight run under the pointer; Shift-drag (brk) breaks it
   // where it's grabbed and drags the piece from there.
   // - A middle run moves as it is; broken, it gets a bend at the grab and the piece past it drags.
   // - An end run belongs to its part, so it bends a stub out from the part (the route's stub, or its

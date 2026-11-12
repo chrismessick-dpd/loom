@@ -567,7 +567,7 @@
     redraw(svg);
     page.querySelector('[data-sact="undo"]').disabled = !S.past.length;
     page.querySelector('[data-sact="redo"]').disabled = !S.future.length;
-    page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to connect them · drag a cable’s ends · drag its runs (Ctrl breaks one) · double-click to add a bend · right-click for its route' : 'Add a board from the panel';
+    page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to connect them · drag a cable’s ends · drag its runs (Shift breaks one, Ctrl off the grid) · double-click to add a bend · right-click for its route' : 'Add a board from the panel';
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     panel.innerHTML = panelHtml(s);
     panel.scrollTop = keep;
@@ -682,7 +682,7 @@
     svg.addEventListener('pointerdown', e => {
       if (e.button > 2) return;
       const p = toWorld(svg, e), t = e.target, s = cur();
-      const base = { x: e.clientX, y: e.clientY, p, t, moved: false, button: e.button, ctrl: e.ctrlKey || e.metaKey };
+      const base = { x: e.clientX, y: e.clientY, p, t, moved: false, button: e.button, brk: e.shiftKey };
       try { svg.setPointerCapture(e.pointerId); } catch (err) { /* not an active pointer */ }
       if (e.button !== 0) { drag = Object.assign(base, { kind: 'pan', cam: Object.assign({}, S.cam), k: p.k }); return; }
       const endEl = !S.pending && t.closest('[data-cend]'), run = !S.pending && t.closest('[data-run]'), bl = t.closest('[data-block]'), cb = t.closest('[data-cable]');
@@ -725,11 +725,11 @@
       }
       if (d.kind === 'run') {
         // The editor's dragRun (connect.js): the whole straight run moves sideways by the pointer's
-        // travel (an end run from a stub out of its connector), on the grid (Alt: anywhere); Ctrl-drag
+        // travel (an end run from a stub out of its connector), on the grid (Ctrl: anywhere); Shift-drag
         // breaks the run where it's grabbed and drags the piece from there.
-        const free = e.altKey;
+        const free = e.ctrlKey || e.metaKey;
         if (!d.snap) {
-          const st = CN().grab(d.run, snapU, d.ctrl);
+          const st = CN().grab(d.run, snapU, d.brk);
           if (!st) { drag = null; return; }
           S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true;
           d.keep = { a: d.run.route.A.side, b: d.run.route.B.side, mode: d.cab.routes && d.cab.routes[d.end] && d.cab.routes[d.end].mode };

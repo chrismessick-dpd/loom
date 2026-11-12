@@ -773,7 +773,7 @@
     const itemEl = e.button === 0 && !endEl && !setEndEl && !badgeEl && e.target.closest('[data-item]');
     const end = endEl ? { wire: endEl.dataset.end.split('|')[0], which: endEl.dataset.end.split('|')[1] } : null;
     const setEnd = setEndEl ? { id: setEndEl.dataset.setend.split('|')[0], side: setEndEl.dataset.setend.split('|')[1] } : null;
-    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, shiftKey: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null, label: labelEl ? labelEl.dataset.label : null, ldot, badge };
+    gesture = { x: e.clientX, y: e.clientY, moved: false, t: e.target, button: e.button, touch: e.pointerType === 'touch', shift: e.shiftKey || e.ctrlKey || e.metaKey, shiftKey: e.shiftKey, cam0: Object.assign({}, S.cam), item: itemEl && !noteEl ? itemEl.dataset.item : null, end, setEnd, note: noteEl ? noteEl.dataset.notebox : null, label: labelEl ? labelEl.dataset.label : null, ldot, badge };
     // A left drag that grabs nothing (empty canvas, or a wire's line) draws a selection box
     // (marquee). A finger pans instead.
     const g = gesture;
@@ -968,11 +968,11 @@
   // Routes (arranged view; Chris, 2026-11-10: wires walk around the parts, and their straight runs
   // drag). The run under the pointer at a drag's start: a run's handle (data-run), else the route of
   // the wire whose line it is or of the set whose area it is, its run nearest the pointer, within the
-  // route's width. null in Real proportions, with Shift (a box from the line), or on a finger. Ctrl
-  // breaks the run where it's grabbed (dragRun).
+  // route's width. null in Real proportions or on a finger. Shift breaks the run where it's grabbed
+  // (dragRun; Chris, 2026-11-11: a Shift-drag from a line drew a box before).
   function runUnder(e, g) {
     const Lo = lastLayout;
-    if (!Lo || fold.prop || g.button !== 0 || g.touch || g.shiftKey || S.pending || S.placing || g.end || g.setEnd || g.note || g.label || g.badge || g.item) return null;
+    if (!Lo || fold.prop || g.button !== 0 || g.touch || S.pending || S.placing || g.end || g.setEnd || g.note || g.label || g.badge || g.item) return null;
     const p = toWorld(e), handle = e.target.closest('[data-run]');
     // A handle's data-run is the box key (which has a | in it), a |, and the run's index.
     const hr = handle ? handle.dataset.run : '', cut = hr.lastIndexOf('|');
@@ -986,16 +986,16 @@
     return r.d <= r.route.half + 12 ? r : null;
   }
   // Drag a route's run sideways: a vertical run left and right, a level one up and down, snapped to
-  // the grid (Alt: anywhere). The route is then kept as shaped (h.routes[box key].v; route.js). An
+  // the grid (Ctrl: anywhere). The route is then kept as shaped (h.routes[box key].v; route.js). An
   // end run belongs to its part, so dragging one first adds a bend in it, a stub out from the part, and
-  // drags the rest of the run; Ctrl-drag puts the bend where it's grabbed (connect.js grab). The first and last vertical runs stay clear of their parts. Let go,
+  // drags the rest of the run; Shift-drag puts the bend where it's grabbed (connect.js grab). The first and last vertical runs stay clear of their parts. Let go,
   // a run dragged flush with its neighbor merges into it (route.js tidy). One undo puts it back.
   function dragRun(g, e) {
     const h = H(), CN = LM.connect, gs = gridOf(h), snap = gs ? (x => Math.round(x / gs) * gs) : null;
     if (!g.moved) {
       // The shared engine's grab (connect.js): the whole straight run drags (an end run from a stub out
-      // of its part); Ctrl breaks it where it's grabbed.
-      const st = CN.grab(g.run, snap, !!g.ctrl);
+      // of its part); Shift breaks it where it's grabbed.
+      const st = CN.grab(g.run, snap, !!g.shiftKey);
       if (!st) { gesture = null; return; }
       snapshot();
       h.routes = h.routes || {};
@@ -1007,9 +1007,9 @@
     }
     g.moved = true;
     // Parts don't stop a run (Chris, 2026-11-10): dragged past a connector, the route leaves from its
-    // other edge, and over one, it runs behind it (connect.js routeAll). Alt places it off the grid
-    // (Ctrl, which does that for parts, breaks a run instead).
-    const free = e.altKey || !gs;
+    // other edge, and over one, it runs behind it (connect.js routeAll). Ctrl places it off the grid,
+    // as it does a part.
+    const free = e.ctrlKey || e.metaKey || !gs;
     h.routes[g.run.key] = Object.assign({ v: CN.slide(g, g.p0, toWorld(e), free ? null : snap) }, g.keep);
     renderCanvas();
   }

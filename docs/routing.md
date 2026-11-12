@@ -37,12 +37,13 @@ baseline ("I like how it is working").
 - **Fixed for both:** dragging the end of a straight wire (no middle runs) used to add a bend that left an
   even count of values, drawn wrong. It now lifts the piece from the grab to the far end's corner, as
   systems did.
-- **Whole runs, Ctrl to break (Chris, 2026-11-11).** A drag on a straight run moves the whole run
+- **Whole runs, Shift to break (Chris, 2026-11-11).** A drag on a straight run moves the whole run
   sideways: a middle run as it is, a run meeting a part from a stub out of the part, and a straight route
-  everything between its stubs. Ctrl-drag breaks the run where it's grabbed and drags only the piece from
-  there to the run's far corner (what a plain drag on an end run used to do). Alt places a run off the
-  grid (Ctrl did, and still does for parts). The same in the harness editor and in systems
-  (`connect.js` `grab`). Shift-drag from a wire still draws a box.
+  everything between its stubs. Shift-drag breaks the run where it's grabbed and drags only the piece from
+  there to the run's far corner (what a plain drag on an end run used to do). Ctrl places a run off the
+  grid, as it does a part. The same in the harness editor and in systems (`connect.js` `grab`). In the
+  harness editor a Shift-drag from a wire used to draw a selection box; a box now starts from empty
+  canvas only (Shift-click still adds to the selection).
 - **Not the same yet:** a cable with three or more ends routes from its first end to each other one; a
   harness bundle with a breakout has a split point and routed branches.
 
@@ -127,10 +128,10 @@ otherwise"); maybe a right-click choice of walk around, push, or ignore.
   of those parts' pins on the side facing the rest of the route, and its wires curve on to their pins
   from there. The breakout can't be dragged yet, and its branches aren't routed.
 - **Shaping.** A drag on a straight run of a wire's line or a set's area moves that run sideways,
-  snapped to the grid (Alt: anywhere; Ctrl until 2026-11-11). A selected wire or set shows a handle on
+  snapped to the grid (Ctrl: anywhere). A selected wire or set shows a handle on
   each run it can move. Dragging an end run (the one that meets a part) first adds a bend in it, a stub
-  out from the part, and drags the rest of the run (Ctrl-drag: the bend goes where it's grabbed; see
-  *Whole runs, Ctrl to break* above). A double-click on a run adds a bend there. A run dragged flush with the next
+  out from the part, and drags the rest of the run (Shift-drag: the bend goes where it's grabbed; see
+  *Whole runs, Shift to break* above). A double-click on a run adds a bend there. A run dragged flush with the next
   one merges into it. *Reset route* in Properties forgets one group's shape; *Auto layout* forgets
   them all. One undo puts each change back.
 - **What a shape keeps.** `h.routes[box key] = { v }`: the middle runs' positions (route.js). When a

@@ -640,14 +640,14 @@
     ok(RT.fits(R0.A, R0.B, v, 23), 'the dragged shape fits its ends: ' + v);
     eq(CN.release(R0, v, { mode: 'behind' }).mode, 'behind', 'let go, the record keeps its mode');
   });
-  test('connect: a drag moves the whole straight run; Ctrl-drag breaks it where it is grabbed', () => {
+  test('connect: a drag moves the whole straight run; Shift-drag breaks it where it is grabbed', () => {
     const CN = LM.connect, R0 = { A: { x: 0, y: 0, out: 1 }, B: { x: 600, y: 200, in: 1 }, v: [300], stub: 23, half: 3, r: 13 };
     // The first run (A to x 300), grabbed at x 150 and pulled down 40.
     const run = CN.runAt(R0, { x: 150, y: 0 }), p0 = { x: 150, y: 0 }, p1 = { x: 150, y: 40 };
     const whole = CN.slide(CN.grab(run, null, false), p0, p1, null), cut = CN.slide(CN.grab(run, null, true), p0, p1, null);
     eq(whole, [23, 40, 300], 'whole: from a stub out of the part to the corner');
-    eq(cut, [150, 40, 300], 'Ctrl: from the grab to the corner');
-    // A middle run moves as it is; Ctrl breaks it.
+    eq(cut, [150, 40, 300], 'Shift: from the grab to the corner');
+    // A middle run moves as it is; Shift breaks it.
     const mid = CN.runAt(R0, { x: 300, y: 120 });
     eq(CN.slide(CN.grab(mid, null, false), { x: 300, y: 120 }, { x: 340, y: 120 }, null), [340], 'whole middle run');
     const m2 = CN.slide(CN.grab(mid, null, true), { x: 300, y: 120 }, { x: 340, y: 120 }, null);
