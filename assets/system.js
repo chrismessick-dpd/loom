@@ -306,14 +306,26 @@
   function svgHtml(s, Lo) {
     const sel = S.sel;
     const isSel = (k, a, b2) => sel && sel.kind === k && (k === 'cable' ? sel.id === a : sel.block === a && (k === 'block' || sel.conn === b2));
-    let html = '<g class="sys-blocks">';
+    // The editor's card gradients (app.js FX_DEFS), which these cards and the wires use.
+    let html = '<defs>' +
+      '<linearGradient id="lmfx-conn-head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-conn-head-hi)"/><stop offset="1" style="stop-color:var(--cv-conn-head)"/></linearGradient>' +
+      '<linearGradient id="lmfx-glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-glass-top)"/><stop offset="0.45" style="stop-color:var(--cv-glass-mid)"/><stop offset="1" style="stop-color:var(--cv-glass-bot)"/></linearGradient>' +
+      '<linearGradient id="lmfx-head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-head-hi)"/><stop offset="1" style="stop-color:var(--cv-head)"/></linearGradient>' +
+      '</defs><g class="sys-blocks">';
     s.blocks.forEach(b => {
       const bs = isSel('block', b.id) || (sel && sel.kind === 'conn' && sel.block === b.id);
       const X = b.x * K, Y = b.y * K;
-      html += `<g class="sys-block ${b.kind}${bs ? ' sel' : ''}" data-block="${b.id}">` +
-        `<rect class="sys-body" x="${X}" y="${Y}" width="${b.w * K}" height="${b.h * K}" rx="${b.kind === 'device' ? 12 : 8}"/>` +
-        `<text class="sys-ref" x="${X + 10}" y="${Y + 22}">${esc(b.ref)}</text>` +
-        `<text class="sys-name" x="${X + 10}" y="${Y + 40}">${esc(b.name)}</text>`;
+      // The harness editor's connector card (conn.js, with fx): paper card and shadow, a lit header,
+      // the darker connector edge, and glass, so blocks stand off the stage as connectors do.
+      const W = b.w * K, Hh = b.h * K, r = 8, hd = Math.min(46, Hh / 2);
+      html += `<g class="cv-conn sys-block ${b.kind}${bs ? ' sel' : ''}" data-block="${b.id}">` +
+        `<rect class="cv-card" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/>` +
+        `<path class="cv-headbg" d="M${X} ${Y + hd}V${Y + r}Q${X} ${Y} ${X + r} ${Y}H${X + W - r}Q${X + W} ${Y} ${X + W} ${Y + r}V${Y + hd}Z"/>` +
+        `<line class="sys-headrule" x1="${X}" y1="${Y + hd}" x2="${X + W}" y2="${Y + hd}"/>` +
+        `<rect class="cv-glass" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/><rect class="cv-rim" x="${X + 1}" y="${Y + 1}" width="${W - 2}" height="${Hh - 2}" rx="${r - 1}"/>` +
+        `<rect class="cv-frame" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/>` +
+        `<text class="sys-ref" x="${X + 10}" y="${Y + 19}">${esc(b.ref)}</text>` +
+        `<text class="sys-name" x="${X + 10}" y="${Y + 36}">${esc(b.name)}</text>`;
       b.conns.filter(c => !fitted(c)).concat(b.conns.filter(fitted)).forEach(c => {
         const at = pluggedAt(s, b.id, c.id).length, g = tabGeom(b, c), fit = fitted(c);
         const pend = S.pending && S.pending.block === b.id && S.pending.conn === c.id;

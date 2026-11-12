@@ -53,7 +53,10 @@ links to it so far. Before every commit:
   cables, or harness ends change (`layout` memo); each cable routes on its own grid round its ends (about 25k cells,
   its own two blocks not in the way), with route.js's search buffers shared (`POOL`) and routes cached by their ends
   and obstacles (`RCACHE`), so a drag re-routes only what it touches. Then: first draw about 1.3 s, a drag about 0.5 s,
-  a selection about 0.3 s (mostly the DOM). Routes no longer spread apart from each other (`occupy` is gone). New harness here makes a
+  a selection about 0.3 s (mostly the DOM). Routes no longer spread apart from each other (`occupy` is gone).
+  Blocks are drawn as the editor's connector cards (2026-11-11, Chris: they blended into the stage): `.cv-conn`
+  with `.cv-card`, a `.cv-headbg` header band, `.cv-glass`, `.cv-rim`, and `.cv-frame`, the gradients (`lmfx-conn-head`,
+  `lmfx-glass`, `lmfx-head`) defined in the system's own SVG; a device's frame is dashed. New harness here makes a
   placeholder (the board end plus a generic far end), or, with a second connector Shift-picked, a
   board-to-board harness with the shared-net wires (`boards.matches`). Plug in a harness… ranks harnesses
   made from that connector first. Checks: used and unplugged, plugged and not used, two cables on a
