@@ -2404,7 +2404,7 @@
   document.addEventListener('click', e => {
     const t = e.target;
     const app = $('#app');
-    if (app.classList.contains('nav-open') && !t.closest('[data-act="nav"]') && (!t.closest('#sidebar') || t.closest('[data-open], [data-act="new"], [data-act="home"], [data-act="open"], [data-act="guide"], a'))) {
+    if (app.classList.contains('nav-open') && !t.closest('[data-act="nav"]') && (!t.closest('#sidebar') || t.closest('[data-open], [data-open-sys], [data-act="new"], [data-act="new-system"], [data-act="home"], [data-act="open"], [data-act="guide"], a'))) {
       app.classList.remove('nav-open');
       if (!t.closest('#sidebar')) return;
     }
