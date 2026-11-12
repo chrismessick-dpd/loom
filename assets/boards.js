@@ -227,10 +227,6 @@
       const pins = by.get(r.des);
       if (!pins.has(r.pin) || (!pins.get(r.pin) && r.net)) pins.set(r.pin, r.net);
     });
-    // What else each net reaches on the board (the pinout's "Also on the net"): pads by des.pin, vias left out.
-    const onNet = new Map();
-    net.recs.forEach(r => { if (!r.net || r.net === 'N/C' || !r.des || r.des === 'VIA' || !r.pin) return; if (!onNet.has(r.net)) onNet.set(r.net, []); onNet.get(r.net).push(r.des + '.' + r.pin); });
-    const reach = (des, pin, n) => { const all = [...new Set((onNet.get(n) || []).filter(x => x !== des + '.' + pin))].sort(natural); return { to: all.slice(0, 8), toN: all.length }; };
     const out = [];
     by.forEach((pins, des) => {
       const line = part.get(des.toUpperCase());
@@ -242,7 +238,7 @@
       if (!kept.length) return;
       out.push({
         ref: des, desc, mpn: line ? line.mpn : '', mfr: line ? line.mfr : '', dnp: !!(line && line.dnp),
-        pins: kept.map(p => Object.assign({ pin: p, net: pins.get(p) || '', label: UNNAMED.test(pins.get(p) || '') ? '' : pins.get(p) }, pins.get(p) ? reach(des, p, pins.get(p)) : { to: [], toN: 0 })),
+        pins: kept.map(p => ({ pin: p, net: pins.get(p) || '', label: UNNAMED.test(pins.get(p) || '') ? '' : pins.get(p) })),
         dropped: names.filter(p => MOUNT.test(p)),
       });
     });

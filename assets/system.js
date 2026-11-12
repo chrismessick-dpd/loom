@@ -71,7 +71,7 @@
     let loose = 0;
     pkg.connectors.forEach(pc => {
       const c = mkConn(b, pc.ref, 0, { x: 0, y: 0 });
-      c.pins = pc.pins.map(p => Object.assign({ pin: p.pin, net: p.net || '', label: p.label || '' }, p.to ? { to: p.to, toN: p.toN } : {}));
+      c.pins = pc.pins.map(p => ({ pin: p.pin, net: p.net || '', label: p.label || '' }));
       c.mpn = pc.mpn || ''; c.mfr = pc.mfr || ''; c.desc = pc.desc || ''; c.used = false;
       if (pc.at) { c.x = +(pc.at.x - o.x0 - TAB.w / 2).toFixed(2); c.y = +(o.y1 - pc.at.y - TAB.h / 2).toFixed(2); c.side = pc.at.side; c.placed = pc.at.from === 'netlist' ? 'netlist' : 'pnp'; }
       else { c.x = 2 + (loose++) * (TAB.w + 2); c.y = b.h - TAB.h; c.placed = 'hand'; }
@@ -405,18 +405,17 @@
       pinoutHtml(b, c) +
       (b.source ? '' : `<div class="sys-actions">${btn('delete-conn', 'Delete connector', '', 'btn-danger')}</div>`);
   }
-  // The pinout: each pin's net, and (from a Signoff EE board's netlist) what else on the board is on that
-  // net. A drawn block's pins take net names by hand. Kept for checking connections later.
+  // The pinout: each pin and its net name, from a Signoff EE board's netlist (Chris, 2026-11-11: pin and
+  // net name only, for checking connections later). A drawn block's pins take net names by hand.
   function pinoutHtml(b, c) {
     const rows = c.pins.map((p, i) => {
       const net = p.label || p.net || '';
-      const to = Array.isArray(p.to) ? p.to.join(', ') + (p.toN > p.to.length ? `, +${p.toN - p.to.length} more` : '') : '';
-      const netCell = b.source ? `<span class="${net ? '' : 'sys-none'}">${esc(net || (p.net ? p.net : 'no net'))}</span>` : `<input class="input sys-pinnet" data-spin="${c.id}|${i}" value="${esc(net)}" placeholder="Net">`;
-      return `<tr><td class="sys-pin">${esc(p.pin)}</td><td>${netCell}</td>${b.source ? `<td class="sys-to">${esc(to)}</td>` : ''}</tr>`;
+      const cell = b.source ? (net ? esc(net) : '<span class="sys-none">no net</span>') : `<input class="input sys-pinnet" data-spin="${c.id}|${i}" value="${esc(net)}" placeholder="Net name">`;
+      return `<tr><td class="sys-pin">${esc(p.pin)}</td><td class="sys-net">${cell}</td></tr>`;
     }).join('');
-    const src = b.source ? `From ${esc(b.source.name)}’s netlist${b.source.label ? ', ' + esc(b.source.label) : ''}.` + (c.pins.some(p => Array.isArray(p.to)) ? '' : ' Refresh the board from Signoff EE (in its panel) to see what each net reaches.') : 'Name each pin’s net, as the far end calls it.';
+    const src = b.source ? `From ${esc(b.source.name)}’s netlist${b.source.label ? ', ' + esc(b.source.label) : ''}.` : 'Name each pin’s net, as the far end calls it.';
     return `<h4 class="sys-h">Pinout <span class="count">${c.pins.length} pins</span></h4><p class="hint">${src}</p>` +
-      `<div class="sys-pinwrap"><table class="sys-pintab"><tr><th>Pin</th><th>Net</th>${b.source ? '<th>Also on the net</th>' : ''}</tr>${rows}</table></div>`;
+      `<div class="sys-pinwrap"><table class="sys-pintab"><thead><tr><th>Pin</th><th>Net</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   function pickHtml(s, b, c) {
     const list = A.harnesses().filter(h => harnessEnds(h).length);
@@ -786,7 +785,7 @@
   }
 
   // ── The demo: the Smart Thermostat's two boards and its wall wiring ──
-  const DEMO_V = 3;
+  const DEMO_V = 4;
   async function demo(stay) {
     const s = blank('Smart Thermostat');
     s.id = 'sdemo1'; s.title = 'Smart Thermostat system'; s.demoVersion = DEMO_V;
