@@ -22,6 +22,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Demo system wired (2026-11-12, Chris: the demo was unwired but for the Zone Controller harness).** The Smart
+  Thermostat system (`demo` in `system.js`, `DEMO_V` 5) has two cables: Wall wires, a generic connection from the
+  wall device's TB to Main PCBA J1, and a purchased 24-pin, 0.5 mm FFC (100 mm) from Main PCBA J2 to the Display
+  board's J1. A project group holding the open system now folds too (folding it closes the system, `7e0377c`).
+
 - **Compact harness list (2026-11-12, Chris: so many items).** Rows are 26 px (18 px icons, less padding; `#harness-list`
   rules in `styles.css`): a system is one line, and a harness its name with only its part number under it. Counts
   (blocks and cables; ends and wires) moved to each row's tooltip.

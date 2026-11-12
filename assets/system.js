@@ -1511,7 +1511,7 @@
   }
 
   // ── The demo: the Smart Thermostat's two boards and its wall wiring ──
-  const DEMO_V = 4;
+  const DEMO_V = 5;
   async function demo(stay) {
     const s = blank('Smart Thermostat');
     s.id = 'sdemo1'; s.title = 'Smart Thermostat system'; s.demoVersion = DEMO_V;
@@ -1524,6 +1524,15 @@
     wall.name = 'Wall wiring (24 VAC, heat, cool)'; wall.conns[0].ref = 'TB'; wall.conns[0].fn = 'Wall wires';
     const main = s.blocks.find(b => b.source && b.source.id === 'pdemo7'), j1 = main && main.conns.find(c => c.ref === 'J1');
     if (j1) { j1.used = true; j1.fn = '24 VAC in'; }
+    // Wired (Chris, 2026-11-12: the demo system had no cables): the wall wires into Main PCBA J1, a
+    // generic connection, and the 24-pin, 0.5 mm FFC from Main PCBA J2 to the Display board's J1, bought.
+    const disp = s.blocks.find(b => b.source && b.source.id === 'pdemo11');
+    const j2 = main && main.conns.find(c => c.ref === 'J2'), d1 = disp && disp.conns.find(c => c.ref === 'J1');
+    if (j1) s.cables.push({ id: U.uid('k'), kind: 'link', name: 'Wall wires', ends: { a: { block: wall.id, conn: wall.conns[0].id }, b: { block: main.id, conn: j1.id } } });
+    if (j2 && d1) {
+      j2.used = true; j2.fn = 'Display'; d1.used = true; d1.fn = 'Main PCBA';
+      s.cables.push({ id: U.uid('k'), kind: 'bought', name: '24-pin FFC, 0.5 mm pitch', lengthMm: 100, ends: { a: { block: main.id, conn: j2.id }, b: { block: disp.id, conn: d1.id } } });
+    }
     if (stay) persist(); else open(s.id);
     return s;
   }
