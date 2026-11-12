@@ -243,13 +243,32 @@
     return harnessEnds(h).map(n => { const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn); return { n, b, c, g: c ? tabGeom(b, c) : null }; });
   }
   const pathOf = pts => 'M' + pts.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('L');
-  // Every cable's routes: from its first plugged end to each other plugged end, laid down one after
-  // another so later ones keep clear of earlier ones (route.occupy).
+  // Every cable's routes: from its first plugged end to each other plugged end.
+  // Routing is the slow part (a system the size of a machine has dozens of cables over a big grid), so
+  // the layout is kept until the blocks, connectors, cables, or harness ends change, not redone for a
+  // selection; and a big system routes on a coarser grid (about 300k cells at most).
+  let memo = { key: '', lo: null };
   function layout(s) {
+    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted])]), s.cables, s.cables.map(c => { const h = A.harness(c.harness); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
+    if (memo.key === key && memo.lo) return memo.lo;
+    const lo = layoutNow(s);
+    memo = { key, lo };
+    return lo;
+  }
+  // route.js's search buffers, shared by every route (a fresh set per route was most of the time): its
+  // generation stamps mean they never need clearing.
+  const POOL = { n: 0, stamp: null, dist: null, prev: null, gen: 0 };
+  const RCACHE = new Map();
+  function gridFor(lb, g) {
+    const x0 = Math.floor(lb.x0 / g) * g, y0 = Math.floor(lb.y0 / g) * g;
+    const W = Math.ceil((lb.x1 - x0) / g) + 1, H = Math.ceil((lb.y1 - y0) / g) + 1, N = W * H * 4;
+    if (POOL.n < N || POOL.gen > 4e9) { POOL.n = N; POOL.stamp = new Uint32Array(N); POOL.dist = new Float32Array(N); POOL.prev = new Int32Array(N); POOL.gen = 0; }
+    return { g, x0, y0, W, H, occ: new Uint8Array(W * H), stamp: POOL.stamp, dist: POOL.dist, prev: POOL.prev, gen: POOL.gen };
+  }
+  function layoutNow(s) {
     const out = new Map();
     if (!s.blocks.length) return out;
-    const bb = bounds(s);
-    const G = RT().grid({ x0: bb.x - 200, y0: bb.y - 200, x1: bb.x + bb.w + 200, y1: bb.y + bb.h + 200 }, GRID);
+    const rects = s.blocks.map(x => ({ id: x.id, x0: x.x * K - CLEAR, y0: x.y * K - CLEAR, x1: (x.x + x.w) * K + CLEAR, y1: (x.y + x.h) * K + CLEAR }));
     s.cables.forEach(cab => {
       const h = A.harness(cab.harness), ends = cableEnds(s, cab, h), at = ends.filter(x => x.g), routes = [];
       for (let i = 1; i < at.length; i++) {
@@ -258,11 +277,23 @@
         // block's edge, leaving toward the other end.
         const pa = a.g.lead || { x: a.g.ex, y: a.g.ey }, pb = b.g.lead || { x: b.g.ex, y: b.g.ey }, toward = Math.sign(pb.x - pa.x) || 1;
         const T1 = { x: pa.x, y: pa.y, out: a.g.dx || toward }, T2 = { x: pb.x, y: pb.y, in: b.g.dx ? -b.g.dx : toward };
-        const blocks = s.blocks.map(x => ({ x0: x.x * K - CLEAR, y0: x.y * K - CLEAR, x1: (x.x + x.w) * K + CLEAR, y1: (x.y + x.h) * K + CLEAR }));
+        // Each cable routes on its own grid round its two ends (fast enough to redo while a block is
+        // dragged): their box, plus room to walk round what's between, at most about 25k cells.
+        const m = Math.max(160, 0.35 * Math.max(Math.abs(T1.x - T2.x), Math.abs(T1.y - T2.y)));
+        const lb = { x0: Math.min(T1.x, T2.x) - m, y0: Math.min(T1.y, T2.y) - m, x1: Math.max(T1.x, T2.x) + m, y1: Math.max(T1.y, T2.y) + m };
+        const g = Math.max(GRID, Math.ceil(Math.sqrt((lb.x1 - lb.x0) * (lb.y1 - lb.y0) / 25000) / GRID) * GRID);
+        // Its own two blocks aren't in the way: an end inside its board would otherwise search far
+        // to get out (its exit already leaves the board's side).
+        const blocks = rects.filter(r => r.id !== a.b.id && r.id !== b.b.id && r.x1 > lb.x0 && r.x0 < lb.x1 && r.y1 > lb.y0 && r.y0 < lb.y1);
         const kept = cab.routes && cab.routes[b.n.id];
         let v = kept && RT().fits(T1, T2, kept, STUB_U) ? kept.map(Number) : null;
-        if (!v) v = RT().auto(G, T1, T2, blocks, STUB_U, 0) || [Math.round((T1.x + T2.x) / 2)];
-        RT().occupy(G, T1, T2, v, 6);
+        if (!v) {
+          // A route found before for the same ends among the same blocks is reused, so a drag re-routes
+          // only the cables it moves or crosses.
+          const rk = JSON.stringify([T1, T2, blocks.map(r => [r.x0, r.y0, r.x1, r.y1])]);
+          v = RCACHE.get(rk);
+          if (!v) { const G = gridFor(lb, g); v = RT().auto(G, T1, T2, blocks, STUB_U, 0) || [Math.round((T1.x + T2.x) / 2)]; POOL.gen = G.gen; if (RCACHE.size > 4000) RCACHE.clear(); RCACHE.set(rk, v); }
+        }
         const C = (a.g.lead ? [{ x: a.g.ex, y: a.g.ey }] : []).concat(RT().corners(T1, T2, v), b.g.lead ? [{ x: b.g.ex, y: b.g.ey }] : []);
         const rp = rounded(C, RADIUS);
         routes.push({ key: b.n.id, A: T1, B: T2, v: Array.from(v), d: rp.d, mid: rp.mid });

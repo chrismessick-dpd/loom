@@ -48,7 +48,12 @@ links to it so far. Before every commit:
   connections later; a drawn block's pins take net names by hand. The panel's sections don't shrink
   (`.sys-panel > *`), or the table squeezed to its header. **Refresh from Signoff EE** in a board's panel re-reads its
   package and updates pins, positions, and size by connector ref, keeping ids, Used, Function, Populated, and exit.
-  Plugged tabs have dark bold labels (`#04252a` on the accent). Demo `DEMO_V` 3. New harness here makes a
+  Plugged tabs have dark bold labels (`#04252a` on the accent). Demo `DEMO_V` 4.
+  **Speed** (2026-11-11, a 37-block, 60-cable system took 4 s a render): the layout is kept until blocks, connectors,
+  cables, or harness ends change (`layout` memo); each cable routes on its own grid round its ends (about 25k cells,
+  its own two blocks not in the way), with route.js's search buffers shared (`POOL`) and routes cached by their ends
+  and obstacles (`RCACHE`), so a drag re-routes only what it touches. Then: first draw about 1.3 s, a drag about 0.5 s,
+  a selection about 0.3 s (mostly the DOM). Routes no longer spread apart from each other (`occupy` is gone). New harness here makes a
   placeholder (the board end plus a generic far end), or, with a second connector Shift-picked, a
   board-to-board harness with the shared-net wires (`boards.matches`). Plug in a harness… ranks harnesses
   made from that connector first. Checks: used and unplugged, plugged and not used, two cables on a
