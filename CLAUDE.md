@@ -22,6 +22,14 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Cable labels move (2026-11-12, Chris: as the harness editor's wire labels).** Each cable's label hangs from a
+  small dot on the cable with a leader line. The dot drags along the cable's first route (or its stub),
+  `cab.labelAt` 0 to 1, and the label comes along; the label drags anywhere, `cab.labelOff` `{ dx, dy }` in mm from
+  the dot, and the dot stays. Either drag first fixes the other half; one undo each; a click selects the cable.
+  Unset, a label sits where it always did. Label edits don't re-route (the layout key leaves them out). A
+  **Cable labels** box at the canvas's bottom right (as the harness's Wire labels) hides them, kept in this browser
+  (`<ns>sysLabels`).
+
 - **Sync fixes (2026-11-12, Chris: "sync with problems" and a GitHub rate-limit warning after 90 harnesses arrived
   at once).** Drawings for Signoff PL go up at most 15 harnesses a sync (`DRAW_MAX` in `store.js`); the rest go at
   the next syncs (about 200 uploads at once tripped GitHub's limit on creating content, and every sync retried them

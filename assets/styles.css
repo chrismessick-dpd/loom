@@ -1141,4 +1141,12 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-ring { fill: var(--bg-elev); stroke: var(--text-2); stroke-width: 2; pointer-events: none; }
 .sys-clabel { font: 600 11px var(--font, sans-serif); fill: var(--text); paint-order: stroke; stroke: var(--bg-elev); stroke-width: 3.5; stroke-linejoin: round; pointer-events: none; }
 .sys-clabel.sel { font-weight: 700; }
+/* A cable's label hangs from a dot on its cable (as the harness's wire labels): the label drags anywhere, the dot along the cable. */
+.sys-lgrab { fill: transparent; stroke: transparent; cursor: grab; }
+.sys-lab:hover .sys-lgrab, .sys-lab.slide .sys-lgrab { fill: var(--cv-sel); fill-opacity: 0.08; stroke: var(--cv-sel); stroke-opacity: 0.35; }
+.sys-ldot { fill: #fff; stroke: var(--cv-ink); stroke-opacity: 0.7; stroke-width: 1; pointer-events: none; }
+.sys-ldot-hit { fill: transparent; cursor: grab; }
+.sys-lab:hover .sys-ldot, .sys-lab.slide .sys-ldot { stroke: var(--cv-sel); stroke-opacity: 1; r: 4; }
+.sys-ldot-lead { fill: none; stroke: var(--cv-ink); stroke-opacity: 0.6; stroke-width: 1; pointer-events: none; }
+.sys-canvas .sys-ldot.dim, .sys-canvas .sys-ldot-lead.dim { opacity: 0.18; }
 @media (max-width: 860px) { .sys-view { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; } .sys-panel { border-left: none; border-top: 1px solid var(--hair); } }

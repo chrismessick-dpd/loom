@@ -493,7 +493,7 @@
   // selection (a system the size of a machine has dozens of cables over a big drawing).
   let memo = { key: '', lo: null };
   function layout(s, view) {
-    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted, c.tw || 0])]), s.cables, s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
+    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted, c.tw || 0])]), s.cables.map(c => [c.id, c.kind, c.harness, c.ends, c.routes]), s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
     if (memo.key === key && memo.lo) return memo.lo;
     const lo = layoutNow(s, view);
     memo = { key, lo };
@@ -532,14 +532,39 @@
       const routes = [], dv = deviceEnds(h).length > 0;
       for (let i = 1; i < at.length && !dv; i++) {
         const R0 = res.routes.get(cab.id + '|' + at[i].n.id), sh = CN().draw(R0);
-        routes.push(Object.assign({}, R0, { end: at[i].n.id, d: pathOf(sh.pts), mid: midOfPts(sh.pts) }));
+        routes.push(Object.assign({}, R0, { end: at[i].n.id, d: pathOf(sh.pts), mid: midOfPts(sh.pts), pts: sh.pts }));
       }
       out.set(cab.id, { cab, h, ends, at, routes, dev: deviceEnds(h).map(n => n.name || n.ref) });
     });
     return out;
   }
   const midOf = r => r.mid;
+  // Cable labels (Chris, 2026-11-12: as the harness editor's wire labels). Each label hangs from a small dot
+  // on its cable, with a thin line from the dot to the label. The dot sits cab.labelAt along the cable's
+  // first route (or its stub), 0 to 1; the label's left side sits cab.labelOff ({ dx, dy }, mm, to its
+  // baseline) from the dot. Unset, both are where the label has always been. Dragging the dot slides it
+  // along the cable and the label comes along; dragging the label moves it anywhere and the dot stays.
+  // Either drag first fixes the other half. The Cable labels box at the canvas's bottom right hides them
+  // (this browser).
+  const laneOfPts = pts => { let s0 = 0; return pts.map((q, i) => { if (i) s0 += Math.hypot(q.x - pts[i - 1].x, q.y - pts[i - 1].y); return { x: q.x, y: q.y, s: s0 }; }); };
+  function laneAt(L, t) {
+    const S0 = L[L.length - 1].s * Math.max(0, Math.min(1, t));
+    for (let i = 1; i < L.length; i++) if (L[i].s >= S0) { const a = L[i - 1], b = L[i], u = (S0 - a.s) / Math.max(1e-6, b.s - a.s); return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u }; }
+    return { x: L[0].x, y: L[0].y };
+  }
+  function laneT(L, p) {
+    let best = Infinity, at = 0;
+    for (let i = 1; i < L.length; i++) {
+      const a = L[i - 1], b = L[i], vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy || 1e-9;
+      const u = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / l2)), x = a.x + vx * u, y = a.y + vy * u, d = Math.hypot(p.x - x, p.y - y);
+      if (d < best) { best = d; at = a.s + (b.s - a.s) * u; }
+    }
+    return L[L.length - 1].s ? at / L[L.length - 1].s : 0;
+  }
+  const labelsOn = () => { try { return localStorage.getItem(NS + 'sysLabels') !== 'off'; } catch (e) { return true; } };
+  let labInfo = new Map();
   function svgHtml(s, Lo) {
+    labInfo = new Map();
     const sel = S.sel;
     const isSel = (k, a, b2) => sel && (sel.kind === 'multi' ? (k === 'block' ? sel.blocks.includes(a) : k === 'cable' && sel.cables.includes(a))
       : sel.kind === k && (k === 'cable' ? sel.id === a : sel.block === a && (k === 'block' || sel.conn === b2)));
@@ -599,7 +624,7 @@
       // The one selected cable, while the others fade, is drawn half again as wide with a glow (Chris).
       const solo = on && !!sel && sel.kind === 'cable';
       html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}${solo ? ' solo' : ''}${linked ? ' linked' : ''}${dim ? ' dim' : ''}" data-cable="${cab.id}">`;
-      let mid = null, ring = null;
+      let mid = null, ring = null, lane = routes.length && routes[0].pts ? laneOfPts(routes[0].pts) : null;
       routes.forEach(r => { html += wire(r.d); });
       if (routes.length) mid = midOf(routes[0]);
       // Ends not plugged in yet: a dashed stub ending in a ring, off the one plugged end or the middle.
@@ -609,6 +634,7 @@
         // device mark, and no route between them (they meet at the device, not in the system).
         at.forEach((x, i) => {
           const g = x.g, x2 = g.ex + g.dx * STUB_U * 2.2, y2 = g.ey + g.dy * STUB_U * 2.2;
+          if (!i) lane = laneOfPts([{ x: g.ex, y: g.ey }, { x: x2, y: y2 }]);
           html += `<g class="sys-devstub">${wire(`M${g.ex} ${g.ey}L${x2} ${y2}`)}<rect class="sys-dev" x="${x2 - 5}" y="${y2 - 5}" width="10" height="10" rx="2"><title>${esc(dev.join(', '))}</title></rect></g>`;
           // Its label runs on along the stub's way out, past the mark (upright on a side stub, turned on a
           // stub up or down), so stubs side by side don't print over each other.
@@ -617,6 +643,7 @@
       } else if (at.length === 1) {
         const g = at[0].g, x2 = g.ex + g.dx * STUB_U * 2.2, y2 = g.ey + g.dy * STUB_U * 2.2;
         html += `<g class="sys-open">${wire(`M${g.ex} ${g.ey}L${x2} ${y2}`, 'open')}<circle class="sys-ring" cx="${x2}" cy="${y2}" r="5"/></g>`;
+        if (!lane) lane = laneOfPts([{ x: g.ex, y: g.ey }, { x: x2, y: y2 }]);
         mid = { x: x2, y: y2 }; ring = { x: x2, y: y2, ax: g.ex, ay: g.ey };
       } else if (open && mid) {
         html += `<g class="sys-open">${wire(`M${mid.x} ${mid.y}l0 ${STUB_U * 1.6}`, 'open')}<circle class="sys-ring" cx="${mid.x}" cy="${mid.y + STUB_U * 1.6}" r="5"/></g>`;
@@ -630,11 +657,24 @@
       });
       const loose = ends.find(x => !x.g);
       if (loose && ring) handles += `<circle class="cv-hitend" data-cend="${cab.id}|${loose.n.id}" data-x="${ring.ax}" data-y="${ring.ay}" cx="${ring.x}" cy="${ring.y}" r="10"><title>${esc(loose.n.ref)} isn't plugged in: drag it onto a connector</title></circle>`;
-      if (mid && mid.dx != null) {
-        const t = esc(`${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`), cls = `sys-clabel${on ? ' sel' : ''}${dim ? ' dim' : ''}`;
-        labels += mid.dy ? `<text class="${cls}" x="${mid.x + 3.5}" y="${mid.y + mid.dy * 9}" transform="rotate(${mid.dy > 0 ? 90 : -90} ${mid.x + 3.5} ${mid.y + mid.dy * 9})">${t}</text>`
-          : `<text class="${cls}" x="${mid.x + mid.dx * 9}" y="${mid.y + 3.5}"${mid.dx < 0 ? ' style="text-anchor:end"' : ''}>${t}</text>`;
-      } else if (mid) labels += `<text class="sys-clabel${on ? ' sel' : ''}${dim ? ' dim' : ''}" x="${mid.x + 8}" y="${mid.y - 9}">${esc(`${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`)}</text>`;
+      if (mid && labelsOn()) {
+        const raw = `${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`, t = esc(raw), cls = `sys-clabel${on ? ' sel' : ''}${dim ? ' dim' : ''}`, tw0 = U.textW(raw, 11);
+        const set = cab.labelAt != null || cab.labelOff != null;
+        // Where it has always been, unset: by the route's middle, or along a device stub past its mark.
+        const t0 = cab.labelAt != null ? cab.labelAt : routes.length ? 0.5 : 1;
+        const dot = lane ? laneAt(lane, t0) : { x: mid.x, y: mid.y };
+        let x0, y0, rot = 0, end = false;
+        if (cab.labelOff) { x0 = dot.x + cab.labelOff.dx * K; y0 = dot.y + cab.labelOff.dy * K; }
+        else if (!set && mid.dx != null && mid.dy) { x0 = mid.x + 3.5; y0 = mid.y + mid.dy * 9; rot = mid.dy > 0 ? 90 : -90; }
+        else if (!set && mid.dx != null) { x0 = mid.x + mid.dx * 9; y0 = mid.y + 3.5; end = mid.dx < 0; }
+        else { x0 = dot.x + 8; y0 = dot.y - 9; }
+        labInfo.set(cab.id, { lane, t: t0, dot, off: { dx: (x0 - dot.x) / K, dy: (y0 - dot.y) / K }, rot });
+        const ax = end ? x0 + 4 : x0 - 4, ay = y0 - 4, lead = !rot && Math.hypot(ax - dot.x, ay - dot.y) > 10 ? `<path class="sys-ldot-lead${dim ? ' dim' : ''}" d="M${dot.x} ${dot.y}L${ax} ${ay}"/>` : '';
+        const gx = end ? x0 - tw0 - 5 : x0 - 5, body = `<rect class="sys-lgrab" x="${gx}" y="${y0 - 12}" width="${tw0 + 10}" height="16" rx="5"/><text class="${cls}" x="${x0}" y="${y0}"${end ? ' style="text-anchor:end"' : ''}>${t}</text>`;
+        labels += `<g class="sys-lab${on ? ' sel' : ''}${S.slide === cab.id ? ' slide' : ''}" data-clabel="${cab.id}"><title>Drag the label anywhere, or its dot along the cable</title>${lead}` +
+          (rot ? `<g transform="rotate(${rot} ${x0} ${y0})">${body}</g>` : body) +
+          (lane ? `<circle class="sys-ldot-hit" cx="${dot.x}" cy="${dot.y}" r="8" data-cldot="${cab.id}"/><circle class="sys-ldot${dim ? ' dim' : ''}" cx="${dot.x}" cy="${dot.y}" r="3"/>` : '') + '</g>';
+      }
       // The selected cable's middle runs drag, as the editor's wires' do (connect.js handles).
       if (on) routes.forEach(r => CN().handles(r).forEach(R => {
         const mx = (R.a.x + R.b.x) / 2, my = (R.a.y + R.b.y) / 2, v = R.axis === 'v';
@@ -847,6 +887,7 @@
         <p><i>✥</i> Drag a block to move it; it snaps to the grid. Hold Ctrl to place it anywhere. R turns a selected block 90°, Shift+R back.</p>
         <p><i>⬚</i> Drag on empty canvas to select: left to right picks what's inside, right to left what the box touches. Shift-click adds or removes one. Drag any selected block to move them all.</p>
         <p><i>⌐</i> Cables find their way round the blocks. Drag a straight run sideways to shape it, Shift-drag to break it where you grab it, and double-click to add a bend. Near straight, it snaps straight.</p>
+        <p><i>◦</i> Drag a cable's label anywhere, or its dot along the cable. Cable labels, at the bottom right, shows or hides them.</p>
         <p><i>○</i> Drag a cable's end dot onto another connector to plug it there, or off to leave it open. Right-click a cable to walk around blocks or go behind them.</p>
         <p><i>↔</i> Right or middle drag pans, the wheel zooms, and F fits.</p></div>` : '') +
       `<button class="pane-help-btn${open ? ' on' : ''}" data-sact="help" title="How it works" aria-label="How it works" aria-expanded="${open}">?</button>`;
@@ -859,7 +900,8 @@
     page.classList.add('sys-on');
     if (!page.querySelector('.sys-view')) {
       page.innerHTML = `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span id="sys-grid-menu"></span></div></div>
+        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span id="sys-grid-menu"></span></div>
+        <div class="hud-br"><label class="seg glass hud-check" title="Show each cable’s name and part number, on a dot you can slide along it"><input type="checkbox" data-slabels id="sys-labels"><span>Cable labels</span></label></div></div>
         <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div>`;
       wire(page);
     }
@@ -872,6 +914,7 @@
       `<optgroup label="Spacing">${GRIDS.map(x => `<option value="${x}"${x === gs ? ' selected' : ''}>${x ? 'Grid ' + x + ' mm' : 'Grid off'}</option>`).join('')}</optgroup>` +
       `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${style === k ? '\u25cf ' : '\u25cb '}${t}</option>`).join('')}</optgroup></select></label>`;
     page.querySelector('#sys-help').innerHTML = helpHtml();
+    page.querySelector('#sys-labels').checked = labelsOn();
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'\u2039'} Back</button>` : '';
     panel.innerHTML = backBtn ? panelHtml(s).replace('<div class="rail-head">', '<div class="rail-head">' + backBtn) : panelHtml(s);
@@ -1051,6 +1094,8 @@
       const base = { x: e.clientX, y: e.clientY, p, t, moved: false, button: e.button, brk: e.shiftKey };
       try { svg.setPointerCapture(e.pointerId); } catch (err) { /* not an active pointer */ }
       if (e.button !== 0) { drag = Object.assign(base, { kind: 'pan', cam: Object.assign({}, S.cam), k: p.k }); return; }
+      const ldEl = !S.pending && t.closest('[data-cldot]'), lbEl = !S.pending && !ldEl && t.closest('[data-clabel]');
+      if (ldEl || lbEl) { drag = Object.assign(base, { kind: ldEl ? 'ldot' : 'label', cab: ldEl ? ldEl.dataset.cldot : lbEl.dataset.clabel }); return; }
       const endEl = !S.pending && t.closest('[data-cend]'), run = !S.pending && t.closest('[data-run]'), bl = t.closest('[data-block]'), cb = t.closest('[data-cable]');
       if (endEl) {
         const [cid, node] = endEl.dataset.cend.split('|');
@@ -1083,6 +1128,21 @@
       if (d.kind === 'marquee') { drawMarquee(svg, d, p); return; }
       if (d.kind === 'pan') { S.cam.x = d.cam.x - (e.clientX - d.x) * d.k; S.cam.y = d.cam.y - (e.clientY - d.y) * d.k; svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`); return; }
       if (d.kind === 'click') return;
+      if (d.kind === 'ldot' || d.kind === 'label') {
+        const cab = cable(cur(), d.cab), L = labInfo.get(d.cab);
+        if (!cab || !L) { drag = null; return; }
+        if (!d.snap) {
+          S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; S.slide = cab.id; svg.classList.add('dragging');
+          // Fix the other half where it is: the dot's place, and the label's offset from it.
+          if (cab.labelAt == null) cab.labelAt = Math.round(L.t * 1000) / 1000;
+          if (cab.labelOff == null) cab.labelOff = L.rot ? { dx: 2, dy: -2.25 } : { dx: Math.round(L.off.dx * 10) / 10, dy: Math.round(L.off.dy * 10) / 10 };
+          d.grab = { x: d.p.x - L.dot.x, y: d.p.y - L.dot.y }; d.o0 = Object.assign({}, cab.labelOff);
+        }
+        if (d.kind === 'ldot' && L.lane) cab.labelAt = Math.round(laneT(L.lane, { x: p.x - d.grab.x, y: p.y - d.grab.y }) * 1000) / 1000;
+        if (d.kind === 'label') cab.labelOff = { dx: Math.round((d.o0.dx + (p.x - d.p.x) / K) * 10) / 10, dy: Math.round((d.o0.dy + (p.y - d.p.y) / K) * 10) / 10 };
+        redraw(svg);
+        return;
+      }
       if (d.kind === 'end') {
         svg.classList.add('dragging-end');
         if (!d.ghostFrom) d.ghostFrom = true;
@@ -1137,6 +1197,12 @@
         if (gh) gh.innerHTML = '';
         if (sameTab(to, d.from)) { A.refresh(); return; }
         change(s => { const cab = cable(s, d.cab); cab.ends[d.node] = to; if (to) conn(block(s, to.block), to.conn).used = true; if (cab.routes) delete cab.routes[d.node]; S.sel = { kind: 'cable', id: cab.id }; });
+        return;
+      }
+      if (d.kind === 'ldot' || d.kind === 'label') {
+        S.slide = null;
+        if (d.moved && d.snap) { cur().updated = now(); persist(); A.refresh(); return; }
+        if (!d.moved) { if (d.brk) toggleSel('cable', d.cab); else { S.sel = { kind: 'cable', id: d.cab }; S.pair = null; S.picking = null; } A.refresh(); }
         return;
       }
       if (d.kind === 'run' && !d.moved && d.click) { if (d.brk) toggleSel('cable', d.click); else { S.sel = { kind: 'cable', id: d.click }; S.pair = null; S.picking = null; } A.refresh(); return; }
@@ -1214,6 +1280,7 @@
     const mine = s => s.blocks.filter(b => !(S.sel && S.sel.block) || b.id === S.sel.block);
     page.addEventListener('change', e => {
       const t = e.target;
+      if (t.hasAttribute('data-slabels')) { try { localStorage.setItem(NS + 'sysLabels', t.checked ? 'on' : 'off'); } catch (err) { /* storage blocked */ } A.refresh(); return; }
       if (t.dataset.sext) { const id = t.dataset.sext, on = t.checked; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { c.external = on; if (on && !c.link) c.used = true; } })); }); return; }
       if (t.dataset.sfit) { const id = t.dataset.sfit, on = t.checked; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { c.fitted = on; if (!on) c.used = false; } })); }); return; }
       if (t.dataset.sexit) { const id = t.dataset.sexit, v = t.value; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { if (v) c.exit = turnSide(v, 360 - rotOf(b)); else delete c.exit; } })); s.cables.forEach(cab => { delete cab.routes; }); }); return; }
