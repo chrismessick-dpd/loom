@@ -734,8 +734,13 @@
   function wire(page) {
     const svg = page.querySelector('#sys-canvas');
     svg.addEventListener('contextmenu', e => e.preventDefault());
+    // No text drags (Chris, 2026-11-12: dragging a block sometimes pulled a ghost of its text instead):
+    // text selected before (a double-click, Ctrl+A) is cleared when a drag starts here, and the browser's
+    // own drag of a selection never starts on the canvas.
+    svg.addEventListener('dragstart', e => e.preventDefault());
     svg.addEventListener('pointerdown', e => {
       if (e.button > 2) return;
+      { const sel0 = getSelection && getSelection(); if (sel0 && !sel0.isCollapsed) sel0.removeAllRanges(); }
       const p = toWorld(svg, e), t = e.target, s = cur();
       const base = { x: e.clientX, y: e.clientY, p, t, moved: false, button: e.button, brk: e.shiftKey };
       try { svg.setPointerCapture(e.pointerId); } catch (err) { /* not an active pointer */ }
