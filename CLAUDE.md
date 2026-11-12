@@ -34,7 +34,12 @@ links to it so far. Before every commit:
   out (not fitted in its build variant) is placed at the middle of its pads in the IPC-356 netlist (`place`,
   2026-11-11, Chris: they were lined up along the bottom edge): the netlist's unit scale and offset are fitted on
   the parts both files list (`fitScale`; a real board fitted 283 parts to 0.001 mm), and `c.at.from` says which;
-  the outline is every part and pad plus 4 mm. Only a connector in neither waits on the bottom edge. New harness here makes a
+  the outline is every part and pad plus 4 mm. Only a connector in neither waits on the bottom edge.
+  Each connector also has **Populated** (`c.fitted`; Chris, 2026-11-11: alternates in one place overlapped):
+  unset, it follows the package (`fitted`: a connector only the netlist placed isn't populated). An
+  unpopulated connector is drawn faint and dashed under the rest, can't be clicked or take a cable, and can't be
+  Used (unticking Populated clears Used); the checks skip it, except a cable on one, which is an error. The
+  block's panel lists every connector with Populated and Used; the connector's panel has both. New harness here makes a
   placeholder (the board end plus a generic far end), or, with a second connector Shift-picked, a
   board-to-board harness with the shared-net wires (`boards.matches`). Plug in a harness… ranks harnesses
   made from that connector first. Checks: used and unplugged, plugged and not used, two cables on a

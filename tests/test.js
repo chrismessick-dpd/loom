@@ -683,6 +683,19 @@
     ok(res.outline.x0 <= 5 - 4 + 0.01, 'the outline takes in the netlist-only connector');
   });
 
+  test('system: an unpopulated connector is skipped by the used checks, and a cable on one is an error', () => {
+    const { Y, s, a, c, h, get } = sysFixture();
+    c.placed = 'netlist';
+    ok(!Y.fitted(c), 'a connector only the netlist placed starts unpopulated');
+    ok(!Y.checks(s, get).some(x => /A1 J1/.test(x.text)), 'nothing to say about it while it has no cable');
+    c.fitted = true;
+    ok(Y.fitted(c) && Y.checks(s, get).some(x => /A1 J1 \(Fan\) is used/.test(x.text)), 'populated by hand, it counts again');
+    c.fitted = false;
+    const ends = h.nodes.filter(M.isConn);
+    s.cables.push({ id: 'k1', harness: h.id, ends: { [ends[0].id]: { block: a.id, conn: c.id } }, lengthMm: null });
+    ok(Y.checks(s, get).some(x => x.sev === 'error' && /isn't populated, but a cable is plugged into it/.test(x.text)));
+  });
+
   (async () => {
     let failed = 0;
     for (const t of tests) {

@@ -37,6 +37,10 @@
   const conn = (b, id) => b && b.conns.find(c => c.id === id);
   const cable = (s, id) => s.cables.find(c => c.id === id);
   const pinsOf = n => (n.pins || []).map(p => p.pin);
+  // Populated: set by hand, else from the package (a connector only the netlist placed isn't fitted in
+  // the pick-and-place's build variant). An unpopulated connector is drawn faint, can't be clicked, and
+  // can't be used, so alternates in one place don't get in each other's way (Chris, 2026-11-11).
+  const fitted = c => (c.fitted != null ? !!c.fitted : c.placed !== 'netlist');
   function mkConn(b, ref, count, at) {
     const c = { id: U.uid('c'), ref: ref || nextRef(b.conns, 'J'), pins: Array.from({ length: count || 4 }, (_, i) => ({ pin: String(i + 1), net: '', label: '' })),
       x: 0, y: 0, side: 'top', used: true, fn: '', placed: 'hand', mpn: '', mfr: '', desc: '' };
@@ -103,6 +107,8 @@
     const add = (sev, text, sel) => out.push({ sev, text, sel });
     s.blocks.forEach(b => b.conns.forEach(c => {
       const at = pluggedAt(s, b.id, c.id), where = `${b.ref} ${c.ref}`;
+      if (!fitted(c) && at.length) { add('error', `${where} isn't populated, but a cable is plugged into it.`, { kind: 'conn', block: b.id, conn: c.id }); return; }
+      if (!fitted(c)) return;
       if (c.used && !at.length) add('warn', `${where}${c.fn ? ' (' + c.fn + ')' : ''} is used, but nothing is plugged into it.`, { kind: 'conn', block: b.id, conn: c.id });
       if (!c.used && at.length) add('warn', `${where} has a cable but isn't marked used.`, { kind: 'conn', block: b.id, conn: c.id });
       if (at.length > 1) add('error', `${where} has ${at.length} cables plugged into it.`, { kind: 'conn', block: b.id, conn: c.id });
@@ -239,11 +245,11 @@
         `<rect class="sys-body" x="${X}" y="${Y}" width="${b.w * K}" height="${b.h * K}" rx="${b.kind === 'device' ? 12 : 8}"/>` +
         `<text class="sys-ref" x="${X + 10}" y="${Y + 22}">${esc(b.ref)}</text>` +
         `<text class="sys-name" x="${X + 10}" y="${Y + 40}">${esc(b.name)}</text>`;
-      b.conns.forEach(c => {
-        const at = pluggedAt(s, b.id, c.id).length, g = tabGeom(b, c);
+      b.conns.filter(c => !fitted(c)).concat(b.conns.filter(fitted)).forEach(c => {
+        const at = pluggedAt(s, b.id, c.id).length, g = tabGeom(b, c), fit = fitted(c);
         const pend = S.pending && S.pending.block === b.id && S.pending.conn === c.id;
-        const cls = ['sys-tab', pend ? 'pending' : S.pending ? 'can' : '', c.used ? 'used' : 'unused', at ? 'plugged' : '', c.used && !at ? 'open' : '', c.side === 'bottom' ? 'bottom' : '', isSel('conn', b.id, c.id) ? 'sel' : ''].filter(Boolean).join(' ');
-        html += `<g class="${cls}" data-conn="${c.id}" data-block="${b.id}"><title>${esc(`${b.ref} ${c.ref}${c.fn ? ' · ' + c.fn : ''} · ${c.pins.length} pins${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · placed by hand' : c.placed === 'netlist' ? ' · not in the pick-and-place: placed at its pads in the netlist' : ''} · click, then click another connector, to run a cable`)}</title>` +
+        const cls = ['sys-tab', !fit ? 'unfitted' : '', pend ? 'pending' : S.pending && fit ? 'can' : '', c.used ? 'used' : 'unused', at ? 'plugged' : '', c.used && !at ? 'open' : '', c.side === 'bottom' ? 'bottom' : '', isSel('conn', b.id, c.id) ? 'sel' : ''].filter(Boolean).join(' ');
+        html += `<g class="${cls}" data-conn="${c.id}" data-block="${b.id}"><title>${esc(`${b.ref} ${c.ref}${c.fn ? ' · ' + c.fn : ''} · ${c.pins.length} pins${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · placed by hand' : c.placed === 'netlist' ? ' · not in the pick-and-place: placed at its pads in the netlist' : ''}${fit ? ' · click, then click another connector, to run a cable' : ' · not populated'}`)}</title>` +
           `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3"/><text x="${g.cx}" y="${g.cy + 3.5}">${esc(c.ref)}</text></g>`;
       });
       html += '</g>';
@@ -331,13 +337,15 @@
       btn('cancel-add', 'Cancel');
   }
   function blockHtml(s, b) {
-    const used = b.conns.filter(c => c.used).length;
+    const used = b.conns.filter(c => fitted(c) && c.used).length, pop = b.conns.filter(fitted).length;
     return `<div class="rail-head"><div class="eyebrow">${b.kind === 'device' ? 'Device' : 'Board'} ${esc(b.ref)}</div><div class="rail-title">${esc(b.name)}</div></div>` +
       fld('Ref', inp('b.ref', b.ref)) + fld('Name', inp('b.name', b.name)) +
       (b.source ? `<p class="hint">From Signoff EE: ${esc(b.source.name)}${b.source.label ? ' · ' + esc(b.source.label) : ''}. ${esc(String(b.w))} × ${esc(String(b.h))} mm, from its pick-and-place.</p><div class="sys-actions">${btn('open-ee', 'Open in Signoff EE')}</div>`
         : `<div class="field-row">${fld('Width, mm', inp('b.w', b.w, ' type="number" min="5"'))}${fld('Height, mm', inp('b.h', b.h, ' type="number" min="5"'))}</div>`) +
-      `<h4 class="sys-h">Connectors <span class="count">${used} used of ${b.conns.length}</span></h4>` +
-      `<div class="sys-list">${b.conns.map(c => `<div class="sys-crow"><label class="tick"><input type="checkbox" data-sused="${c.id}"${c.used ? ' checked' : ''}> ${esc(c.ref)}</label><button class="sys-link" data-ssel="conn:${b.id}:${c.id}">${esc(c.fn || c.desc || c.pins.length + ' pins')}</button></div>`).join('')}</div>` +
+      `<h4 class="sys-h">Connectors <span class="count">${pop} populated, ${used} used, of ${b.conns.length}</span></h4>` +
+      `<div class="sys-ctab"><div class="sys-crow sys-chead"><span>Connector</span><span>Populated</span><span>Used</span><span></span></div>${b.conns.map(c => `<div class="sys-crow${fitted(c) ? '' : ' off'}"><button class="sys-link" data-ssel="conn:${b.id}:${c.id}">${esc(c.ref)}</button>` +
+        `<input type="checkbox" data-sfit="${c.id}" title="Populated (fitted on this board)"${fitted(c) ? ' checked' : ''}><input type="checkbox" data-sused="${c.id}" title="Used"${fitted(c) && c.used ? ' checked' : ''}${fitted(c) ? '' : ' disabled'}>` +
+        `<span class="sys-cfn">${esc(c.fn || (c.placed === 'netlist' && c.fitted == null ? 'not in the pick-and-place' : '') || c.desc || c.pins.length + ' pins')}</span></div>`).join('')}</div>` +
       `<div class="sys-actions">${btn('add-conn', 'Add a connector')}${btn('dup-block', 'Copy this block')}${btn('delete-block', 'Delete', '', 'btn-danger')}</div>`;
   }
   function connHtml(s, b, c) {
@@ -345,7 +353,9 @@
     const pins = c.pins.map(p => `<tr><td>${esc(p.pin)}</td><td>${esc(p.label || p.net || '')}</td></tr>`).join('');
     const pick = S.picking && S.picking.block === b.id && S.picking.conn === c.id;
     return `<div class="rail-head"><div class="eyebrow">${esc(b.ref)} · ${esc(b.name)}</div><div class="rail-title">${esc(c.ref)}</div></div>` +
-      `<label class="tick sys-used"><input type="checkbox" data-sused="${c.id}"${c.used ? ' checked' : ''}> Used</label>` +
+      `<div class="sys-flags"><label class="tick sys-used"><input type="checkbox" data-sfit="${c.id}"${fitted(c) ? ' checked' : ''}> Populated</label>` +
+      `<label class="tick sys-used"><input type="checkbox" data-sused="${c.id}"${fitted(c) && c.used ? ' checked' : ''}${fitted(c) ? '' : ' disabled'}> Used</label></div>` +
+      (fitted(c) ? '' : `<p class="hint">Not populated${c.placed === 'netlist' && c.fitted == null ? ': it isn’t in the pick-and-place, so it isn’t fitted in that build variant' : ''}. It’s drawn faint and can’t take a cable.</p>`) +
       fld('Function', inp('c.fn', c.fn, ' placeholder="What it connects to: Fan, Display, 24 VAC in…"')) +
       (b.source ? '' : `<div class="field-row">${fld('Ref', inp('c.ref', c.ref))}${fld('Pins', inp('c.pins', c.pins.length, ' type="number" min="1" max="200"'))}</div>`) +
       (!b.source || c.placed === 'hand' ? `<div class="field-row">${fld('X on the block, mm', inp('c.x', c.x, ' type="number" step="0.5"'))}${fld('Y, mm', inp('c.y', c.y, ' type="number" step="0.5"'))}</div>` : '') +
@@ -582,6 +592,7 @@
     });
     page.addEventListener('change', e => {
       const t = e.target;
+      if (t.dataset.sfit) { const id = t.dataset.sfit, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) { c.fitted = on; if (!on) c.used = false; } })); }); return; }
       if (t.dataset.sused) { const id = t.dataset.sused, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) c.used = on; })); }); return; }
       if (t.dataset.send) { const [bid, cid] = t.value ? t.value.split('|') : []; const node = t.dataset.send; change(s => { const cab = cable(s, S.sel.id); cab.ends[node] = bid ? { block: bid, conn: cid } : null; }); return; }
       if (t.dataset.sf) setField(t.dataset.sf, t.value);
@@ -719,6 +730,6 @@
     if (DEMO && (!S.store.sdemo1 || S.store.sdemo1.demoVersion !== DEMO_V)) setTimeout(() => demo(true).then(() => A.refresh()), 0);
     return c;
   }
-  LM.system = { init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; persist(); },
+  LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; persist(); },
     store: () => S.store, persist, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, plugsOf, normalize, blank, addBoard, addDrawn, bestEnd, pnOf, TAB };
 })(window.LM = window.LM || {});
