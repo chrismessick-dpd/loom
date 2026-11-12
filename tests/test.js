@@ -690,6 +690,21 @@
     const draw = CN.draw(Object.assign({}, R0, { v: [100, 200, 30] })).pts;
     ok(Math.abs(draw[0].x - 100) < 0.5 && Math.abs(draw[1].x - 100) < 0.5 && draw[1].y > 180, 'drawn straight down from the exit to the corner');
   });
+  test('system: a turned block turns its connectors, their exits, and its size, and its cables still fit', () => {
+    const Y = LM.system, s = Y.blank('Gizmo');
+    const a = Y.addDrawn(s, 'board', { x: 0, y: 0 }), b = Y.addDrawn(s, 'board', { x: 0, y: 200 });
+    [a, b].forEach(x => { x.w = 80; x.h = 40; x.conns.length = 0; });
+    const ar = Y.mkConn(a, 'J1', 2, { x: 80 - Y.TAB.w, y: 18 }), bt = Y.mkConn(b, 'J1', 2, { x: 40, y: 0 });
+    s.cables.push({ id: 'k1', kind: 'link', ends: { a: { block: a.id, conn: ar.id }, b: { block: b.id, conn: bt.id } } });
+    Y.normalize(s);
+    const before = Y.layout(s).get('k1').routes[0];
+    ok(!before.A.from, 'unturned, J1 leaves from the right side (no lead-in)');
+    a.rot = 90;
+    const r = Y.layout(s).get('k1').routes[0];
+    ok(r.A.from && r.A.y > r.A.from.y, 'turned right, J1 is on the bottom edge and leaves downward');
+    ok(r.A.from.y <= (a.y + a.w) * 4 + 0.5, 'within the turned block, now 80 mm tall');
+    ok(RT.fits(r.A, r.B, r.v, r.stub), 'and its cable fits its ends');
+  });
   test('connect: the route menu walks around, goes behind, and resets, as in the harness editor', () => {
     const CN = LM.connect;
     ok(/Go behind parts/.test(CN.menuHtml(null)) && !/Reset route/.test(CN.menuHtml(null)), 'nothing shaped: no Reset route');

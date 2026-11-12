@@ -22,6 +22,14 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System blocks: name in the middle, and 90° turns (2026-11-12, Chris).** Each block shows its name large
+  and upright in its middle (`.sys-center`, sized to the block, down to 7 px for a long name on a small
+  device) and only its ref at the top left, as tall as the two rows it shared. R turns the selected block 90°
+  clockwise and Shift+R back; right-click a block for Rotate left and Rotate right. `b.rot` (0, 90, 180, 270);
+  `b.w`, `b.h`, the connectors' spots, and a chosen exit stay in the block's own frame (`rotOf`, `sizeOf`,
+  `tabSpot`, `turnSide`), and the exit menu shows sides as they look now. A turn keeps the block's middle and
+  forgets its cables' shapes. Tabs and text stay upright.
+
 - **System grid (2026-11-12, Chris: as the harness canvas).** The system canvas bar has the harness's Grid
   menu: spacing Off, 1, 5, or 10 mm, kept with the system (`s.grid`, 1 mm by default), and Dots or Lines,
   the harness's own setting (`fold.gridStyle`, through `sysHooks.gridStyle`/`setGridStyle`). The grid is

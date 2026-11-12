@@ -254,17 +254,32 @@
   // side of the board edge it's nearest): the exit point (ex, ey) in the middle of that side of the tab,
   // and its direction (dx, dy). A connector's panel can set the side (c.exit). tx and cy alias the exit.
   const SIDES = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] };
+  // Turned blocks (Chris, 2026-11-12: 90 degree steps): b.rot is 0, 90, 180, or 270, clockwise. The block's
+  // size (b.w, b.h), its connectors' spots (c.x, c.y), and a connector's chosen exit (c.exit) stay in the
+  // block's own frame; b.x and b.y are the turned block's top left. Tabs and text stay upright.
+  const rotOf = b => ((Math.round((+b.rot || 0) / 90) * 90) % 360 + 360) % 360;
+  const sizeOf = b => (rotOf(b) % 180 ? { W: b.h, H: b.w } : { W: b.w, H: b.h });
+  const TURN = { left: 'top', top: 'right', right: 'bottom', bottom: 'left' };
+  const turnSide = (side, deg) => { let s0 = side; for (let i = 0; i < ((deg % 360) + 360) % 360 / 90; i++) s0 = TURN[s0]; return s0; };
+  // A connector's tab, top left in the turned block (mm).
+  function tabSpot(b, c) {
+    const cx = c.x + TAB.w / 2, cy = c.y + TAB.h / 2, r = rotOf(b);
+    const [x, y] = r === 90 ? [b.h - cy, cx] : r === 180 ? [b.w - cx, b.h - cy] : r === 270 ? [cy, b.w - cx] : [cx, cy];
+    return { x: x - TAB.w / 2, y: y - TAB.h / 2 };
+  }
   function exitSide(b, c) {
-    if (c.exit && SIDES[c.exit]) return c.exit;
-    const d = { left: c.x, right: b.w - c.x - TAB.w, top: c.y, bottom: b.h - c.y - TAB.h };
+    if (c.exit && SIDES[c.exit]) return turnSide(c.exit, rotOf(b));
+    const t = tabSpot(b, c), { W, H } = sizeOf(b);
+    const d = { left: t.x, right: W - t.x - TAB.w, top: t.y, bottom: H - t.y - TAB.h };
     return Object.keys(d).sort((p, q) => d[p] - d[q])[0];
   }
   function tabGeom(b, c) {
-    const x = (b.x + c.x) * K, y = (b.y + c.y) * K, w = TAB.w * K, h = TAB.h * K, cx = x + w / 2, cy = y + h / 2;
+    const t = tabSpot(b, c), { W, H } = sizeOf(b);
+    const x = (b.x + t.x) * K, y = (b.y + t.y) * K, w = TAB.w * K, h = TAB.h * K, cx = x + w / 2, cy = y + h / 2;
     const side = exitSide(b, c), [dx, dy] = SIDES[side];
     const ex = dx ? (dx < 0 ? x : x + w) : cx, ey = dy ? (dy < 0 ? y : y + h) : cy;
     // How far the exit is inside its block's edge, the way it leaves.
-    const inside = dx ? (dx < 0 ? ex - b.x * K : (b.x + b.w) * K - ex) : (dy < 0 ? ey - b.y * K : (b.y + b.h) * K - ey);
+    const inside = dx ? (dx < 0 ? ex - b.x * K : (b.x + W) * K - ex) : (dy < 0 ? ey - b.y * K : (b.y + H) * K - ey);
     return { x, y, w, h, cx, cy: ey, mid: cy, side, dx, dy, ex, ey, tx: ex, out: dx, inside: Math.max(0, inside) };
   }
   // A tab's terminals for the engine (route.js terminals are level): one leaving left or right runs
@@ -282,7 +297,7 @@
       T[end === 'A' ? 'out' : 'in'] = end === 'A' ? g.dx : -g.dx;
       return [T];
     }
-    const ly = g.dy < 0 ? b.y * K - STUB_U : (b.y + b.h) * K + STUB_U, from = { x: g.ex, y: g.ey };
+    const ly = g.dy < 0 ? b.y * K - STUB_U : (b.y + sizeOf(b).H) * K + STUB_U, from = { x: g.ex, y: g.ey };
     const first = toward >= g.ex ? 1 : -1;
     return [first, -first].map(o => {
       const T = { x: g.ex, y: ly, pins: true, node, side: o > 0 ? 'r' : 'l', conn: true, stub: onGrid(g.ex, o, RADIUS, step) };
@@ -305,7 +320,7 @@
   // selection (a system the size of a machine has dozens of cables over a big drawing).
   let memo = { key: '', lo: null };
   function layout(s, view) {
-    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted])]), s.cables, s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
+    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted])]), s.cables, s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
     if (memo.key === key && memo.lo) return memo.lo;
     const lo = layoutNow(s, view);
     memo = { key, lo };
@@ -326,7 +341,7 @@
     if (!s.blocks.length) return out;
     // The parts every route walks round: the blocks (the engine keeps each route its half-width and a
     // little clear of them, as a harness's wires of its connectors).
-    const rects = s.blocks.map(x => ({ id: x.id, x0: x.x * K, y0: x.y * K, x1: (x.x + x.w) * K, y1: (x.y + x.h) * K }));
+    const rects = s.blocks.map(x => ({ id: x.id, x0: x.x * K, y0: x.y * K, x1: (x.x + sizeOf(x).W) * K, y1: (x.y + sizeOf(x).H) * K }));
     const list = [], per = [], step = gridStep(rects);
     s.cables.forEach(cab => {
       const h = harnessOf(cab), ends = cableEnds(s, cab, h), at = ends.filter(x => x.g);
@@ -368,15 +383,20 @@
       const X = b.x * K, Y = b.y * K;
       // The harness editor's connector card (conn.js, with fx): paper card and shadow, a lit header,
       // the darker connector edge, and glass, so blocks stand off the stage as connectors do.
-      const W = b.w * K, Hh = b.h * K, r = 8, hd = Math.min(46, Hh / 2);
+      const W = sizeOf(b).W * K, Hh = sizeOf(b).H * K, r = 8, hd = Math.min(46, Hh / 2);
       html += `<g class="cv-conn sys-block ${b.kind}${bs ? ' sel' : ''}" data-block="${b.id}">` +
         `<rect class="cv-card" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/>` +
         `<path class="cv-headbg" d="M${X} ${Y + hd}V${Y + r}Q${X} ${Y} ${X + r} ${Y}H${X + W - r}Q${X + W} ${Y} ${X + W} ${Y + r}V${Y + hd}Z"/>` +
         `<line class="sys-headrule" x1="${X}" y1="${Y + hd}" x2="${X + W}" y2="${Y + hd}"/>` +
         `<rect class="cv-glass" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/><rect class="cv-rim" x="${X + 1}" y="${Y + 1}" width="${W - 2}" height="${Hh - 2}" rx="${r - 1}"/>` +
         `<rect class="cv-frame" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/>` +
-        `<text class="sys-ref" x="${X + 10}" y="${Y + 19}">${esc(b.ref)}</text>` +
-        `<text class="sys-name" x="${X + 10}" y="${Y + 36}">${esc(b.name)}</text>`;
+        // The ref alone at the top left, as tall as the two rows it shares with nothing now, and the name
+        // large in the middle, upright and as big as the block allows (Chris, 2026-11-12).
+        `<text class="sys-ref" x="${X + 10}" y="${Y + Math.min(36, hd - 6)}" style="font-size:${Math.max(14, Math.min(30, hd - 12)).toFixed(0)}px">${esc(b.ref)}</text>` +
+        (() => {
+          const name = String(b.name || ''), fs = Math.max(7, Math.min(44, (W - 20) / Math.max(1, U.textW(name, 1)), (Hh - hd) * 0.42));
+          return name ? `<text class="sys-center" x="${X + W / 2}" y="${Y + hd + (Hh - hd) / 2}" style="font-size:${fs.toFixed(1)}px">${esc(name)}</text>` : '';
+        })();
       b.conns.filter(c => !fitted(c)).concat(b.conns.filter(fitted)).forEach(c => {
         const at = pluggedAt(s, b.id, c.id).length, g = tabGeom(b, c), fit = fitted(c);
         const pend = S.pending && S.pending.block === b.id && S.pending.conn === c.id;
@@ -430,7 +450,7 @@
   function bounds(s) {
     if (!s.blocks.length) return { x: -80, y: -80, w: 800, h: 480 };
     const x0 = Math.min(...s.blocks.map(b => b.x)), y0 = Math.min(...s.blocks.map(b => b.y));
-    const x1 = Math.max(...s.blocks.map(b => b.x + b.w)), y1 = Math.max(...s.blocks.map(b => b.y + b.h));
+    const x1 = Math.max(...s.blocks.map(b => b.x + sizeOf(b).W)), y1 = Math.max(...s.blocks.map(b => b.y + sizeOf(b).H));
     const m = 16;
     return { x: (x0 - m) * K, y: (y0 - m) * K, w: (x1 - x0 + 2 * m) * K, h: (y1 - y0 + 2 * m) * K };
   }
@@ -496,7 +516,7 @@
       (at.length ? `<div class="sys-list">${at.map(x => { const h = harnessOf(x.cable), n = endsOf(x.cable, h).find(e => e.id === x.node), st = statusOf(x.cable, h); return `<button class="sys-row" data-ssel="cable:${x.cable.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(x.cable, h))}<small>${esc(n ? 'its end ' + n.ref : '')}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Nothing yet.</p>') +
       (pick ? pickHtml(s, b, c) : `<div class="sys-actions">${btn('new-harness', 'New harness here', '', 'btn-primary')}${btn('pick-harness', 'Plug in a harness…')}</div>`) +
       (S.pair && S.pair.block !== b.id || S.pair && S.pair.conn !== c.id ? '' : '') +
-      fld('Cables leave from', `<select class="input" data-sexit="${c.id}">${[['', 'The nearest board edge (' + exitSide(b, Object.assign({}, c, { exit: '' })) + ')'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']].map(([v, l]) => `<option value="${v}"${(c.exit || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`) +
+      fld('Cables leave from', `<select class="input" data-sexit="${c.id}">${[['', 'The nearest board edge (' + exitSide(b, Object.assign({}, c, { exit: '' })) + ')'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']].map(([v, l]) => `<option value="${v}"${(c.exit ? turnSide(c.exit, rotOf(b)) : '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`) +
       pinoutHtml(b, c) +
       (b.source ? '' : `<div class="sys-actions">${btn('delete-conn', 'Delete connector', '', 'btn-danger')}</div>`);
   }
@@ -660,6 +680,22 @@
   // A right click on a cable (no drag): the harness editor's route items (connect.js menuHtml), for the
   // route under the pointer (each end of a cable with three or more ends has its own).
   let menuEl = null;
+  // A right click on a block: turn it (Chris, 2026-11-12).
+  function openBlockMenu(e, id) {
+    closeMenu();
+    S.sel = { kind: 'block', block: id }; A.refresh();
+    const m = document.createElement('div');
+    m.className = 'menu lm-ctx';
+    m.setAttribute('role', 'menu');
+    m.innerHTML = '<button data-ctx="rotate-ccw" role="menuitem"><span>Rotate left</span><span class="lm-ctx-k">Shift+R</span></button>' +
+      '<button data-ctx="rotate-cw" role="menuitem"><span>Rotate right</span><span class="lm-ctx-k">R</span></button>';
+    m.style.position = 'fixed'; m.style.left = e.clientX + 'px'; m.style.top = e.clientY + 'px'; m.style.zIndex = 90;
+    m.addEventListener('click', ev => { const b = ev.target.closest('[data-ctx]'); if (!b) return; closeMenu(); act(b.dataset.ctx, null, id); });
+    document.body.appendChild(m);
+    menuEl = m;
+    const off = ev => { if (!m.contains(ev.target)) { closeMenu(); document.removeEventListener('pointerdown', off, true); } };
+    setTimeout(() => document.addEventListener('pointerdown', off, true), 0);
+  }
   function closeMenu() { if (menuEl) { menuEl.remove(); menuEl = null; } }
   function openMenu(e, cabId, p) {
     closeMenu();
@@ -789,7 +825,12 @@
         if (rec && R1) keepRoute(d.cab, d.end, CN().release(R1, rec.v, rec));
         cur().updated = now(); persist(); A.refresh(); return;
       }
-      if (d.button === 2 && !d.moved) { const cb = d.t.closest && d.t.closest('[data-cable]'); if (cb) openMenu(e, cb.dataset.cable, toWorld(svg, e)); return; }
+      if (d.button === 2 && !d.moved) {
+        const cb = d.t.closest && d.t.closest('[data-cable]'), bl = !cb && d.t.closest && d.t.closest('[data-block]');
+        if (cb) openMenu(e, cb.dataset.cable, toWorld(svg, e));
+        else if (bl) openBlockMenu(e, bl.dataset.block);
+        return;
+      }
       if (d.kind === 'block' && d.moved) { cur().updated = now(); persist(); A.refresh(); return; }
       if (d.moved || d.button !== 0) return;
       // A click: as the editor's click().
@@ -835,7 +876,7 @@
     page.addEventListener('change', e => {
       const t = e.target;
       if (t.dataset.sfit) { const id = t.dataset.sfit, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) { c.fitted = on; if (!on) c.used = false; } })); }); return; }
-      if (t.dataset.sexit) { const id = t.dataset.sexit, v = t.value; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) { if (v) c.exit = v; else delete c.exit; } })); s.cables.forEach(cab => { delete cab.routes; }); }); return; }
+      if (t.dataset.sexit) { const id = t.dataset.sexit, v = t.value; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) { if (v) c.exit = turnSide(v, 360 - rotOf(b)); else delete c.exit; } })); s.cables.forEach(cab => { delete cab.routes; }); }); return; }
       if (t.dataset.spin) { const [id, i] = t.dataset.spin.split('|'), v = t.value.trim(); change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id && c.pins[+i]) { c.pins[+i].net = v; c.pins[+i].label = v; } })); }); return; }
       if (t.dataset.sused) { const id = t.dataset.sused, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) c.used = on; })); }); return; }
       if (t.dataset.send) { const [bid, cid] = t.value ? t.value.split('|') : []; const node = t.dataset.send; change(s => { const cab = cable(s, S.sel.id); cab.ends[node] = bid ? { block: bid, conn: cid } : null; }); return; }
@@ -867,12 +908,27 @@
       else if (/^cab\.(name|pn|mfr|mpn)$/.test(f)) cable(s, S.sel.id)[f.slice(4)] = v.trim();
     });
   }
+  // Turn a block 90 degrees about its middle (on the grid). Its cables' shapes are forgotten: their ends
+  // now leave from other sides, and they route afresh.
+  function rotate(s, b, deg) {
+    if (!b) return;
+    const a = sizeOf(b), cx = b.x + a.W / 2, cy = b.y + a.H / 2;
+    b.rot = (rotOf(b) + deg + 360) % 360;
+    const n = sizeOf(b);
+    b.x = snap(cx - n.W / 2); b.y = snap(cy - n.H / 2);
+    s.cables.forEach(cab => { if (Object.values(cab.ends).some(e => e && e.block === b.id)) delete cab.routes; });
+  }
   // A clear spot for a new block: right of everything.
-  function freeSpot(s) { return s.blocks.length ? { x: Math.max(...s.blocks.map(b => b.x + b.w)) + 40, y: Math.min(...s.blocks.map(b => b.y)) } : { x: 0, y: 0 }; }
+  function freeSpot(s) { return s.blocks.length ? { x: Math.max(...s.blocks.map(b => b.x + sizeOf(b).W)) + 40, y: Math.min(...s.blocks.map(b => b.y)) } : { x: 0, y: 0 }; }
   async function act(a, el, arg) {
     const s = cur();
     switch (a) {
       case 'back': back(); break;
+      case 'rotate-cw': case 'rotate-ccw': {
+        const id = arg || (S.sel && S.sel.kind === 'block' && S.sel.block);
+        if (id) change(x => rotate(x, block(x, id), a === 'rotate-cw' ? 90 : -90));
+        break;
+      }
       case 'undo': swap(S.past, S.future); break;
       case 'redo': swap(S.future, S.past); break;
       case 'fit': S.cam = bounds(s); A.refresh(); break;
@@ -926,7 +982,7 @@
       }
       case 'add-conn': { const c = change(x => mkConn(block(x, S.sel.block))); S.sel = { kind: 'conn', block: S.sel.block, conn: c.id }; A.refresh(); break; }
       case 'dup-block': {
-        const b2 = change(x => { const b = block(x, S.sel.block), c = JSON.parse(JSON.stringify(b)); c.id = U.uid('b'); c.ref = nextRef(x.blocks, b.kind === 'device' ? 'D' : 'A'); c.x = b.x + 20; c.y = b.y + b.h + 20; c.conns.forEach(k => { k.id = U.uid('c'); }); x.blocks.push(c); return c; });
+        const b2 = change(x => { const b = block(x, S.sel.block), c = JSON.parse(JSON.stringify(b)); c.id = U.uid('b'); c.ref = nextRef(x.blocks, b.kind === 'device' ? 'D' : 'A'); c.x = b.x + 20; c.y = b.y + sizeOf(b).H + 20; c.conns.forEach(k => { k.id = U.uid('c'); }); x.blocks.push(c); return c; });
         S.sel = { kind: 'block', block: b2.id }; A.refresh(); break;
       }
       case 'delete-block': change(x => { const id = S.sel.block; x.blocks = x.blocks.filter(b => b.id !== id); x.cables.forEach(c => Object.keys(c.ends).forEach(k => { if (c.ends[k] && c.ends[k].block === id) c.ends[k] = null; })); S.sel = null; }); break;
@@ -987,6 +1043,8 @@
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); swap(S.future, S.past); return; }
     if (e.key === 'Escape') { if (menuEl) { closeMenu(); return; } if (S.pending) { S.pending = null; A.refresh(); return; } S.sel = null; S.pair = null; S.picking = null; S.adding = null; A.refresh(); return; }
     if (e.key.toLowerCase() === 'f' && !mod) { S.cam = bounds(cur()); A.refresh(); return; }
+    // R turns the selected block 90 degrees clockwise, Shift+R back (Chris, 2026-11-12).
+    if (e.key.toLowerCase() === 'r' && !mod && S.sel && S.sel.kind === 'block') { e.preventDefault(); act(e.shiftKey ? 'rotate-ccw' : 'rotate-cw'); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) {
       e.preventDefault();
       act(S.sel.kind === 'block' ? 'delete-block' : S.sel.kind === 'cable' ? 'delete-cable' : (block(cur(), S.sel.block) || {}).source ? '' : 'delete-conn');

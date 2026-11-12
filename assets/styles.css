@@ -1062,6 +1062,8 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-block { cursor: move; }
 .sys-ref { font: 650 15px var(--display, var(--font, sans-serif)); letter-spacing: -0.01em; fill: var(--cv-ink); pointer-events: none; }
 .sys-name { font: 500 12px var(--font, sans-serif); fill: var(--cv-ink-2); pointer-events: none; }
+/* A block's name, large in its middle (Chris, 2026-11-12). */
+.sys-center { font-family: var(--display, var(--font, sans-serif)); font-weight: 650; letter-spacing: -0.01em; fill: var(--cv-ink); opacity: 0.85; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .sys-tab rect { fill: var(--cv-paper); stroke: var(--cv-conn-edge); stroke-width: 1.3; }
 .sys-tab text { font: 700 9px var(--font, sans-serif); text-anchor: middle; fill: var(--cv-ink-2); pointer-events: none; }
 .sys-tab { cursor: pointer; }
