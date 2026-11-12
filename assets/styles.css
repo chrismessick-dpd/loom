@@ -1093,6 +1093,9 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 /* Systems of systems: a placed system's block has an inner frame; an external connector an arrow out of its exit. */
 .sys-block.system .sys-nest { fill: none; stroke: var(--cv-conn-edge); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; pointer-events: none; }
 .sys-tab.ext rect { stroke-width: 2.4; }
+/* A harness that ends at its own device: a stub out of its connector into a small device mark. */
+.sys-dev { fill: var(--cv-paper); stroke: var(--cv-conn-edge); stroke-width: 1.4; }
+.sys-w.sel .sys-dev, .sys-w.linked .sys-dev { stroke: var(--accent); }
 .sys-extmark { fill: var(--accent); stroke: var(--cv-conn-edge); stroke-width: 0.8; pointer-events: none; }
 .sys-tab.plugged text { fill: #04252a; font-weight: 800; }
 .sys-tab.bottom rect { stroke-dasharray: 2.5 2; }

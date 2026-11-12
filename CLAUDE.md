@@ -22,6 +22,13 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Device ends (2026-11-12, Chris: a harness built onto its device, a motor, sensor, or flying leads, is one
+  Loom harness with that device as an end).** A connector's Properties has *In a system: Plugs in / Is its
+  device* (`n.atDevice`). A system never asks for a device end (`harnessEnds` leaves it out, so no open-end
+  warning), and draws such a harness as a stub out of each connector it plugs into, ending in a small device
+  mark, its label along the stub, with no route between its connectors (`deviceEnds`, `lo.dev`, `.sys-dev`).
+  Tests 61.
+
 - **Systems of systems (2026-11-12, Chris).** *Make external* on a connector shows it on the block of every
   system that places this one; *Place a system* (by link, never a copy; no loops) adds a system block
   (`kind: 'system'`, `b.system`) whose tabs are the placed system's external connectors, derived and never

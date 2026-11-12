@@ -1864,6 +1864,7 @@
       ${fld(housing ? 'Housing part number' : 'Part number', inp('n.mpn', n.mpn, ` placeholder="${esc(L.suggestHousing(n) || 'Manufacturer part number')}"`), housing && L.suggestHousing(n) && !n.mpn ? 'Suggested from the series; check the datasheet.' : '')}
       ${housing ? fld('Terminal part number', inp('n.terminal', n.terminal)) : ''}
       ${fld('Mates with', inp('n.mate', n.mate, ' placeholder="Board header or mating part"'))}
+      ${fld('In a system', segBtns('n.atDevice', n.atDevice ? '1' : '', [['', 'Plugs in'], ['1', 'Is its device']]), n.atDevice ? 'This end is the device the harness is built onto (a motor, sensor, or flying leads), so a system doesn’t plug it into anything.' : 'A system plugs this end into a block’s connector.')}
       ${others.length ? fld('Wire straight through', `<div class="inline"><select class="input" id="straight-to">${others.map(x => opt(x.id, x.ref + ' ' + (x.name || ''), '')).join('')}</select><button class="btn" data-act="straight" data-node="${n.id}">Wire 1:1</button></div>`, 'Runs pin n to pin n for every pin both have free.') : ''}
       </div><div class="cat-label">Pin labels</div><div class="rail-sec pin-labels">
       ${M.pinList(n).map(p => `<label class="pl-row"><span class="pl-num">${esc(p)}</span>${inp('n.pin.' + p, (n.pinLabels || {})[p] || '', ` placeholder="${esc(C.pinLabel(h, Object.assign({}, n, { pinLabels: {} }), p) || 'Label')}"`)}</label>`).join('')}
@@ -2111,6 +2112,7 @@
       } else if (f.startsWith('n.')) {
         const n = M.node(h, one()), k = f.slice(2);
         if (k === 'pins' || k === 'rows') n[k] = +v;
+        else if (k === 'atDevice') { if (v === '1') n.atDevice = true; else delete n.atDevice; }
         else n[k] = v;
         if (k === 'family' || k === 'rows') L.conform(n);
         if (Array.isArray(n.pinNames) && n.pinNames.length) n.pins = n.pinNames.length; // board pins stay

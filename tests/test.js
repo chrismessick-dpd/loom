@@ -932,6 +932,14 @@
       ok(Y.checks(top, get).some(x => x.sev === 'error' && /S1 places a system that isn't here any more/.test(x.text)), 'a missing system');
     } finally { done(); }
   });
+  test('system: a harness end marked as its device isn’t asked for in a system', () => {
+    const { Y, s, a, c, h, get } = sysFixture();
+    const ends = h.nodes.filter(M.isConn);
+    ends[1].atDevice = true; ends[1].name = 'Fan motor';
+    s.cables.push({ id: 'k1', kind: 'harness', harness: h.id, ends: { [ends[0].id]: { block: a.id, conn: c.id } }, lengthMm: null });
+    eq(Y.endsOf(s.cables[0], h).map(n => n.id), [ends[0].id], 'only the end that plugs in');
+    ok(!Y.checks(s, get).some(x => /isn't plugged in/.test(x.text)), 'no open-end warning for the device');
+  });
 
   (async () => {
     let failed = 0;

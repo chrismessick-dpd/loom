@@ -39,6 +39,11 @@ harnesses between them, with board-to-board harnesses in the parent; in the side
   indented with its own fold (kept in this browser by path, `fold.sysTree`, so a system placed twice folds
   apart; what's open unfolds its way down). Harnesses no system uses stay in the project list.
 - **The summary** names each placed system (`blocks[].system`).
+- **Device ends** (Chris, 2026-11-12): a harness end marked *Is its device* (`n.atDevice`) is the motor,
+  sensor, or flying leads the harness is built onto, so a system doesn't plug it in or warn that it's open.
+  The cable is a stub out of each connector it plugs into, ending in a device mark, labeled along the stub. A
+  harness may have any number of board connectors (merged, meeting at a breakout) and any number of device
+  ends.
 - Not done: restructuring the imported real system into board systems (data in `loom_data`, a separate
   step to confirm with Chris), a parent's BOM rolling up its children's harnesses, and dragging a tab along its
   block (X and Y in the panel for now).

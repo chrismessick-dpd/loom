@@ -204,7 +204,11 @@
   }
   // Every cable end plugged into a connector: [{ cable, node }].
   const pluggedAt = (s, bid, cid) => s.cables.flatMap(c => Object.keys(c.ends).filter(k => { const e = c.ends[k]; return e && e.block === bid && e.conn === cid; }).map(k => ({ cable: c, node: k })));
-  const harnessEnds = h => h ? h.nodes.filter(M.isConn) : [];
+  // A harness's ends that plug into a system's connectors. An end marked as its device (n.atDevice: the
+  // motor, sensor, or flying leads the harness is built onto; Chris, 2026-11-12) ends in the harness, so a
+  // system never asks for it: the cable is drawn as a stub out of each connector it plugs into.
+  const harnessEnds = h => h ? h.nodes.filter(n => M.isConn(n) && !n.atDevice) : [];
+  const deviceEnds = h => h ? h.nodes.filter(n => M.isConn(n) && n.atDevice) : [];
   // What a cable is (Chris, 2026-11-11: anything that joins two blocks is a Connection): one use of a Loom
   // harness ('harness': cab.harness, ends by the harness's end node ids), a purchased cable ('bought':
   // name, pn, mfr, mpn, ends a and b), or a generic connection ('link': a name, ends a and b). Drawing a
@@ -507,6 +511,7 @@
     s.cables.forEach(cab => {
       const h = harnessOf(cab), ends = cableEnds(s, cab, h), at = ends.filter(x => x.g);
       per.push({ cab, h, ends, at });
+      if (deviceEnds(h).length) return;
       for (let i = 1; i < at.length; i++) {
         const a = at[0], b = at[i];
         const As = terminals(a.g, a.b, 'A', b.g.ex, step), Bs = terminals(b.g, b.b, 'B', a.g.ex, step), combos = [];
@@ -521,7 +526,7 @@
         const R0 = res.routes.get(cab.id + '|' + at[i].n.id), sh = CN().draw(R0);
         routes.push(Object.assign({}, R0, { end: at[i].n.id, d: pathOf(sh.pts), mid: midOfPts(sh.pts) }));
       }
-      out.set(cab.id, { cab, h, ends, at, routes });
+      out.set(cab.id, { cab, h, ends, at, routes, dev: deviceEnds(h).map(n => n.name || n.ref) });
     });
     return out;
   }
@@ -573,7 +578,7 @@
     });
     html += '</g><g class="sys-cables">';
     let labels = '', handles = '';
-    (Lo || layout(s)).forEach(({ cab, h, ends, at, routes }) => {
+    (Lo || layout(s)).forEach(({ cab, h, ends, at, routes, dev }) => {
       const st = statusOf(cab, h), on = isSel('cable', cab.id);
       // A selected block's cables glow and carry the harness's soft current (as a selected connector's
       // wires do), and the rest fade (Chris, 2026-11-12).
@@ -591,7 +596,17 @@
       if (routes.length) mid = midOf(routes[0]);
       // Ends not plugged in yet: a dashed stub ending in a ring, off the one plugged end or the middle.
       const open = ends.length - at.length;
-      if (at.length === 1) {
+      if (dev && dev.length) {
+        // A harness ending at its own device: a stub out of each connector it plugs into, ending in a small
+        // device mark, and no route between them (they meet at the device, not in the system).
+        at.forEach((x, i) => {
+          const g = x.g, x2 = g.ex + g.dx * STUB_U * 2.2, y2 = g.ey + g.dy * STUB_U * 2.2;
+          html += `<g class="sys-devstub">${wire(`M${g.ex} ${g.ey}L${x2} ${y2}`)}<rect class="sys-dev" x="${x2 - 5}" y="${y2 - 5}" width="10" height="10" rx="2"><title>${esc(dev.join(', '))}</title></rect></g>`;
+          // Its label runs on along the stub's way out, past the mark (upright on a side stub, turned on a
+          // stub up or down), so stubs side by side don't print over each other.
+          if (!i) mid = { x: x2, y: y2, dx: g.dx, dy: g.dy };
+        });
+      } else if (at.length === 1) {
         const g = at[0].g, x2 = g.ex + g.dx * STUB_U * 2.2, y2 = g.ey + g.dy * STUB_U * 2.2;
         html += `<g class="sys-open">${wire(`M${g.ex} ${g.ey}L${x2} ${y2}`, 'open')}<circle class="sys-ring" cx="${x2}" cy="${y2}" r="5"/></g>`;
         mid = { x: x2, y: y2 }; ring = { x: x2, y: y2, ax: g.ex, ay: g.ey };
@@ -607,7 +622,11 @@
       });
       const loose = ends.find(x => !x.g);
       if (loose && ring) handles += `<circle class="cv-hitend" data-cend="${cab.id}|${loose.n.id}" data-x="${ring.ax}" data-y="${ring.ay}" cx="${ring.x}" cy="${ring.y}" r="10"><title>${esc(loose.n.ref)} isn't plugged in: drag it onto a connector</title></circle>`;
-      if (mid) labels += `<text class="sys-clabel${on ? ' sel' : ''}${dim ? ' dim' : ''}" x="${mid.x + 8}" y="${mid.y - 9}">${esc(`${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`)}</text>`;
+      if (mid && mid.dx != null) {
+        const t = esc(`${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`), cls = `sys-clabel${on ? ' sel' : ''}${dim ? ' dim' : ''}`;
+        labels += mid.dy ? `<text class="${cls}" x="${mid.x + 3.5}" y="${mid.y + mid.dy * 9}" transform="rotate(${mid.dy > 0 ? 90 : -90} ${mid.x + 3.5} ${mid.y + mid.dy * 9})">${t}</text>`
+          : `<text class="${cls}" x="${mid.x + mid.dx * 9}" y="${mid.y + 3.5}"${mid.dx < 0 ? ' style="text-anchor:end"' : ''}>${t}</text>`;
+      } else if (mid) labels += `<text class="sys-clabel${on ? ' sel' : ''}${dim ? ' dim' : ''}" x="${mid.x + 8}" y="${mid.y - 9}">${esc(`${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`)}</text>`;
       // The selected cable's middle runs drag, as the editor's wires' do (connect.js handles).
       if (on) routes.forEach(r => CN().handles(r).forEach(R => {
         const mx = (R.a.x + R.b.x) / 2, my = (R.a.y + R.b.y) / 2, v = R.axis === 'v';
