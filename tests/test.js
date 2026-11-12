@@ -640,6 +640,30 @@
     ok(RT.fits(R0.A, R0.B, v, 23), 'the dragged shape fits its ends: ' + v);
     eq(CN.release(R0, v, { mode: 'behind' }).mode, 'behind', 'let go, the record keeps its mode');
   });
+  test('connect: a drag moves the whole straight run; Ctrl-drag breaks it where it is grabbed', () => {
+    const CN = LM.connect, R0 = { A: { x: 0, y: 0, out: 1 }, B: { x: 600, y: 200, in: 1 }, v: [300], stub: 23, half: 3, r: 13 };
+    // The first run (A to x 300), grabbed at x 150 and pulled down 40.
+    const run = CN.runAt(R0, { x: 150, y: 0 }), p0 = { x: 150, y: 0 }, p1 = { x: 150, y: 40 };
+    const whole = CN.slide(CN.grab(run, null, false), p0, p1, null), cut = CN.slide(CN.grab(run, null, true), p0, p1, null);
+    eq(whole, [23, 40, 300], 'whole: from a stub out of the part to the corner');
+    eq(cut, [150, 40, 300], 'Ctrl: from the grab to the corner');
+    // A middle run moves as it is; Ctrl breaks it.
+    const mid = CN.runAt(R0, { x: 300, y: 120 });
+    eq(CN.slide(CN.grab(mid, null, false), { x: 300, y: 120 }, { x: 340, y: 120 }, null), [340], 'whole middle run');
+    const m2 = CN.slide(CN.grab(mid, null, true), { x: 300, y: 120 }, { x: 340, y: 120 }, null);
+    ok(m2.length === 3 && RT.fits(R0.A, R0.B, m2, 23), 'broken middle run: ' + m2);
+    // A straight route lifts between its stubs.
+    const S0 = { A: { x: 0, y: 0, out: 1 }, B: { x: 400, y: 0, in: 1 }, v: [], stub: 23, half: 3, r: 13 };
+    eq(CN.grab(CN.runAt(S0, { x: 200, y: 0 }), null, false).v0, [23, 0, 377]);
+  });
+  test('connect: a shape undone or reset routes afresh, not as it was shaped', () => {
+    const M = LM.model, h = LM.fixtures.fanout(), lay = () => LM.conn.layout(h, M.analyze(h), {});
+    const b = lay().boxes.find(x => x.item.path.route.v.length === 1), R0 = b.item.path.route, v0 = R0.v.slice();
+    h.routes = { [b.key]: { v: [v0[0] + 20], a: R0.A.side, b: R0.B.side } };
+    eq(lay().boxes.find(x => x.key === b.key).item.path.route.v, [v0[0] + 20], 'shaped');
+    delete h.routes[b.key];
+    eq(lay().boxes.find(x => x.key === b.key).item.path.route.v, v0, 'back to the route it finds');
+  });
   test('connect: the route menu walks around, goes behind, and resets, as in the harness editor', () => {
     const CN = LM.connect;
     ok(/Go behind parts/.test(CN.menuHtml(null)) && !/Reset route/.test(CN.menuHtml(null)), 'nothing shaped: no Reset route');

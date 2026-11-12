@@ -87,7 +87,9 @@
       let v = o.kept, A0 = o.A, B0 = o.B;
       if (!v) {
         const same1 = prev && cache.sig.get(o.key) === sig(o);
-        const pc = prev && o.combos.find(c => c.A.side === prev.a && c.B.side === prev.b);
+        // A route that was shaped by hand isn't one found here: undone or reset, it routes afresh (it
+        // kept its shape until something moved, before 2026-11-11).
+        const pc = prev && !prev.kept && o.combos.find(c => c.A.side === prev.a && c.B.side === prev.b);
         if (pc && (same || (same1 && (o0.fast || (!crosses(pc.A, pc.B, prev.v, o.half) && !nearChanged(pc.A, pc.B, prev.v, o.half)))))) { v = prev.v; A0 = pc.A; B0 = pc.B; }
         else {
           const m = o.half + 8, blocks = o.behind ? [] : rects.map(r => ({ x0: r.x0 - m, y0: r.y0 - m, x1: r.x1 + m, y1: r.y1 + m }));
@@ -107,7 +109,7 @@
       routes.set(o.key, { key: o.key, A: A0, B: B0, v, half: o.half, stub: o.stub, r: o.r, kept: !!o.kept, behind: o.behind });
     });
     const next = { whole, v: new Map(), sig: new Map() };
-    all.forEach(o => { const R0 = routes.get(o.key); next.v.set(o.key, { v: R0.v, a: R0.A.side, b: R0.B.side }); next.sig.set(o.key, sig(o)); });
+    all.forEach(o => { const R0 = routes.get(o.key); next.v.set(o.key, { v: R0.v, a: R0.A.side, b: R0.B.side, kept: R0.kept }); next.sig.set(o.key, sig(o)); });
     routeCache.set(docKey, next);
     return { routes, G, rects };
   }
@@ -125,29 +127,41 @@
   // The middle runs a selected route shows handles on, with their run index j.
   function handles(R0) { return RT().runs(R0.A, R0.B, R0.v).filter(r => r.k >= 0 && Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) > 0.5); }
   // A drag's start on run (from runAt or runOf): the shape it drags and which of its values (k) moves,
-  // on which axis. An end run belongs to its part, so it first gets a bend, out where it's clear of the
-  // part (a stub away: the route's, or its terminal's own when that's longer, as a system connector's
-  // inside its board), and the new piece drags. A straight route (no middle runs) lifts the piece from
-  // the grab to the far end's corner, which keeps a vertical run either side of the level one it drags.
-  // snap rounds a value to the grid. null: nothing to drag there.
-  function grab(run, snap) {
+  // on which axis. snap rounds a value to the grid. null: nothing to drag there.
+  // Chris, 2026-11-11: a drag moves the whole straight run under the pointer; Ctrl-drag (brk) breaks it
+  // where it's grabbed and drags the piece from there.
+  // - A middle run moves as it is; broken, it gets a bend at the grab and the piece past it drags.
+  // - An end run belongs to its part, so it bends a stub out from the part (the route's stub, or its
+  //   terminal's own when that's longer, as a system connector's inside its board) and everything past
+  //   that drags; broken, it bends at the grab instead (at least a stub out).
+  // - A straight route (no middle runs) lifts everything between its two stubs; broken, the piece from
+  //   the grab to the far end's stub. Either way a vertical run stays either side of the level one.
+  function grab(run, snap, brk) {
     const R0 = run.route, RTm = RT();
     let v = R0.v.slice(), k = run.k;
-    if (k < 0) {
-      const at = Object.assign({}, run.at), st = Math.max(R0.stub, (run.j === 0 ? R0.A.stub : R0.B.stub) || 0);
-      if (run.j === 0) at.x = R0.A.out > 0 ? Math.max(at.x, R0.A.x + st) : Math.min(at.x, R0.A.x - st);
-      else at.x = R0.B.in > 0 ? Math.min(at.x, R0.B.x - st) : Math.max(at.x, R0.B.x + st);
-      if (!v.length) {
-        // (Before 2026-11-11 the harness added a bend here too, which left a straight wire's shape
-        // with an even count of values: drawn wrong, and never fitting its ends.)
-        const xb = R0.B.x - R0.B.in * st, xa = R0.A.x + R0.A.out * st, x = snap ? snap(at.x) : at.x;
-        v = Math.abs(xb - at.x) >= Math.abs(at.x - xa) ? [x, R0.A.y, xb] : [xa, R0.A.y, x];
-        k = 1;
-      } else {
-        const nb = RTm.addBend(R0.A, R0.B, v, run.j, at);
-        if (!nb) return null;
-        v = nb.v; k = nb.k;
-      }
+    const sn = x => (snap ? snap(x) : x);
+    if (k >= 0) {
+      if (!brk) return { v0: v, k, axis: k % 2 ? 'h' : 'v' };
+      const at = run.axis === 'h' ? { x: sn(run.at.x), y: run.at.y } : { x: run.at.x, y: sn(run.at.y) };
+      const nb = RTm.addBend(R0.A, R0.B, v, run.j, at);
+      if (!nb) return null;
+      return { v0: nb.v, k: nb.k, axis: nb.k % 2 ? 'h' : 'v' };
+    }
+    const stA = Math.max(R0.stub, R0.A.stub || 0), stB = Math.max(R0.stub, R0.B.stub || 0);
+    const xa = R0.A.x + R0.A.out * stA, xb = R0.B.x - R0.B.in * stB;
+    const at = Object.assign({}, run.at);
+    if (run.j === 0) at.x = R0.A.out > 0 ? Math.max(at.x, xa) : Math.min(at.x, xa);
+    else at.x = R0.B.in > 0 ? Math.min(at.x, xb) : Math.max(at.x, xb);
+    if (!v.length) {
+      // (Before 2026-11-11 the harness added a bend here, which left a straight wire's shape with an
+      // even count of values: drawn wrong, and never fitting its ends.)
+      if (!brk) v = [xa, R0.A.y, xb];
+      else { const x = sn(at.x); v = Math.abs(xb - at.x) >= Math.abs(at.x - xa) ? [x, R0.A.y, xb] : [xa, R0.A.y, x]; }
+      k = 1;
+    } else {
+      const nb = RTm.addBend(R0.A, R0.B, v, run.j, brk ? { x: sn(at.x), y: at.y } : { x: run.j === 0 ? xa : xb, y: at.y });
+      if (!nb) return null;
+      v = nb.v; k = nb.k;
     }
     return { v0: v, k, axis: k % 2 ? 'h' : 'v' };
   }
