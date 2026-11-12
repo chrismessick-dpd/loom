@@ -1039,7 +1039,13 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-check.warn .sev { color: var(--warn); }
 .sys-pins { margin-top: 12px; font-size: 12.5px; }
 .sys-pintab { width: 100%; border-collapse: collapse; margin-top: 6px; }
-.sys-pintab td, .sys-pintab th { text-align: left; padding: 2px 6px; border-bottom: 1px solid var(--hair); }
+.sys-pintab td, .sys-pintab th { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--hair); vertical-align: top; font-size: 12px; }
+.sys-pintab th { color: var(--text-3); font-weight: 600; position: sticky; top: 0; background: var(--bg-elev); }
+.sys-pinwrap { max-height: 360px; overflow: auto; border: 1px solid var(--hair); border-radius: 8px; margin: 0 16px 12px; }
+.sys-pin { font-weight: 700; white-space: nowrap; }
+.sys-to { color: var(--text-2); font-size: 11.5px; }
+.sys-none { color: var(--text-3); font-style: italic; }
+.sys-pinnet { padding: 3px 6px; font-size: 12px; height: auto; }
 .sys-hud { position: absolute; left: 12px; top: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 8px; }
 .sys-hint { font-size: 12px; color: var(--text-3); margin-left: 6px; }
 .sys-plugs { margin-top: 6px; }
@@ -1061,14 +1067,16 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-tab.used text { fill: var(--text); }
 .sys-tab.open rect { stroke-dasharray: 4 2.5; }
 .sys-tab.plugged rect { fill: var(--accent); }
-.sys-tab.plugged text { fill: var(--accent-ink, #fff); }
+.sys-tab.plugged text { fill: #04252a; font-weight: 800; }
 .sys-tab.bottom rect { stroke-dasharray: 2.5 2; }
 .sys-tab.sel rect, .sys-tab.land rect { stroke: var(--text); stroke-width: 3; }
 .sys-tab.land rect { filter: drop-shadow(0 0 4px var(--cv-glow)); }
 .sys-tab:hover rect { filter: drop-shadow(0 0 3px var(--cv-glow)); }
 .sys-tab.can rect { fill: var(--cv-sel-soft); stroke: var(--cv-sel); animation: lmfx-breathe 1.6s ease-in-out infinite alternate; }
 .sys-tab.can:hover rect, .sys-tab.pending rect { fill: var(--cv-sel); stroke: var(--cv-sel); animation: none; }
-.sys-tab.can:hover text, .sys-tab.pending text { fill: #fff; }
+.sys-tab.can:hover text, .sys-tab.pending text { fill: #fff; font-weight: 800; }
+.sys-tab.sel text { font-weight: 800; }
+.sys-tab.sel:not(.plugged):not(.pending) text { fill: var(--text); }
 .sys-canvas.wiring .sys-block, .sys-canvas.wiring .sys-tab { cursor: pointer; }
 .sys-canvas.dragging .sys-block { cursor: grabbing; }
 .sys-canvas .sys-end, .sys-canvas #sys-ghost { pointer-events: none; }

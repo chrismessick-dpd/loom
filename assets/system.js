@@ -71,7 +71,7 @@
     let loose = 0;
     pkg.connectors.forEach(pc => {
       const c = mkConn(b, pc.ref, 0, { x: 0, y: 0 });
-      c.pins = pc.pins.map(p => ({ pin: p.pin, net: p.net || '', label: p.label || '' }));
+      c.pins = pc.pins.map(p => Object.assign({ pin: p.pin, net: p.net || '', label: p.label || '' }, p.to ? { to: p.to, toN: p.toN } : {}));
       c.mpn = pc.mpn || ''; c.mfr = pc.mfr || ''; c.desc = pc.desc || ''; c.used = false;
       if (pc.at) { c.x = +(pc.at.x - o.x0 - TAB.w / 2).toFixed(2); c.y = +(o.y1 - pc.at.y - TAB.h / 2).toFixed(2); c.side = pc.at.side; c.placed = pc.at.from === 'netlist' ? 'netlist' : 'pnp'; }
       else { c.x = 2 + (loose++) * (TAB.w + 2); c.y = b.h - TAB.h; c.placed = 'hand'; }
@@ -199,11 +199,45 @@
   // per cable and end (cab.routes), until Reset route.
   const K = 4, STUB_U = 24, GRID = 4, RADIUS = 14, CLEAR = 12;
   const RT = () => LM.route;
-  // A tab on the canvas, and its terminal: the side of the tab facing out of its block's nearer side.
+  // A tab on the canvas, and where a cable leaves it (Chris, 2026-11-11: out of any side, by default the
+  // side of the board edge it's nearest): the exit point (ex, ey) in the middle of that side of the tab,
+  // and its direction (dx, dy). A connector's panel can set the side (c.exit). tx and cy alias the exit.
+  const SIDES = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] };
+  function exitSide(b, c) {
+    if (c.exit && SIDES[c.exit]) return c.exit;
+    const d = { left: c.x, right: b.w - c.x - TAB.w, top: c.y, bottom: b.h - c.y - TAB.h };
+    return Object.keys(d).sort((p, q) => d[p] - d[q])[0];
+  }
   function tabGeom(b, c) {
-    const x = (b.x + c.x) * K, y = (b.y + c.y) * K, w = TAB.w * K, h = TAB.h * K;
-    const out = c.x + TAB.w / 2 < b.w / 2 ? -1 : 1;
-    return { x, y, w, h, cx: x + w / 2, cy: y + h / 2, out, tx: out < 0 ? x : x + w };
+    const x = (b.x + c.x) * K, y = (b.y + c.y) * K, w = TAB.w * K, h = TAB.h * K, cx = x + w / 2, cy = y + h / 2;
+    const side = exitSide(b, c), [dx, dy] = SIDES[side];
+    const ex = dx ? (dx < 0 ? x : x + w) : cx, ey = dy ? (dy < 0 ? y : y + h) : cy;
+    // A cable leaving up or down runs out past the block's edge, then turns level (route.js routes
+    // level from there): the lead point.
+    const ly = dy ? (dy < 0 ? b.y * K : (b.y + b.h) * K) + dy * STUB_U : ey;
+    return { x, y, w, h, cx, cy: ey, mid: cy, side, dx, dy, ex, ey, tx: ex, out: dx, lead: dy ? { x: ex, y: ly } : null };
+  }
+  // A rounded path through right-angle corners, and the point halfway along it.
+  function rounded(C0, r) {
+    const C = [];
+    C0.forEach(p => { const q = C[C.length - 1]; if (!q || Math.hypot(p.x - q.x, p.y - q.y) > 0.01) C.push(p); });
+    for (let i = 1; i < C.length - 1;) { const a = C[i - 1], b = C[i], c = C[i + 1]; if (Math.abs((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)) < 0.01) C.splice(i, 1); else i++; }
+    let d = `M${C[0].x} ${C[0].y}`, total = 0;
+    const L = C.slice(1).map((p, i) => Math.hypot(p.x - C[i].x, p.y - C[i].y));
+    for (let i = 1; i < C.length; i++) {
+      const p = C[i];
+      if (i === C.length - 1) { d += `L${p.x} ${p.y}`; break; }
+      const a = C[i - 1], c = C[i + 1], rr = Math.min(r, L[i - 1] / 2, L[i] / 2);
+      const u = { x: (p.x - a.x) / L[i - 1], y: (p.y - a.y) / L[i - 1] }, v = { x: (c.x - p.x) / L[i], y: (c.y - p.y) / L[i] };
+      d += `L${(p.x - u.x * rr).toFixed(1)} ${(p.y - u.y * rr).toFixed(1)}Q${p.x} ${p.y} ${(p.x + v.x * rr).toFixed(1)} ${(p.y + v.y * rr).toFixed(1)}`;
+    }
+    L.forEach(l => { total += l; });
+    let half = total / 2, mid = C[0];
+    for (let i = 0; i < L.length; i++) {
+      if (half <= L[i]) { const t = L[i] ? half / L[i] : 0; mid = { x: C[i].x + (C[i + 1].x - C[i].x) * t, y: C[i].y + (C[i + 1].y - C[i].y) * t }; break; }
+      half -= L[i];
+    }
+    return { d, mid };
   }
   function cableEnds(s, cab, h) {
     return harnessEnds(h).map(n => { const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn); return { n, b, c, g: c ? tabGeom(b, c) : null }; });
@@ -220,20 +254,24 @@
       const h = A.harness(cab.harness), ends = cableEnds(s, cab, h), at = ends.filter(x => x.g), routes = [];
       for (let i = 1; i < at.length; i++) {
         const a = at[0], b = at[i];
-        const T1 = { x: a.g.tx, y: a.g.cy, out: a.g.out }, T2 = { x: b.g.tx, y: b.g.cy, in: -b.g.out };
+        // Level terminals for route.js: the exit itself for a side exit, else the lead point past the
+        // block's edge, leaving toward the other end.
+        const pa = a.g.lead || { x: a.g.ex, y: a.g.ey }, pb = b.g.lead || { x: b.g.ex, y: b.g.ey }, toward = Math.sign(pb.x - pa.x) || 1;
+        const T1 = { x: pa.x, y: pa.y, out: a.g.dx || toward }, T2 = { x: pb.x, y: pb.y, in: b.g.dx ? -b.g.dx : toward };
         const blocks = s.blocks.map(x => ({ x0: x.x * K - CLEAR, y0: x.y * K - CLEAR, x1: (x.x + x.w) * K + CLEAR, y1: (x.y + x.h) * K + CLEAR }));
         const kept = cab.routes && cab.routes[b.n.id];
         let v = kept && RT().fits(T1, T2, kept, STUB_U) ? kept.map(Number) : null;
         if (!v) v = RT().auto(G, T1, T2, blocks, STUB_U, 0) || [Math.round((T1.x + T2.x) / 2)];
         RT().occupy(G, T1, T2, v, 6);
-        const sh = RT().shape(T1, T2, v, RADIUS);
-        routes.push({ key: b.n.id, A: T1, B: T2, v: Array.from(v), pts: sh.pts, S: sh.S });
+        const C = (a.g.lead ? [{ x: a.g.ex, y: a.g.ey }] : []).concat(RT().corners(T1, T2, v), b.g.lead ? [{ x: b.g.ex, y: b.g.ey }] : []);
+        const rp = rounded(C, RADIUS);
+        routes.push({ key: b.n.id, A: T1, B: T2, v: Array.from(v), d: rp.d, mid: rp.mid });
       }
       out.set(cab.id, { cab, h, ends, at, routes });
     });
     return out;
   }
-  const midOf = r => r.pts.find(p => p.s >= r.S / 2) || r.pts[0];
+  const midOf = r => r.mid;
   function svgHtml(s, Lo) {
     const sel = S.sel;
     const isSel = (k, a, b2) => sel && sel.kind === k && (k === 'cable' ? sel.id === a : sel.block === a && (k === 'block' || sel.conn === b2));
@@ -263,14 +301,14 @@
         (st.key === 'placeholder' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : '');
       html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}" data-cable="${cab.id}">`;
       let mid = null, ring = null;
-      routes.forEach(r => { html += wire(pathOf(r.pts)); });
+      routes.forEach(r => { html += wire(r.d); });
       if (routes.length) mid = midOf(routes[0]);
       // Ends not plugged in yet: a dashed stub ending in a ring, off the one plugged end or the middle.
       const open = ends.length - at.length;
       if (at.length === 1) {
-        const g = at[0].g, x2 = g.tx + g.out * STUB_U * 2.2;
-        html += `<g class="sys-open">${wire(`M${g.tx} ${g.cy}L${x2} ${g.cy}`, 'open')}<circle class="sys-ring" cx="${x2}" cy="${g.cy}" r="5"/></g>`;
-        mid = { x: x2, y: g.cy }; ring = { x: x2, y: g.cy, ax: g.tx, ay: g.cy };
+        const g = at[0].g, x2 = g.ex + g.dx * STUB_U * 2.2, y2 = g.ey + g.dy * STUB_U * 2.2;
+        html += `<g class="sys-open">${wire(`M${g.ex} ${g.ey}L${x2} ${y2}`, 'open')}<circle class="sys-ring" cx="${x2}" cy="${y2}" r="5"/></g>`;
+        mid = { x: x2, y: y2 }; ring = { x: x2, y: y2, ax: g.ex, ay: g.ey };
       } else if (open && mid) {
         html += `<g class="sys-open">${wire(`M${mid.x} ${mid.y}l0 ${STUB_U * 1.6}`, 'open')}<circle class="sys-ring" cx="${mid.x}" cy="${mid.y + STUB_U * 1.6}" r="5"/></g>`;
         ring = { x: mid.x, y: mid.y + STUB_U * 1.6, ax: mid.x, ay: mid.y };
@@ -340,7 +378,7 @@
     const used = b.conns.filter(c => fitted(c) && c.used).length, pop = b.conns.filter(fitted).length;
     return `<div class="rail-head"><div class="eyebrow">${b.kind === 'device' ? 'Device' : 'Board'} ${esc(b.ref)}</div><div class="rail-title">${esc(b.name)}</div></div>` +
       fld('Ref', inp('b.ref', b.ref)) + fld('Name', inp('b.name', b.name)) +
-      (b.source ? `<p class="hint">From Signoff EE: ${esc(b.source.name)}${b.source.label ? ' · ' + esc(b.source.label) : ''}. ${esc(String(b.w))} × ${esc(String(b.h))} mm, from its pick-and-place.</p><div class="sys-actions">${btn('open-ee', 'Open in Signoff EE')}</div>`
+      (b.source ? `<p class="hint">From Signoff EE: ${esc(b.source.name)}${b.source.label ? ' · ' + esc(b.source.label) : ''}. ${esc(String(b.w))} × ${esc(String(b.h))} mm, from its pick-and-place and netlist.</p><div class="sys-actions">${btn('refresh-board', S.busy ? 'Reading…' : 'Refresh from Signoff EE', S.busy ? ' disabled' : '')}${btn('open-ee', 'Open in Signoff EE')}</div>`
         : `<div class="field-row">${fld('Width, mm', inp('b.w', b.w, ' type="number" min="5"'))}${fld('Height, mm', inp('b.h', b.h, ' type="number" min="5"'))}</div>`) +
       `<h4 class="sys-h">Connectors <span class="count">${pop} populated, ${used} used, of ${b.conns.length}</span></h4>` +
       `<div class="sys-ctab"><div class="sys-crow sys-chead"><span>Connector</span><span>Populated</span><span>Used</span><span></span></div>${b.conns.map(c => `<div class="sys-crow${fitted(c) ? '' : ' off'}"><button class="sys-link" data-ssel="conn:${b.id}:${c.id}">${esc(c.ref)}</button>` +
@@ -350,7 +388,6 @@
   }
   function connHtml(s, b, c) {
     const at = pluggedAt(s, b.id, c.id), get = A.harness;
-    const pins = c.pins.map(p => `<tr><td>${esc(p.pin)}</td><td>${esc(p.label || p.net || '')}</td></tr>`).join('');
     const pick = S.picking && S.picking.block === b.id && S.picking.conn === c.id;
     return `<div class="rail-head"><div class="eyebrow">${esc(b.ref)} · ${esc(b.name)}</div><div class="rail-title">${esc(c.ref)}</div></div>` +
       `<div class="sys-flags"><label class="tick sys-used"><input type="checkbox" data-sfit="${c.id}"${fitted(c) ? ' checked' : ''}> Populated</label>` +
@@ -364,8 +401,22 @@
       (at.length ? `<div class="sys-list">${at.map(x => { const h = get(x.cable.harness), n = h && M.node(h, x.node), st = status(h); return `<button class="sys-row" data-ssel="cable:${x.cable.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(h ? h.title : 'Missing harness')}<small>${esc(n ? 'its end ' + n.ref : '')}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Nothing yet.</p>') +
       (pick ? pickHtml(s, b, c) : `<div class="sys-actions">${btn('new-harness', 'New harness here', '', 'btn-primary')}${btn('pick-harness', 'Plug in a harness…')}</div>`) +
       (S.pair && S.pair.block !== b.id || S.pair && S.pair.conn !== c.id ? '' : '') +
-      `<details class="sys-pins"><summary>${c.pins.length} pins</summary><table class="sys-pintab"><tr><th>Pin</th><th>Net</th></tr>${pins}</table></details>` +
+      fld('Cables leave from', `<select class="input" data-sexit="${c.id}">${[['', 'The nearest board edge (' + exitSide(b, Object.assign({}, c, { exit: '' })) + ')'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']].map(([v, l]) => `<option value="${v}"${(c.exit || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`) +
+      pinoutHtml(b, c) +
       (b.source ? '' : `<div class="sys-actions">${btn('delete-conn', 'Delete connector', '', 'btn-danger')}</div>`);
+  }
+  // The pinout: each pin's net, and (from a Signoff EE board's netlist) what else on the board is on that
+  // net. A drawn block's pins take net names by hand. Kept for checking connections later.
+  function pinoutHtml(b, c) {
+    const rows = c.pins.map((p, i) => {
+      const net = p.label || p.net || '';
+      const to = Array.isArray(p.to) ? p.to.join(', ') + (p.toN > p.to.length ? `, +${p.toN - p.to.length} more` : '') : '';
+      const netCell = b.source ? `<span class="${net ? '' : 'sys-none'}">${esc(net || (p.net ? p.net : 'no net'))}</span>` : `<input class="input sys-pinnet" data-spin="${c.id}|${i}" value="${esc(net)}" placeholder="Net">`;
+      return `<tr><td class="sys-pin">${esc(p.pin)}</td><td>${netCell}</td>${b.source ? `<td class="sys-to">${esc(to)}</td>` : ''}</tr>`;
+    }).join('');
+    const src = b.source ? `From ${esc(b.source.name)}’s netlist${b.source.label ? ', ' + esc(b.source.label) : ''}.` + (c.pins.some(p => Array.isArray(p.to)) ? '' : ' Refresh the board from Signoff EE (in its panel) to see what each net reaches.') : 'Name each pin’s net, as the far end calls it.';
+    return `<h4 class="sys-h">Pinout <span class="count">${c.pins.length} pins</span></h4><p class="hint">${src}</p>` +
+      `<div class="sys-pinwrap"><table class="sys-pintab"><tr><th>Pin</th><th>Net</th>${b.source ? '<th>Also on the net</th>' : ''}</tr>${rows}</table></div>`;
   }
   function pickHtml(s, b, c) {
     const list = A.harnesses().filter(h => harnessEnds(h).length);
@@ -444,9 +495,9 @@
   function ghost(svg, from, p, snapped) {
     const s0 = cur(), b = block(s0, from.block), c = b && conn(b, from.conn);
     if (!c) return;
-    const g = tabGeom(b, c), s = p.x >= g.tx ? 1 : -1, dx = Math.max(40, Math.abs(p.x - g.tx) * 0.5);
-    const sag = Math.min(60, Math.abs(p.x - g.tx) * 0.08 + Math.abs(p.y - g.cy) * 0.05);
-    const d = `M${g.tx} ${g.cy}C${g.tx + g.out * dx} ${g.cy + sag} ${p.x - s * dx} ${p.y + sag} ${p.x} ${p.y}`;
+    const g = tabGeom(b, c), s = p.x >= g.ex ? 1 : -1, dd = Math.max(40, Math.hypot(p.x - g.ex, p.y - g.ey) * 0.5);
+    const sag = Math.min(60, Math.abs(p.x - g.ex) * 0.08 + Math.abs(p.y - g.ey) * 0.05);
+    const d = `M${g.ex} ${g.ey}C${g.ex + g.dx * dd} ${g.ey + g.dy * dd + (g.dy ? 0 : sag)} ${p.x - s * Math.max(40, Math.abs(p.x - g.ex) * 0.5)} ${p.y + sag} ${p.x} ${p.y}`;
     const gh = svg.querySelector('#sys-ghost');
     if (gh) gh.innerHTML = `<g class="ghost-w${snapped ? ' snapped' : ''}" style="color:var(--accent)"><path class="ghost-glow" d="${d}"/><path class="ghost-edge" d="${d}"/><path class="ghost-base" d="${d}"/><path class="ghost-flow" d="${d}"/>` +
       `<circle class="ghost-end" cx="${p.x}" cy="${p.y}" r="${snapped ? 6 : 4.5}"/></g>`;
@@ -593,6 +644,8 @@
     page.addEventListener('change', e => {
       const t = e.target;
       if (t.dataset.sfit) { const id = t.dataset.sfit, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) { c.fitted = on; if (!on) c.used = false; } })); }); return; }
+      if (t.dataset.sexit) { const id = t.dataset.sexit, v = t.value; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) { if (v) c.exit = v; else delete c.exit; } })); s.cables.forEach(cab => { delete cab.routes; }); }); return; }
+      if (t.dataset.spin) { const [id, i] = t.dataset.spin.split('|'), v = t.value.trim(); change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id && c.pins[+i]) { c.pins[+i].net = v; c.pins[+i].label = v; } })); }); return; }
       if (t.dataset.sused) { const id = t.dataset.sused, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) c.used = on; })); }); return; }
       if (t.dataset.send) { const [bid, cid] = t.value ? t.value.split('|') : []; const node = t.dataset.send; change(s => { const cab = cable(s, S.sel.id); cab.ends[node] = bid ? { block: bid, conn: cid } : null; }); return; }
       if (t.dataset.sf) setField(t.dataset.sf, t.value);
@@ -633,6 +686,32 @@
         }
         break;
       case 'cancel-add': S.adding = null; A.refresh(); break;
+      case 'refresh-board': {
+        const b0 = block(s, S.sel.block);
+        if (!b0 || !b0.source) break;
+        S.busy = 'Reading ' + b0.source.name + '…'; A.refresh();
+        try {
+          LM.boards.reset();
+          const bd = (await LM.boards.listBoards()).find(x => x.id === b0.source.id);
+          if (!bd) throw new Error(`${b0.source.name} isn't in Signoff EE any more, or this sign-in can't read it.`);
+          const pkg = await LM.boards.loadBoard(bd);
+          const fresh = addBoard(blank(''), bd, pkg, { x: 0, y: 0 });
+          let added = 0;
+          change(x => {
+            const b = block(x, b0.id);
+            b.w = fresh.w; b.h = fresh.h; b.name = b.name || fresh.name; b.source = fresh.source;
+            fresh.conns.forEach(f => {
+              const c = b.conns.find(k => k.ref.toUpperCase() === f.ref.toUpperCase());
+              if (!c) { b.conns.push(f); added++; return; }
+              Object.assign(c, { pins: f.pins, x: f.x, y: f.y, side: f.side, placed: f.placed, mpn: f.mpn, mfr: f.mfr, desc: f.desc });
+            });
+            x.cables.forEach(cab => { delete cab.routes; });
+          });
+          A.toast(`${b0.ref} refreshed from ${pkg.source ? pkg.source.label : 'its package'}${added ? `, with ${added} new connector${added > 1 ? 's' : ''}` : ''}.`);
+        } catch (e) { A.toast(e.code === 'signin' ? 'Sign in to GitHub in Settings to read Signoff EE’s boards.' : e.message, 'error'); }
+        S.busy = ''; A.refresh();
+        break;
+      }
       case 'pick-board': {
         const bd = S.boards.find(b => b.id === el.dataset.board);
         S.busy = `Reading ${bd.name}’s package…`; A.refresh();
@@ -707,7 +786,7 @@
   }
 
   // ── The demo: the Smart Thermostat's two boards and its wall wiring ──
-  const DEMO_V = 2;
+  const DEMO_V = 3;
   async function demo(stay) {
     const s = blank('Smart Thermostat');
     s.id = 'sdemo1'; s.title = 'Smart Thermostat system'; s.demoVersion = DEMO_V;

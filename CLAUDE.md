@@ -39,7 +39,15 @@ links to it so far. Before every commit:
   unset, it follows the package (`fitted`: a connector only the netlist placed isn't populated). An
   unpopulated connector is drawn faint and dashed under the rest, can't be clicked or take a cable, and can't be
   Used (unticking Populated clears Used); the checks skip it, except a cable on one, which is an error. The
-  block's panel lists every connector with Populated and Used; the connector's panel has both. New harness here makes a
+  block's panel lists every connector with Populated and Used; the connector's panel has both.
+  **Exits on every side** (Chris, 2026-11-11): a cable leaves a tab from the side facing its block's nearest edge
+  (`exitSide`, `tabGeom` `dx`/`dy`, `ex`/`ey`), or the side picked in the connector's panel (`c.exit`). One
+  leaving up or down runs to a lead point `STUB_U` past the block's edge, then route.js routes level from there;
+  `rounded` draws the whole path. **Pinout**: the connector's panel lists each pin, its net, and (from an EE
+  board's netlist) up to 8 other pads on that net (`p.to`, `p.toN`; `boards.js` `reach`), for checking connections
+  later; a drawn block's pins take net names by hand. **Refresh from Signoff EE** in a board's panel re-reads its
+  package and updates pins, positions, and size by connector ref, keeping ids, Used, Function, Populated, and exit.
+  Plugged tabs have dark bold labels (`#04252a` on the accent). Demo `DEMO_V` 3. New harness here makes a
   placeholder (the board end plus a generic far end), or, with a second connector Shift-picked, a
   board-to-board harness with the shared-net wires (`boards.matches`). Plug in a harness… ranks harnesses
   made from that connector first. Checks: used and unplugged, plugged and not used, two cables on a
