@@ -567,12 +567,14 @@
   // Every cable's routes: from its first plugged end to each other plugged end.
   // The layout is kept until the blocks, connectors, cables, or harness ends change, not redone for a
   // selection (a system the size of a machine has dozens of cables over a big drawing).
-  let memo = { key: '', lo: null };
+  // One memo per system, so Overview and Detail switching back and forth don't re-route each other's.
+  const memos = new Map();
   function layout(s, view) {
     const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted, c.tw || 0])]), s.cables.map(c => [c.id, c.kind, c.harness, c.ends, c.routes]), s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
-    if (memo.key === key && memo.lo) return memo.lo;
+    const memo = memos.get(s.id);
+    if (memo && memo.key === key && memo.lo) return memo.lo;
     const lo = layoutNow(s, view);
-    memo = { key, lo };
+    memos.set(s.id, { key, lo });
     return lo;
   }
   // The engine's search grid: 12 units (3 mm), a little coarser than a harness's 10 because a system is
@@ -993,6 +995,9 @@
   function wiresHead(eyebrow, title, sub, crumbs, actions) {
     return `<div class="page-head lm-head"><div class="page-head-text">${crumbs}<div class="eyebrow">${eyebrow}</div><h1 class="page-title">${esc(title)}</h1>${sub ? `<div class="page-sub">${sub}</div>` : ''}</div>${actions ? `<div class="lm-actions">${actions}</div>` : ''}</div>`;
   }
+  // A harness's analysis (wire lengths), kept until it changes: Wires redraws on every refresh.
+  const ANALYSES = new WeakMap();
+  const an = h => { const k = h.updated + '|' + h.wires.length, x = ANALYSES.get(h); if (x && x.k === k) return x.a; const a = M.analyze(h); ANALYSES.set(h, { k, a }); return a; };
   const HEAD = '<thead><tr><th>Item</th><th>Pin</th><th>Signal</th><th>Color</th><th>Gauge</th><th>Far end</th><th class="num">Length</th></tr></thead>';
   const item = (lvl, html) => `<td class="sys-wi" style="--lvl:${lvl}">${html}</td>`;
   function wiresHtml() {
@@ -1000,8 +1005,7 @@
     if (f && f.kind === 'harness') return harnessWiresHtml(f);
     const s = S.store[f ? f.id : S.root];
     if (!s) return '';
-    const path = f ? f.path : S.root, AN = new Map();
-    const an = h => { if (!AN.has(h.id)) AN.set(h.id, M.analyze(h)); return AN.get(h.id); };
+    const path = f ? f.path : S.root;
     let rows = '', nCab = 0, nWire = 0;
     const cableRows = (cab, here, lvl, c) => {
       const h = harnessOf(cab), st = statusOf(cab, h), ends = endsOf(cab, h);
@@ -1043,7 +1047,7 @@
   function harnessWiresHtml(f) {
     const h = A.harness(f.id), s = S.store[focusSys(f)];
     if (!h) return `<div class="page wide sys-wpage">${wiresHead('Wires', 'Missing harness', '', crumbsHtml(f.path))}</div>`;
-    const A0 = M.analyze(h), cabs = s ? s.cables.filter(c => kindOf(c) === 'harness' && c.harness === h.id) : [];
+    const A0 = an(h), cabs = s ? s.cables.filter(c => kindOf(c) === 'harness' && c.harness === h.id) : [];
     const ends = h.nodes.filter(M.isConn).map(n => {
       const where = n.atDevice ? 'Its device' : cabs.map(c => endName(s, c.ends[n.id])).filter(Boolean).join(', ') || 'Not plugged in here';
       return `<tr>${item(0, `<span class="mono">${esc(n.ref)}</span> ${esc(n.name || '')}`)}<td>${M.pinList(n).length} pins</td><td colspan="5">${esc(where)}</td></tr>`;
