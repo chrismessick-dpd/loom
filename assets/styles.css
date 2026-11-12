@@ -1002,6 +1002,11 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
 body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-canvas-wrap { grid-area: auto; }
 .sys-canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+/* A cable's Color field: a swatch, the menu, and for Custom a picker. */
+.sys-color { display: flex; align-items: center; gap: 8px; }
+.sys-color .swatch { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--hair-2); }
+.sys-color select { flex: 1; min-width: 0; }
+.sys-color-pick { flex: 0 0 auto; width: 36px; height: 30px; padding: 0; border: 1px solid var(--hair-2); border-radius: 7px; background: none; cursor: pointer; }
 /* The panel and, over its bottom, the How it works card. */
 .sys-side { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .sys-side > .sys-panel { flex: 1; }

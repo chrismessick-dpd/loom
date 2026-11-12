@@ -115,6 +115,10 @@
     if (k === 'link') return { key: 'link', glyph: '─', text: 'Generic connection' };
     return status(h);
   }
+  // A cable's own color (Chris, 2026-11-12): cab.color, one of Loom's wire color codes (M.COLORS) or a custom
+  // #rrggbb. Set, the cable draws in it whatever its state (its glyph and dashes still show that).
+  const HEX = /^#[0-9a-f]{6}$/i;
+  const colorOf = cab => { const c = cab && cab.color; return !c ? '' : HEX.test(c) ? c : M.COLORS[c] ? M.COLORS[c][1] : ''; };
   const titleOf = (cab, h) => { const k = kindOf(cab); return k === 'harness' ? (h ? h.title : 'Missing harness') : cab.name || KINDS[k]; };
   function status(h) {
     if (!h) return { key: 'missing', glyph: '✕', text: 'Harness missing' };
@@ -431,7 +435,7 @@
       // A selected block's cables glow and carry the harness's soft current (as a selected connector's
       // wires do), and the rest fade (Chris, 2026-11-12).
       const linked = !on && !!sel && sel.kind === 'block' && Object.values(cab.ends).some(e => e && e.block === sel.block);
-      const color = st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)';
+      const color = colorOf(cab) || (st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)');
       const wire = (d, extra) => `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
         (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : linked ? `<path class="w-pulse soft" pathLength="1" d="${d}"/>` : '');
       // While a cable is selected, however it was picked, the others fade (Chris, 2026-11-12).
@@ -572,6 +576,16 @@
     list.sort((x, y) => score(x) - score(y) || String(x.title).localeCompare(String(y.title)));
     return `<h4 class="sys-h">Plug in</h4><div class="sys-list">${list.map(h => { const sc = score(h); return `<button class="sys-row" data-sact="plug" data-harness="${h.id}"><span class="sys-st">${sc === 0 ? '★' : sc === 1 ? '=' : '·'}</span><span>${esc(h.title)}<small>${esc([h.pn, sc === 0 ? 'made from this connector' : sc === 1 ? 'same pin count' : '', h.project].filter(Boolean).join(' · '))}</small></span></button>`; }).join('') || '<p class="hint">No harnesses yet.</p>'}</div>${btn('cancel-pick', 'Cancel')}`;
   }
+  // Color: the status color, one of Loom's wire colors, or a custom one with a picker.
+  function colorField(cab) {
+    const c = cab.color || '', custom = HEX.test(c);
+    const opts = `<option value=""${c ? '' : ' selected'}>Its state's color</option>` +
+      Object.keys(M.COLORS).map(k => `<option value="${k}"${c === k ? ' selected' : ''}>${esc(M.COLORS[k][0])}</option>`).join('') +
+      `<option value="custom"${custom ? ' selected' : ''}>Custom…</option>`;
+    return fld('Color', `<div class="sys-color"><span class="swatch" style="background:${colorOf(cab) || 'transparent'}"></span><select class="input" data-scolor="${cab.id}">${opts}</select>` +
+      (custom ? `<input type="color" class="sys-color-pick" data-scolorpick="${cab.id}" value="${esc(c)}" title="Pick a color">` : '') + '</div>',
+      c ? '' : 'Unset, the cable shows its state: wired, placeholder, in progress, purchased, or generic.');
+  }
   function cableHtml(s, cab) {
     const k = kindOf(cab), h = harnessOf(cab), st = statusOf(cab, h);
     const opts = cur => `<option value="">Not plugged</option>` + s.blocks.map(b => b.conns.map(c => `<option value="${b.id}|${c.id}"${cur && cur.block === b.id && cur.conn === c.id ? ' selected' : ''}>${esc(`${b.ref} ${c.ref}${c.fn ? ' · ' + c.fn : ''}`)}</option>`).join('')).join('');
@@ -584,11 +598,11 @@
       return head + kind + fld('Name', inp('cab.name', cab.name || '', k === 'link' ? ' placeholder="USB, 24 VAC, CAN…"' : ' placeholder="USB-C cable, 1 m"')) +
         (k === 'bought' ? `<div class="field-row">${fld('Part number', inp('cab.pn', cab.pn || ''))}${fld('Length, mm', inp('cab.len', cab.lengthMm || '', ' type="number" min="1"'))}</div>` +
           `<div class="field-row">${fld('Maker', inp('cab.mfr', cab.mfr || ''))}${fld('Maker’s part number', inp('cab.mpn', cab.mpn || ''))}</div>` : '') +
-        endsHtml + `<div class="sys-actions">${routes}${btn('delete-cable', 'Remove from the system', '', 'btn-danger')}</div>`;
+        endsHtml + colorField(cab) + `<div class="sys-actions">${routes}${btn('delete-cable', 'Remove from the system', '', 'btn-danger')}</div>`;
     }
     return head + kind +
       `<p class="hint"><span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}${h && h.pn ? ' · ' + esc(h.pn) : ''}</p>` +
-      (h ? endsHtml : '') +
+      (h ? endsHtml : '') + colorField(cab) +
       fld('Length here, mm', inp('cab.len', cab.lengthMm || '', ' type="number" min="1" placeholder="The harness’s own"'), cab.lengthMm ? `A variant at this length: <b>${esc(pnOf(h, cab))}</b>.` : 'Set it to use this harness at another length, as a variant part number.') +
       `<div class="sys-actions">${h ? btn('open-harness', 'Open the harness', '', 'btn-primary') : ''}${routes}${btn('delete-cable', 'Remove from the system', '', 'btn-danger')}</div>`;
   }
@@ -1001,6 +1015,12 @@
         if (GRIDS.includes(v)) change(s => { s.grid = v; });
         return;
       }
+      if (t.dataset.scolor) {
+        const id = t.dataset.scolor, v = t.value;
+        change(s => { const cab = cable(s, id); if (!cab) return; if (!v) delete cab.color; else if (v === 'custom') { if (!HEX.test(cab.color || '')) cab.color = colorOf(cab) || '#3fc1cf'; } else cab.color = v; });
+        return;
+      }
+      if (t.dataset.scolorpick) { const id = t.dataset.scolorpick, v = t.value; if (HEX.test(v)) change(s => { const cab = cable(s, id); if (cab) cab.color = v.toLowerCase(); }); return; }
       if (t.dataset.skind) { rekind(cur(), cable(cur(), t.dataset.skind), t.value); return; }
       if (t.dataset.sf) setField(t.dataset.sf, t.value);
     });

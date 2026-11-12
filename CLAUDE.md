@@ -22,6 +22,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Cable colors (2026-11-12, Chris).** Every kind of cable has Color in its panel (before Length on a harness
+  cable): its state's color (unset), one of Loom's twelve wire colors (`M.COLORS`, solid, no stripe), or Custom
+  with a picker (`cab.color`, a code or `#rrggbb`; `colorOf`, `colorField`). Set, the cable draws in it whatever
+  its state; the glyph and dashes still show the state.
+
 - **System How it works card (2026-11-12, Chris: as the harness editor's).** A ? in the system panel's bottom
   right opens a card of the moves over the panel's bottom (`helpHtml`, the harness's `.pane-help` styles, in a
   `.sys-side` wrapper so it doesn't scroll with the panel); open the first time, then remembered in this
