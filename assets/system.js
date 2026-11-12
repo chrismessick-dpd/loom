@@ -428,14 +428,17 @@
     let labels = '', handles = '';
     (Lo || layout(s)).forEach(({ cab, h, ends, at, routes }) => {
       const st = statusOf(cab, h), on = isSel('cable', cab.id);
+      // A selected block's cables glow and carry the harness's soft current (as a selected connector's
+      // wires do), and the rest fade (Chris, 2026-11-12).
+      const linked = !on && !!sel && sel.kind === 'block' && Object.values(cab.ends).some(e => e && e.block === sel.block);
       const color = st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)';
       const wire = (d, extra) => `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
-        (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : '');
+        (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : linked ? `<path class="w-pulse soft" pathLength="1" d="${d}"/>` : '');
       // While a cable is selected, however it was picked, the others fade (Chris, 2026-11-12).
-      const dim = !on && !!sel && sel.kind === 'cable';
+      const dim = !on && !!sel && (sel.kind === 'cable' || (sel.kind === 'block' && !linked));
       // The one selected cable, while the others fade, is drawn half again as wide with a glow (Chris).
       const solo = on && !!sel && sel.kind === 'cable';
-      html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}${solo ? ' solo' : ''}${dim ? ' dim' : ''}" data-cable="${cab.id}">`;
+      html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}${solo ? ' solo' : ''}${linked ? ' linked' : ''}${dim ? ' dim' : ''}" data-cable="${cab.id}">`;
       let mid = null, ring = null;
       routes.forEach(r => { html += wire(r.d); });
       if (routes.length) mid = midOf(routes[0]);

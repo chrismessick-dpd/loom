@@ -1101,6 +1101,8 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
    gray, and glossy. Never by hue alone (Chris is colorblind): dashes and weight tell them apart. */
 /* While a cable is selected, the others fade, and it is drawn half again as wide with a soft glow
    (Chris, 2026-11-12). */
+/* A selected block's cables glow, with the soft current (Chris, 2026-11-12). */
+.sys-canvas .sys-w.linked .w-edge { stroke: var(--cv-sel); filter: drop-shadow(0 0 5px var(--cv-glow)); }
 .sys-canvas .sys-w.solo .w-edge { stroke-width: 13; filter: drop-shadow(0 0 5px var(--cv-glow)); }
 .sys-canvas .sys-w.solo .w-base { stroke-width: 9; }
 .sys-canvas .sys-w.solo .w-gloss { stroke-width: 2.1; }

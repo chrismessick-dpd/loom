@@ -22,6 +22,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System highlights (2026-11-12, Chris).** The one selected cable draws 1.5 times as wide with a soft accent
+  glow and a larger bead while the rest fade to 18% (`.sys-w.solo`). A selected block glows (the harness's
+  selected-connector frame), each of its cables glows and carries the harness's soft current (`.sys-w.linked`,
+  `.w-pulse.soft`), and every other cable and label fades to 18%.
+
 - **System drag-select and group move (2026-11-12, Chris: as in the harness).** A left drag on empty
   system canvas draws a box: left to right picks blocks and cables wholly inside, right to left what it
   touches (blocks by their turned outline, cables by their drawn line; `marqueePick`, `drawMarquee`, lit with
