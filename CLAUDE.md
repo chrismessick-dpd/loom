@@ -35,8 +35,8 @@ links to it so far. Before every commit:
   drawn cable starts as; Chris chose that over a harness), purchased (`bought`), and Loom harness; *What it is* in the panel changes it
   (`rekind`). Dragging a straight wire's end no longer leaves a broken shape. A drag moves a whole straight run (an
   end run from a stub out of its part); Shift-drag breaks it at the grab; Ctrl is off the grid, as for parts; within 5 grid steps of straight
-  it snaps straight and holds there (`STICK`), and so does a dragged connector or block that would make
-  one of its wires or cables straight (`stick`, `straightLines`) (Chris). See `docs/routing.md`, *One
+  it snaps straight and holds there (`STICK`), and a run next to a top or bottom exit snaps under it, so
+  the cable drops straight out of the connector (Chris; parts don't snap). See `docs/routing.md`, *One
   engine*, and `docs/system.md`, *Connections*. Tests 49. Not the same yet: a cable with three or more
   ends routes as a star, not a breakout with branches.
 

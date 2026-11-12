@@ -679,20 +679,16 @@
     eq(CN.release(R0, v, null).v, [], 'let go straight: the bends come out');
     ok(RT2.fits(R0.A, R0.B, [], 23));
   });
-  test('system: a dragged block sticks where a cable between side exits runs level, or top and bottom ones upright', () => {
-    const Y = LM.system, s = Y.blank('Gizmo');
-    const a = Y.addDrawn(s, 'board', { x: 0, y: 0 }), b = Y.addDrawn(s, 'board', { x: 200, y: 37 }), c = Y.addDrawn(s, 'board', { x: 13, y: 150 });
-    [a, b, c].forEach(x => { x.w = 80; x.h = 60; x.conns.length = 0; });
-    const ar = Y.mkConn(a, 'J1', 2, { x: 80 - Y.TAB.w, y: 20 }), bl = Y.mkConn(b, 'J1', 2, { x: 0, y: 10 });
-    const ab = Y.mkConn(a, 'J2', 2, { x: 30, y: 60 - Y.TAB.h }), ct = Y.mkConn(c, 'J1', 2, { x: 40, y: 0 });
-    s.cables.push({ id: 'k1', kind: 'link', ends: { a: { block: a.id, conn: ar.id }, b: { block: b.id, conn: bl.id } } });
-    s.cables.push({ id: 'k2', kind: 'link', ends: { a: { block: a.id, conn: ab.id }, b: { block: c.id, conn: ct.id } } });
-    Y.normalize(s);
-    const L = Y.straightLines(s, a);
-    eq(L.y, [27], 'J1 level with B J1: A moves down 27 mm');
-    eq(L.x, [23], 'J2 above C J1: A moves right 23 mm');
-    eq(LM.connect.stick(21, L.y, 1), null, 'more than 5 mm off: free');
-    eq(LM.connect.stick(23, L.y, 1), 27, 'within 5 mm: level');
+  test('connect: a run next to a top or bottom exit snaps into line with it, so the cable drops straight out', () => {
+    const CN = LM.connect;
+    // A system cable leaving its connector downward: the lead-in from (100, 0) to the terminal at (100, 24).
+    const R0 = { A: { x: 100, y: 24, out: -1, stub: 14, from: { x: 100, y: 0 } }, B: { x: 0, y: 300, in: -1, stub: 14 }, v: [84, 200, 30], stub: 24, half: 4, r: 14 };
+    const run = CN.runOf(R0, 1), st = CN.grab(run, x => Math.round(x / 4) * 4, false), p0 = { x: 84, y: 100 };
+    ok(st.lines.includes(100), 'the exit is one of its lines: ' + st.lines);
+    eq(CN.slide(st, p0, { x: 90, y: 100 }, x => Math.round(x / 4) * 4, 4)[0], 100, 'dragged toward it: under the connector');
+    eq(CN.slide(st, p0, { x: 60, y: 100 }, x => Math.round(x / 4) * 4, 4)[0], 60, 'well away: where it is dragged');
+    const draw = CN.draw(Object.assign({}, R0, { v: [100, 200, 30] })).pts;
+    ok(Math.abs(draw[0].x - 100) < 0.5 && Math.abs(draw[1].x - 100) < 0.5 && draw[1].y > 180, 'drawn straight down from the exit to the corner');
   });
   test('connect: the route menu walks around, goes behind, and resets, as in the harness editor', () => {
     const CN = LM.connect;

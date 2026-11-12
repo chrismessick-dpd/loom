@@ -61,7 +61,7 @@
         spot: () => ['#coords'] },
       { title: 'Moving parts',
         text: 'Drag a connector, a splice, or a run of wires by any part of it. Parts snap to the grid by their first pin, so pins on different parts line up and wires run straight.',
-        do: 'Drag P2 down a little, then press {k:Ctrl+Z} to put it back. Near where one of its wires would run straight, it snaps there. Hold {k:Ctrl} while dragging to place a part anywhere.',
+        do: 'Drag P2 down a little, then press {k:Ctrl+Z} to put it back. Hold {k:Ctrl} while dragging to place a part anywhere.',
         setup() { build(); clear(); },
         spot: () => [item('P2')] },
       { title: 'Grid and Auto layout',

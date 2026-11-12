@@ -598,31 +598,6 @@
   const tabRef = el => ({ block: el.dataset.block, conn: el.dataset.conn });
   const sameTab = (a, b) => !!a && !!b && a.block === b.block && a.conn === b.conn;
   // The run of a cable nearest a point: { r (its route), n (route.nearestRun) }.
-  // Where a block would make one of its cables run straight (Chris, 2026-11-11: as a dragged run snaps
-  // straight, so do wires to connectors): for each cable end on it whose other end is on another block,
-  // the block's y that puts the two exits level when both leave from a side, or its x that puts them in
-  // line when both leave from the top or bottom. In mm, for connect.js stick.
-  function straightLines(s, b) {
-    const xs = new Set(), ys = new Set();
-    s.cables.forEach(cab => {
-      const ends = Object.keys(cab.ends).map(k => cab.ends[k]).filter(Boolean);
-      ends.forEach(me => {
-        if (me.block !== b.id) return;
-        const c = conn(b, me.conn);
-        if (!c) return;
-        const ga = tabGeom(b, c);
-        ends.forEach(o => {
-          if (o === me || o.block === b.id) return;
-          const ob = block(s, o.block), oc = ob && conn(ob, o.conn);
-          if (!oc) return;
-          const gb = tabGeom(ob, oc);
-          if (ga.dx && gb.dx) ys.add(+(b.y + (gb.ey - ga.ey) / K).toFixed(2));
-          if (ga.dy && gb.dy) xs.add(+(b.x + (gb.ex - ga.ex) / K).toFixed(2));
-        });
-      });
-    });
-    return { x: [...xs], y: [...ys] };
-  }
   // The run of a cable nearest a point (connect.js runAt on each of its routes), or null.
   function runNear(cabId, p) {
     const L = lastLo && lastLo.get(cabId);
@@ -724,7 +699,7 @@
         drag = Object.assign(base, { kind: 'run', cab: cable(s, cb.dataset.cable), run: near, end: near.route.end, click: cb.dataset.cable });
       } else if (bl && !S.pending) {
         const b = block(s, bl.dataset.block);
-        drag = Object.assign(base, { kind: 'block', bx: b.x, by: b.y, b, lines: straightLines(s, b) });
+        drag = Object.assign(base, { kind: 'block', bx: b.x, by: b.y, b });
       } else drag = Object.assign(base, { kind: bl || cb ? 'click' : 'pan', cam: Object.assign({}, S.cam), k: p.k });
     });
     svg.addEventListener('pointermove', e => {
@@ -768,11 +743,8 @@
       }
       if (d.kind === 'block') {
         if (!d.snap) { S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; svg.classList.add('dragging'); }
-        // Near where one of its cables would run straight, the block snaps there and holds (5 mm, as a
-        // run snaps straight; not with Ctrl).
-        const x0 = d.bx + (p.x - d.p.x) / K, y0 = d.by + (p.y - d.p.y) / K, free = e.ctrlKey || e.metaKey;
-        const sx = free ? null : CN().stick(x0, d.lines.x, 1), sy = free ? null : CN().stick(y0, d.lines.y, 1);
-        d.b.x = sx != null ? sx : snap(x0); d.b.y = sy != null ? sy : snap(y0);
+        // As a harness part: only the cables whose ends move re-route until it's let go.
+        d.b.x = snap(d.bx + (p.x - d.p.x) / K); d.b.y = snap(d.by + (p.y - d.p.y) / K);
         redraw(svg, { fast: true });
       }
     });
@@ -1025,5 +997,5 @@
   }
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; persist(); },
     store: () => S.store, persist, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
-    straightLines, layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; } };
+    layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; } };
 })(window.LM = window.LM || {});

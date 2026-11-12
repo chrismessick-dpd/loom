@@ -168,12 +168,19 @@
   // A grab's drag state: the shape, the value that moves, its axis, and the lines that would make the
   // route straight there (lines): the runs either side of the dragged one, which it lines up with to take
   // its two bends out. For a level run, the level runs before and after it (or a terminal's own height);
-  // for a vertical run, the vertical runs before and after it (an end's vertical run has none on its
-  // terminal's side, since that run belongs to the part).
+  // for a vertical run, the vertical runs before and after it, and, next to an end that leaves from the
+  // top or bottom of its connector (a lead-in, A.from or B.to, straight above or below it), that exit's
+  // line: there the cable drops straight out of the connector (Chris, 2026-11-11). A harness's ends
+  // leave from the side, where its level runs already line up with their pins.
   function done(R0, v, k) {
     const n = v.length, lines = [];
+    const under = (T, L) => L && Math.abs(L.x - T.x) < 0.5 && Math.abs(L.y - T.y) > 0.5;
     if (k % 2) { lines.push(k - 2 >= 0 ? +v[k - 2] : R0.A.y, k + 2 < n ? +v[k + 2] : R0.B.y); }
-    else { if (k - 2 >= 0) lines.push(+v[k - 2]); if (k + 2 < n) lines.push(+v[k + 2]); }
+    else {
+      if (k - 2 >= 0) lines.push(+v[k - 2]); if (k + 2 < n) lines.push(+v[k + 2]);
+      if (k === 0 && under(R0.A, R0.A.from)) lines.push(R0.A.x);
+      if (k === n - 1 && under(R0.B, R0.B.to)) lines.push(R0.B.x);
+    }
     return { v0: v, k, axis: k % 2 ? 'h' : 'v', lines };
   }
   // Within STICK steps of the grid of a line that makes it straight, a dragged run lines up with it, and
@@ -190,9 +197,7 @@
     if (t != null) v[st.k] = t;
     return v;
   }
-  // The line a value sticks to: the nearest of lines within STICK steps of it, or null. A dragged run
-  // uses it (slide), and so does a dragged part or block, with the positions that make one of its wires
-  // or cables run straight (Chris, 2026-11-11: "similar behavior for wires to connectors").
+  // The line a value sticks to: the nearest of lines within STICK steps of it, or null (slide).
   function stick(val, lines, step) {
     if (!(step > 0) || !lines || !lines.length) return null;
     const t = lines.reduce((m, x) => (Math.abs(x - val) < Math.abs(m - val) ? x : m));
