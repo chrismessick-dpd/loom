@@ -186,11 +186,17 @@
     const v = st.v0.slice();
     const val = st.v0[st.k] + (st.axis === 'v' ? p.x - p0.x : p.y - p0.y);
     v[st.k] = snap ? snap(val) : val;
-    if (step > 0 && st.lines && st.lines.length) {
-      const t = st.lines.reduce((m, x) => (Math.abs(x - val) < Math.abs(m - val) ? x : m));
-      if (Math.abs(t - val) <= STICK * step) v[st.k] = t;
-    }
+    const t = stick(val, st.lines, step);
+    if (t != null) v[st.k] = t;
     return v;
+  }
+  // The line a value sticks to: the nearest of lines within STICK steps of it, or null. A dragged run
+  // uses it (slide), and so does a dragged part or block, with the positions that make one of its wires
+  // or cables run straight (Chris, 2026-11-11: "similar behavior for wires to connectors").
+  function stick(val, lines, step) {
+    if (!(step > 0) || !lines || !lines.length) return null;
+    const t = lines.reduce((m, x) => (Math.abs(x - val) < Math.abs(m - val) ? x : m));
+    return Math.abs(t - val) <= STICK * step ? t : null;
   }
   // Let go: a run dragged flush with its neighbor merges into it (route.js tidy). The record to keep,
   // with the sides the route was shaped on and its mode.
@@ -226,5 +232,5 @@
   // A stored record as given (a bare v, from before records, becomes { v }).
   const record = x => (Array.isArray(x) ? { v: x } : x && typeof x === 'object' ? x : null);
 
-  LM.connect = { routeAll, draw, pathD, runAt, runOf, handles, grab, slide, release, bend, menuHtml, apply, record };
+  LM.connect = { routeAll, draw, pathD, runAt, runOf, handles, grab, slide, stick, release, bend, menuHtml, apply, record };
 })(window.LM = window.LM || {});

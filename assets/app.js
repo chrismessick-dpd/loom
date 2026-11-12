@@ -887,6 +887,20 @@
         // A box's stored x is its outermost set's left end (conn.js), past any set running out on the left.
         const keys = selectedKeys(Lo), group = keys.has(it.key) ? Lo.items.filter(i => keys.has(i.key) && ok(i)) : [it];
         g.parts = group.map(i => ({ key: i.key, start: { x: i.x + (i.kind === 'box' ? i.sz.lx || 0 : 0), y: i.y }, port0: i.sz.port0 || 0 }));
+        // One connector or splice on its own (Chris, 2026-11-11: as runs snap straight): the heights
+        // that line one of its pins up with the pin at its wire's other end, so that wire runs straight.
+        // connect.js stick snaps to the nearest within 5 grid steps, and holds it there for 5 more.
+        g.lines = null;
+        if (group.length === 1 && it.n && !g.prop) {
+          const id = it.n.id, ys = new Set();
+          H().wires.forEach(w => {
+            const mine = w.from.node === id ? w.from : w.to.node === id ? w.to : null, other = mine === w.from ? w.to : w.from;
+            if (!mine || other.node === id) return;
+            const my = Lo.endY(mine), oy = Lo.endY(other);
+            if (my != null && oy != null) ys.add(Math.round((oy - (my - it.y)) * 100) / 100);
+          });
+          g.lines = [...ys];
+        }
         S.lift = g.item; svgEl().classList.add('dragging');
       }
     }
@@ -902,7 +916,10 @@
         return;
       }
       h.place = h.place || {};
-      g.parts.forEach(p => { h.place[p.key] = { x: snap(p.start.x + dx / S.cam.k), y: snap(p.start.y + dy / S.cam.k + p.port0) - p.port0, v: 3 }; });
+      g.parts.forEach(p => {
+        const y0 = p.start.y + dy / S.cam.k, st = e.ctrlKey || e.metaKey ? null : LM.connect.stick(y0, g.lines, gs || 10);
+        h.place[p.key] = { x: snap(p.start.x + dx / S.cam.k), y: st != null ? st : snap(y0 + p.port0) - p.port0, v: 3 };
+      });
       renderCanvas(null, { fast: true });
       return;
     }

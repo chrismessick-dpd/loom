@@ -48,6 +48,11 @@ baseline ("I like how it is working").
   on either side of it lines up, so the line goes straight, and stays straight until it's dragged more
   than 5 steps away (`connect.js` `STICK`, `slide`). Let go straight, the bends come out (`release`). A
   step is the grid: the harness grid (10 units with the grid off), 1 mm in a system. Not with Ctrl.
+  Parts do the same (`connect.js` `stick`): a connector or splice dragged on its own sticks at the
+  heights that line one of its pins up with the pin at its wire's other end, and a system block at the
+  places that put one of its cables level (both ends leaving from a side) or upright (both from the top
+  or bottom; `system.js` `straightLines`). A system block now drags as a harness part does, re-routing
+  only the cables whose ends move until it's let go.
 - **Not the same yet:** a cable with three or more ends routes from its first end to each other one; a
   harness bundle with a breakout has a split point and routed branches.
 

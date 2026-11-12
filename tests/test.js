@@ -679,6 +679,21 @@
     eq(CN.release(R0, v, null).v, [], 'let go straight: the bends come out');
     ok(RT2.fits(R0.A, R0.B, [], 23));
   });
+  test('system: a dragged block sticks where a cable between side exits runs level, or top and bottom ones upright', () => {
+    const Y = LM.system, s = Y.blank('Gizmo');
+    const a = Y.addDrawn(s, 'board', { x: 0, y: 0 }), b = Y.addDrawn(s, 'board', { x: 200, y: 37 }), c = Y.addDrawn(s, 'board', { x: 13, y: 150 });
+    [a, b, c].forEach(x => { x.w = 80; x.h = 60; x.conns.length = 0; });
+    const ar = Y.mkConn(a, 'J1', 2, { x: 80 - Y.TAB.w, y: 20 }), bl = Y.mkConn(b, 'J1', 2, { x: 0, y: 10 });
+    const ab = Y.mkConn(a, 'J2', 2, { x: 30, y: 60 - Y.TAB.h }), ct = Y.mkConn(c, 'J1', 2, { x: 40, y: 0 });
+    s.cables.push({ id: 'k1', kind: 'link', ends: { a: { block: a.id, conn: ar.id }, b: { block: b.id, conn: bl.id } } });
+    s.cables.push({ id: 'k2', kind: 'link', ends: { a: { block: a.id, conn: ab.id }, b: { block: c.id, conn: ct.id } } });
+    Y.normalize(s);
+    const L = Y.straightLines(s, a);
+    eq(L.y, [27], 'J1 level with B J1: A moves down 27 mm');
+    eq(L.x, [23], 'J2 above C J1: A moves right 23 mm');
+    eq(LM.connect.stick(21, L.y, 1), null, 'more than 5 mm off: free');
+    eq(LM.connect.stick(23, L.y, 1), 27, 'within 5 mm: level');
+  });
   test('connect: the route menu walks around, goes behind, and resets, as in the harness editor', () => {
     const CN = LM.connect;
     ok(/Go behind parts/.test(CN.menuHtml(null)) && !/Reset route/.test(CN.menuHtml(null)), 'nothing shaped: no Reset route');
