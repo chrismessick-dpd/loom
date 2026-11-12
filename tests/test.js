@@ -938,6 +938,20 @@
       ok(Y.checks(top, get).some(x => x.sev === 'error' && /S1 places a system that isn't here any more/.test(x.text)), 'a missing system');
     } finally { done(); }
   });
+  test('nest: a pick in the menu selects, in the open system, the block it’s inside or a harness’s cables', () => {
+    const { Y, pump, top, sb, done } = nestFixture();
+    const h = harness('Pump power', { pn: '2200300-001' }), g = harness('Machine link', { pn: '2200301-001' });
+    try {
+      pump.cables.push({ id: 'k1', kind: 'harness', harness: h.id, ends: {} });
+      top.cables.push({ id: 'k2', kind: 'harness', harness: g.id, ends: {} }, { id: 'k3', kind: 'harness', harness: g.id, ends: {} });
+      const path = top.id + '>' + pump.id;
+      eq(Y.overviewSel(top, { kind: 'system', id: pump.id, path }), { kind: 'block', block: sb.id }, 'a placed system: its block');
+      eq(Y.overviewSel(top, { kind: 'harness', id: h.id, path }), { kind: 'block', block: sb.id }, 'a harness used inside it: the block it’s inside');
+      eq(Y.overviewSel(top, { kind: 'harness', id: g.id, path: top.id }), { kind: 'multi', blocks: [], cables: ['k2', 'k3'] }, 'a harness used twice here: both its cables');
+      eq(Y.overviewSel(top, null), null, 'nothing picked');
+      eq(Y.overviewSel(top, { kind: 'system', id: pump.id, path: pump.id }), null, 'a path from another system');
+    } finally { done(); }
+  });
   test('system: a harness end marked as its device isn’t asked for in a system', () => {
     const { Y, s, a, c, h, get } = sysFixture();
     const ends = h.nodes.filter(M.isConn);
