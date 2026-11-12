@@ -22,6 +22,12 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System grid (2026-11-12, Chris: as the harness canvas).** The system canvas bar has the harness's Grid
+  menu: spacing Off, 1, 5, or 10 mm, kept with the system (`s.grid`, 1 mm by default), and Dots or Lines,
+  the harness's own setting (`fold.gridStyle`, through `sysHooks.gridStyle`/`setGridStyle`). The grid is
+  drawn as the harness draws it, and blocks and cable runs snap to it (`snap`, `snapU`; the straight snap's
+  step too). Off: nothing snaps. Ctrl places a block or run anywhere, as for harness parts.
+
 - **Harness pane: Parts adds, Properties lists (2026-11-12, Chris).** The Parts tab holds only Add
   (Connector, From a board, Splice, Note, and Table). Properties with nothing selected lists the splices,
   notes, and wire sets (`overviewHtml`), each row selecting its item; with none, the old hint. Any change of

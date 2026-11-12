@@ -240,7 +240,12 @@
   // route, shape, and drag exactly as the harness editor's wires, by the same engine (Chris, 2026-11-11:
   // the harness's routing is the baseline). A dragged run or an added bend is kept per cable and end
   // (cab.routes[end id], the harness's record: v, a, b, mode), until Reset route.
-  const K = 4, STUB_U = 24, GRID = 4;
+  const K = 4, STUB_U = 24;
+  // The grid (Chris, 2026-11-12: as the harness canvas has): spacing in mm, kept with the system (s.grid,
+  // 1 mm unless set), drawn as the harness draws its grid (Dots or Lines, the harness's own setting), and
+  // what blocks and cable runs snap to. Off: nothing snaps. Ctrl: anywhere.
+  const GRIDS = [0, 1, 5, 10];
+  const gridOf = s => (s && GRIDS.includes(s.grid) ? s.grid : 1);
   // A cable's line, as one harness wire's: half its drawn width (.sys-w .w-edge, 8.5), its corner
   // radius, and how far it runs out before its first corner (conn.js: half + 10, half + 20).
   const HALF = 4, RADIUS = HALF + 10, STUB_R = HALF + 20;
@@ -349,7 +354,11 @@
     const sel = S.sel;
     const isSel = (k, a, b2) => sel && sel.kind === k && (k === 'cable' ? sel.id === a : sel.block === a && (k === 'block' || sel.conn === b2));
     // The editor's card gradients (app.js FX_DEFS), which these cards and the wires use.
-    let html = '<defs>' +
+    const g = gridOf(s) * K, P = g * 5, lines = A.gridStyle && A.gridStyle() === 'lines';
+    const marks = lines
+      ? [1, 2, 3, 4].map(i => `<path class="gl" d="M${i * g} 0V${P}M0 ${i * g}H${P}"/>`).join('') + `<path class="gl major" d="M0 0V${P}M0 0H${P}"/>`
+      : [...Array(25)].map((_, i) => `<circle class="${i % 5 || Math.floor(i / 5) % 5 ? 'gd' : 'gd major'}" cx="${(i % 5) * g}" cy="${Math.floor(i / 5) * g}" r="${i ? 0.9 : 1.4}"/>`).join('');
+    let html = (g ? `<defs><pattern id="sys-grid" width="${P}" height="${P}" patternUnits="userSpaceOnUse">${marks}</pattern></defs><rect class="bg" x="-200000" y="-200000" width="400000" height="400000" fill="url(#sys-grid)"/>` : '') + '<defs>' +
       '<linearGradient id="lmfx-conn-head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-conn-head-hi)"/><stop offset="1" style="stop-color:var(--cv-conn-head)"/></linearGradient>' +
       '<linearGradient id="lmfx-glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-glass-top)"/><stop offset="0.45" style="stop-color:var(--cv-glass-mid)"/><stop offset="1" style="stop-color:var(--cv-glass-bot)"/></linearGradient>' +
       '<linearGradient id="lmfx-head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--cv-head-hi)"/><stop offset="1" style="stop-color:var(--cv-head)"/></linearGradient>' +
@@ -562,7 +571,7 @@
     page.classList.add('sys-on');
     if (!page.querySelector('.sys-view')) {
       page.innerHTML = `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span class="sys-hint" id="sys-hint"></span></div></div>
+        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span id="sys-grid-menu"></span><span class="sys-hint" id="sys-hint"></span></div></div>
         <aside class="rail sys-panel" id="sys-panel"></aside></div>`;
       wire(page);
     }
@@ -570,6 +579,10 @@
     if (!S.cam) S.cam = bounds(s);
     svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`);
     redraw(svg);
+    const gs = gridOf(s), style = A.gridStyle ? A.gridStyle() : 'dots';
+    page.querySelector('#sys-grid-menu').innerHTML = `<label class="seg glass hud-grid" title="Blocks and cable runs snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${A.gridIcon ? A.gridIcon() : ''}<select data-sgrid aria-label="Grid">` +
+      `<optgroup label="Spacing">${GRIDS.map(x => `<option value="${x}"${x === gs ? ' selected' : ''}>${x ? 'Grid ' + x + ' mm' : 'Grid off'}</option>`).join('')}</optgroup>` +
+      `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${style === k ? '\u25cf ' : '\u25cb '}${t}</option>`).join('')}</optgroup></select></label>`;
     page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to connect them · drag a cable’s ends · drag its runs (Shift breaks one, Ctrl off the grid) · double-click to add a bend · right-click for its route' : 'Add a board from the panel';
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'\u2039'} Back</button>` : '';
@@ -594,8 +607,10 @@
     const ox = S.cam.x + (S.cam.w - r.width * k) / 2, oy = S.cam.y + (S.cam.h - r.height * k) / 2;
     return { x: ox + (e.clientX - r.left) * k, y: oy + (e.clientY - r.top) * k, k };
   }
-  const snap = v => Math.round(v);
-  const snapU = v => Math.round(v / GRID) * GRID;
+  // Blocks snap in mm, cable runs in canvas units (K per mm), both to the system's grid.
+  const snap = v => { const g = gridOf(cur()); return g ? Math.round(v / g) * g : Math.round(v * 10) / 10; };
+  const snapU = v => { const g = gridOf(cur()) * K; return g ? Math.round(v / g) * g : v; };
+  const stepU = () => gridOf(cur()) * K;
   let drag = null, lastLo = null;
   function redraw(svg, view) { lastLo = layout(cur(), view); svg.innerHTML = svgHtml(cur(), lastLo); svg.classList.toggle('wiring', !!S.pending); }
   const tabAt = e => { const el = document.elementFromPoint(e.clientX, e.clientY); return el && el.closest && el.closest('#sys-canvas [data-conn]'); };
@@ -741,14 +756,16 @@
           svg.classList.add('dragging');
         }
         // Near straight, it snaps straight (within 5 grid steps, 5 mm; not with Ctrl).
-        keepRoute(d.cab, d.end, Object.assign({ v: CN().slide(d, d.p0, p, free ? null : snapU, free ? 0 : GRID) }, d.keep));
+        keepRoute(d.cab, d.end, Object.assign({ v: CN().slide(d, d.p0, p, free || !stepU() ? null : snapU, free ? 0 : stepU() || K) }, d.keep));
         redraw(svg, { fast: true });
         return;
       }
       if (d.kind === 'block') {
         if (!d.snap) { S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; svg.classList.add('dragging'); }
         // As a harness part: only the cables whose ends move re-route until it's let go.
-        d.b.x = snap(d.bx + (p.x - d.p.x) / K); d.b.y = snap(d.by + (p.y - d.p.y) / K);
+        // On the grid; Ctrl places it anywhere, as a harness part.
+        const bx = d.bx + (p.x - d.p.x) / K, by = d.by + (p.y - d.p.y) / K, any = e.ctrlKey || e.metaKey;
+        d.b.x = any ? Math.round(bx * 10) / 10 : snap(bx); d.b.y = any ? Math.round(by * 10) / 10 : snap(by);
         redraw(svg, { fast: true });
       }
     });
@@ -822,6 +839,12 @@
       if (t.dataset.spin) { const [id, i] = t.dataset.spin.split('|'), v = t.value.trim(); change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id && c.pins[+i]) { c.pins[+i].net = v; c.pins[+i].label = v; } })); }); return; }
       if (t.dataset.sused) { const id = t.dataset.sused, on = t.checked; change(s => { s.blocks.forEach(b => b.conns.forEach(c => { if (c.id === id) c.used = on; })); }); return; }
       if (t.dataset.send) { const [bid, cid] = t.value ? t.value.split('|') : []; const node = t.dataset.send; change(s => { const cab = cable(s, S.sel.id); cab.ends[node] = bid ? { block: bid, conn: cid } : null; }); return; }
+      if (t.hasAttribute('data-sgrid')) {
+        if (t.value === 'dots' || t.value === 'lines') { if (A.setGridStyle) A.setGridStyle(t.value); return; }
+        const v = +t.value;
+        if (GRIDS.includes(v)) change(s => { s.grid = v; });
+        return;
+      }
       if (t.dataset.skind) { rekind(cur(), cable(cur(), t.dataset.skind), t.value); return; }
       if (t.dataset.sf) setField(t.dataset.sf, t.value);
     });

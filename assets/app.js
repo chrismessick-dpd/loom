@@ -81,6 +81,10 @@
     harnesses: () => live(),
     projects: () => [...new Set(live().map(h => h.project).concat(LM.system.live().map(s => s.project)).map(p => String(p || '').trim()).filter(Boolean))].sort(),
     openHarness: id => { S.view = 'build'; openHarness(id); },
+    // The grid's Dots or Lines (fold.gridStyle), shared with the harness canvas, and its icon.
+    gridStyle: () => (fold.gridStyle === 'lines' ? 'lines' : 'dots'),
+    setGridStyle: v => { fold.gridStyle = v === 'lines' ? 'lines' : 'dots'; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } renderAll(); },
+    gridIcon: () => ICON.grid,
     home: () => { LM.system.close(); S.cur = null; persist(); renderAll(); },
     newHarness: (sys, ends) => newHarnessFor(sys, ends),
   };
