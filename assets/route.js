@@ -266,17 +266,23 @@
   }
   const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
   const cellOf = (G, p) => ({ i: Math.max(0, Math.min(G.W - 1, Math.round((p.x - G.x0) / G.g))), j: Math.max(0, Math.min(G.H - 1, Math.round((p.y - G.y0) / G.g))) });
-  // A binary heap of [priority, state].
+  // A binary heap of [priority, state]. Swaps go through temporaries (2026-11-11: destructuring made a
+  // new array per swap, most of a big system's routing time); the order of work is the same.
   function heap() {
     const P = [], V = [];
     return {
       get size() { return V.length; },
-      push(p, s) { P.push(p); V.push(s); let i = V.length - 1; while (i) { const u = (i - 1) >> 1; if (P[u] <= P[i]) break; [P[u], P[i]] = [P[i], P[u]]; [V[u], V[i]] = [V[i], V[u]]; i = u; } },
+      push(p, s) {
+        P.push(p); V.push(s);
+        let i = V.length - 1;
+        while (i) { const u = (i - 1) >> 1; if (P[u] <= P[i]) break; const tp = P[u]; P[u] = P[i]; P[i] = tp; const tv = V[u]; V[u] = V[i]; V[i] = tv; i = u; }
+      },
       pop() {
         const top = V[0], lp = P.pop(), lv = V.pop();
         if (V.length) {
           P[0] = lp; V[0] = lv;
-          for (let i = 0; ;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < V.length && P[l] < P[m]) m = l; if (r < V.length && P[r] < P[m]) m = r; if (m === i) break; [P[m], P[i]] = [P[i], P[m]]; [V[m], V[i]] = [V[i], V[m]]; i = m; }
+          const n = V.length;
+          for (let i = 0; ;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < n && P[l] < P[m]) m = l; if (r < n && P[r] < P[m]) m = r; if (m === i) break; const tp = P[m]; P[m] = P[i]; P[i] = tp; const tv = V[m]; V[m] = V[i]; V[i] = tv; i = m; }
         }
         return top;
       },
@@ -310,7 +316,9 @@
       const cur = q.pop(), d = cur & 3, c = cur >> 2, i = c % W, j = (c - i) / W;
       if (c === t.j * W + t.i && d === td) { found = cur; break; }
       const base = dist[cur];
-      for (const nd of [d, (d + 1) & 3, (d + 3) & 3]) {
+      // Straight on, then each turn (in that order, without a new array per step).
+      for (let q3 = 0; q3 < 3; q3++) {
+        const nd = q3 === 0 ? d : q3 === 1 ? (d + 1) & 3 : (d + 3) & 3;
         const ni = i + DX[nd], nj = j + DY[nd];
         if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
         const nc = nj * W + ni;

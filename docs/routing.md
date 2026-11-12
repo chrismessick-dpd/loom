@@ -23,11 +23,17 @@ baseline ("I like how it is working").
   edge; one leaving up or down runs to a lead point past the edge (`A.from`, `B.to`: route.js `shape`
   draws them) and may turn either way there, the cheaper winning, as a harness connector's two edges. A
   cable keeps the harness's record per end (`cab.routes[end id] = { v, a, b, mode }`).
-- **Two differences, both parameters:** a system searches on a 12-unit grid (3 mm; a made-up 30-board,
-  60-cable system, `tests/fixture-system.js`, routed in about 1.1 s against 1.7 s at 10, a drag step
-  about 0.1 s), and a system terminal's stub reaches a grid line, since the search rounds its first
+- **Two differences, both parameters:** a system searches on a 12-unit grid (3 mm), coarser on a big
+  drawing (about 100k cells), and a system terminal's stub reaches a grid line, since the search rounds its first
   corner to the grid and a corner rounded back short of the stub made the route give up and run
   straight (the harness has the same rounding; left as it is, as the baseline).
+- **Speed.** The search's heap swapped through array destructuring and made an array per step; it now
+  uses temporaries, in the same order (golden unchanged), which more than halved a big system's time. The
+  made-up 30-board system (`tests/fixture-system.js`) first routes in about 0.9 s, and a 37-board one
+  spread over 1.5 to 2.8 m in 1.2 to 1.9 s, a drag step about 0.1 s. (The old system code took 1.3 s on
+  the real 37-block system.) A search window round each cable's ends was tried and dropped: slower, and
+  it showed a case where a found route falls a few units short of its stub after `tidy` and the route
+  gives up and runs straight (the harness can hit it too; not fixed).
 - **Fixed for both:** dragging the end of a straight wire (no middle runs) used to add a bend that left an
   even count of values, drawn wrong. It now lifts the piece from the grab to the far end's corner, as
   systems did.

@@ -304,12 +304,14 @@
     return lo;
   }
   // The engine's search grid: 12 units (3 mm), a little coarser than a harness's 10 because a system is
-  // drawn at board scale (a made-up 30-board, 60-cable system routed in 1.1 s at 12 and 1.7 s at 10, with
-  // fewer bends), and coarser still on a bigger one so the grid stays about 300k cells.
+  // drawn at board scale (fewer bends, and faster), and coarser still on a big drawing so the grid stays
+  // about CELLS cells: a made-up 37-board, 60-cable system spread over 1.5 to 2.8 m first routes in 1.2 to
+  // 1.9 s, a drag step about 0.1 s (2026-11-11).
+  let CELLS = 100000;
   function gridStep(rects) {
     if (!rects.length) return 12;
     const x0 = Math.min(0, ...rects.map(r => r.x0)) - 300, x1 = Math.max(0, ...rects.map(r => r.x1)) + 300, y0 = Math.min(0, ...rects.map(r => r.y0)) - 300, y1 = Math.max(0, ...rects.map(r => r.y1)) + 300;
-    return Math.max(12, Math.ceil(Math.sqrt((x1 - x0) * (y1 - y0) / 300000) / 2) * 2);
+    return Math.max(12, Math.ceil(Math.sqrt((x1 - x0) * (y1 - y0) / CELLS) / 2) * 2);
   }
   function layoutNow(s, view) {
     const out = new Map();
@@ -993,5 +995,5 @@
   }
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; persist(); },
     store: () => S.store, persist, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
-    layout: (s, view) => layoutNow(s, view) };
+    layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; } };
 })(window.LM = window.LM || {});

@@ -30,7 +30,8 @@ links to it so far. Before every commit:
   harness routes exactly as before (hashes in `golden-data.js`; regenerate only on purpose with
   `tests/golden.html`). Systems lost their copies (`rounded`, per-cable grids, `POOL`, `RCACHE`); a cable
   keeps the harness's record per end (`cab.routes[end] = { v, a, b, mode }`; a bare v is read as `{ v }`),
-  searches on a 12-unit grid, and has the right-click menu. Cables have kinds: generic (`link`, what a
+  searches on a 12-unit grid (coarser on a big drawing), and has the right-click menu. route.js's search
+  heap no longer allocates per step (same order): a 37-board system first routes in 1.2 to 1.9 s. Cables have kinds: generic (`link`, what a
   drawn cable starts as), purchased (`bought`), and Loom harness; *What it is* in the panel changes it
   (`rekind`). Dragging a straight wire's end no longer leaves a broken shape. See `docs/routing.md`, *One
   engine*, and `docs/system.md`, *Connections*. Tests 49. Not the same yet: a cable with three or more
