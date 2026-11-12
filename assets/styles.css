@@ -1162,3 +1162,16 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-ldot-lead { fill: none; stroke: var(--cv-ink); stroke-opacity: 0.6; stroke-width: 1; pointer-events: none; }
 .sys-canvas .sys-ldot.dim, .sys-canvas .sys-ldot-lead.dim { opacity: 0.18; }
 @media (max-width: 860px) { .sys-view { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; } .sys-panel { border-left: none; border-top: 1px solid var(--hair); } }
+
+/* The menu's width (Chris, 2026-11-12): its right edge drags (fold.sideW, 220 to 560 px); a double-click
+ * goes back to 272 px. Not on phones, where the menu is a drawer. */
+.side-resize { display: none; }
+@media (min-width: 861px) and (min-height: 501px) {
+  .app { grid-template-columns: var(--side-w, 272px) 1fr; }
+  .app.side-sizing { transition: none; cursor: col-resize; user-select: none; }
+  .sidebar { position: relative; }
+  .side-resize { display: block; position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; z-index: 5; cursor: col-resize; }
+  .side-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: var(--accent); opacity: 0; transition: opacity 0.15s; }
+  .side-resize:hover::after, .app.side-sizing .side-resize::after { opacity: 0.7; }
+  .app.side-collapsed .side-resize { display: none; }
+}

@@ -722,7 +722,36 @@
   // The sidebar (the menu: brand, harnesses, tools) hides as in Signoff EE (Chris): its button in
   // the top-right corner, the toolbar's ☰ button or [. Kept in this browser (fold.side). On a phone
   // it's a drawer instead (nav-open), and styles.css keeps the collapse from hiding it there.
-  function applySide() { $('#app').classList.toggle('side-collapsed', !!fold.side); }
+  function applySide() {
+    const app = $('#app');
+    app.classList.toggle('side-collapsed', !!fold.side);
+    if (fold.sideW) app.style.setProperty('--side-w', fold.sideW + 'px'); else app.style.removeProperty('--side-w');
+  }
+  // The menu's right edge drags to widen it (Chris, 2026-11-12), kept in this browser (fold.sideW);
+  // a double-click goes back to the usual width. Collapsing still hides it whatever its width.
+  const SIDE_MIN = 220, SIDE_MAX = 560;
+  function sideResize() {
+    const grip = $('#side-resize');
+    if (!grip) return;
+    grip.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const app = $('#app'), x0 = e.clientX, w0 = $('#sidebar').getBoundingClientRect().width;
+      app.classList.add('side-sizing');
+      grip.setPointerCapture(e.pointerId);
+      const move = ev => {
+        fold.sideW = Math.round(Math.min(SIDE_MAX, Math.max(SIDE_MIN, w0 + ev.clientX - x0)));
+        app.style.setProperty('--side-w', fold.sideW + 'px');
+      };
+      const up = () => {
+        grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', up);
+        app.classList.remove('side-sizing');
+        saveFold();
+      };
+      grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', up);
+    });
+    grip.addEventListener('dblclick', () => { delete fold.sideW; saveFold(); applySide(); });
+  }
   function toggleSidebar() {
     if (narrow()) { $('#app').classList.toggle('nav-open'); return; }
     fold.side = !fold.side;
@@ -2687,7 +2716,7 @@
   applyTheme(readTheme());
   // Start with the sidebar as it was left, without playing the slide.
   $('#app').style.transition = 'none';
-  applySide();
+  applySide(); sideResize();
   void $('#app').offsetWidth;
   $('#app').style.transition = '';
   if (DEMO) {

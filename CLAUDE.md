@@ -22,6 +22,10 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Menu width (2026-11-12, Chris).** The sidebar's right edge drags (`#side-resize`, `sideResize` in `app.js`),
+  220 to 560 px, kept in this browser (`fold.sideW`, the `--side-w` variable on `#app`); a double-click goes back to
+  272 px. Collapsing still hides it, and it comes back at its width. Not on phones (the drawer).
+
 - **Demo system wired (2026-11-12, Chris: the demo was unwired but for the Zone Controller harness).** The Smart
   Thermostat system (`demo` in `system.js`, `DEMO_V` 5) has two cables: Wall wires, a generic connection from the
   wall device's TB to Main PCBA J1, and a purchased 24-pin, 0.5 mm FFC (100 mm) from Main PCBA J2 to the Display
