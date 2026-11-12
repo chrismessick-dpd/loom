@@ -22,6 +22,15 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System drag-select and group move (2026-11-12, Chris: as in the harness).** A left drag on empty
+  system canvas draws a box: left to right picks blocks and cables wholly inside, right to left what it
+  touches (blocks by their turned outline, cables by their drawn line; `marqueePick`, `drawMarquee`, lit with
+  the harness's `.mq`); Shift adds. Several things are `S.sel = { kind: 'multi', blocks, cables }` (one alone is
+  selected as itself, `selOf`); the panel lists them, each opening its own, with Delete (`multiHtml`,
+  `delete-multi`, the Delete key too). Dragging a selected block moves every selected block, and selected
+  cables' stored shapes move with them; a cable with one end moving keeps its shape. Panning is the right or
+  middle button now (a left drag on empty canvas used to pan).
+
 - **System blocks: name in the middle, and 90° turns (2026-11-12, Chris).** Each block shows its name large
   and upright in its middle (`.sys-center`, sized to the block, down to 7 px for a long name on a small
   device) and only its ref at the top left, as tall as the two rows it shared. R turns the selected block 90°

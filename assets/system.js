@@ -224,8 +224,19 @@
     if (t.kind === 'block') return !!block(s, t.block);
     if (t.kind === 'conn') return !!conn(block(s, t.block), t.conn);
     if (t.kind === 'cable') return !!cable(s, t.id);
+    if (t.kind === 'multi') return t.blocks.some(id => block(s, id)) || t.cables.some(id => cable(s, id));
     return false;
   }
+  // Several things selected (Chris, 2026-11-12: drag-select as in the harness): { kind: 'multi', blocks,
+  // cables }. One thing alone is selected as itself.
+  function selOf(blocks, cables) {
+    if (blocks.length + cables.length === 0) return null;
+    if (blocks.length === 1 && !cables.length) return { kind: 'block', block: blocks[0] };
+    if (cables.length === 1 && !blocks.length) return { kind: 'cable', id: cables[0] };
+    return { kind: 'multi', blocks, cables };
+  }
+  const selBlocks = t => (!t ? [] : t.kind === 'multi' ? t.blocks : t.kind === 'block' ? [t.block] : []);
+  const selCables = t => (!t ? [] : t.kind === 'multi' ? t.cables : t.kind === 'cable' ? [t.id] : []);
 
   function open(id) { S.cur = id; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
   // Back (Chris, 2026-11-12): from any panel straight to the system's own.
@@ -367,7 +378,8 @@
   const midOf = r => r.mid;
   function svgHtml(s, Lo) {
     const sel = S.sel;
-    const isSel = (k, a, b2) => sel && sel.kind === k && (k === 'cable' ? sel.id === a : sel.block === a && (k === 'block' || sel.conn === b2));
+    const isSel = (k, a, b2) => sel && (sel.kind === 'multi' ? (k === 'block' ? sel.blocks.includes(a) : k === 'cable' && sel.cables.includes(a))
+      : sel.kind === k && (k === 'cable' ? sel.id === a : sel.block === a && (k === 'block' || sel.conn === b2)));
     // The editor's card gradients (app.js FX_DEFS), which these cards and the wires use.
     const g = gridOf(s) * K, P = g * 5, lines = A.gridStyle && A.gridStyle() === 'lines';
     const marks = lines
@@ -465,6 +477,7 @@
     if (t && t.kind === 'conn') return connHtml(s, block(s, t.block), conn(block(s, t.block), t.conn));
     if (t && t.kind === 'block') return blockHtml(s, block(s, t.block));
     if (t && t.kind === 'cable') return cableHtml(s, cable(s, t.id));
+    if (t && t.kind === 'multi') return multiHtml(s, t);
     const c = checks(s, get);
     return `<div class="rail-head"><div class="eyebrow">System</div><div class="rail-title">${esc(s.title)}</div></div>` +
       fld('Title', inp('title', s.title)) + fld('Client project', inp('project', s.project, ' list="sys-projects"') + `<datalist id="sys-projects">${A.projects().map(p => `<option value="${esc(p)}">`).join('')}</datalist>`) + fld('Rev', inp('rev', s.rev)) +
@@ -473,6 +486,16 @@
       (s.cables.length ? `<div class="sys-list">${s.cables.map(cab => { const h = harnessOf(cab), st = statusOf(cab, h); return `<button class="sys-row" data-ssel="cable:${cab.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(cab, h))}<small>${esc([pnOf(h, cab), endsOf(cab, h).map(n => endName(s, cab.ends[n.id]) || n.ref + ' not plugged').join(' · ')].filter(Boolean).join(' · '))}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Click a connector on a board, then another, to connect them.</p>') +
       `<h4 class="sys-h">Checks <span class="count">${c.length}</span></h4>` + checksHtml(c) +
       `<div class="sys-actions">${btn('delete-system', 'Delete system', '', 'btn-danger')}</div>`;
+  }
+  // Several selected: a row for each, which opens it, and Delete for them all.
+  function multiHtml(s, t) {
+    const bs = t.blocks.map(id => block(s, id)).filter(Boolean), cs = t.cables.map(id => cable(s, id)).filter(Boolean);
+    const words = [bs.length ? bs.length + (bs.length > 1 ? ' blocks' : ' block') : '', cs.length ? cs.length + (cs.length > 1 ? ' cables' : ' cable') : ''].filter(Boolean).join(', ');
+    return `<div class="rail-head"><div class="eyebrow">Selected</div><div class="rail-title">${esc(words)}</div></div>` +
+      (bs.length ? `<h4 class="sys-h">Blocks <span class="count">${bs.length}</span></h4><div class="sys-list">${bs.map(b => `<button class="sys-row" data-ssel="block:${b.id}"><span class="sys-st">▭</span><span>${esc(b.ref)} · ${esc(b.name)}</span></button>`).join('')}</div>` : '') +
+      (cs.length ? `<h4 class="sys-h">Cables <span class="count">${cs.length}</span></h4><div class="sys-list">${cs.map(cab => { const h = harnessOf(cab), st = statusOf(cab, h); return `<button class="sys-row" data-ssel="cable:${cab.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(cab, h))}</span></button>`; }).join('')}</div>` : '') +
+      `<p class="hint">Drag any selected block to move them all. Shift-drag a box to add more.</p>` +
+      `<div class="sys-actions">${btn('delete-multi', 'Delete ' + words, '', 'btn-danger')}</div>`;
   }
   function checksHtml(c) {
     if (!c.length) return '<p class="hint">No problems found.</p>';
@@ -603,7 +626,7 @@
     page.querySelector('#sys-grid-menu').innerHTML = `<label class="seg glass hud-grid" title="Blocks and cable runs snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${A.gridIcon ? A.gridIcon() : ''}<select data-sgrid aria-label="Grid">` +
       `<optgroup label="Spacing">${GRIDS.map(x => `<option value="${x}"${x === gs ? ' selected' : ''}>${x ? 'Grid ' + x + ' mm' : 'Grid off'}</option>`).join('')}</optgroup>` +
       `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${style === k ? '\u25cf ' : '\u25cb '}${t}</option>`).join('')}</optgroup></select></label>`;
-    page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to connect them · drag a cable’s ends · drag its runs (Shift breaks one, Ctrl off the grid) · double-click to add a bend · right-click for its route' : 'Add a board from the panel';
+    page.querySelector('#sys-hint').textContent = S.pending ? `From ${endName(s, S.pending)}: click another connector to run a cable to it (Esc cancels)` : s.blocks.length ? 'Click a connector, then another, to connect them · drag a cable’s ends · drag its runs (Shift breaks one, Ctrl off the grid) · double-click to add a bend · right-click for its route · drag on empty canvas to select (left to right: inside, right to left: touching), right-drag to pan' : 'Add a board from the panel';
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'\u2039'} Back</button>` : '';
     panel.innerHTML = backBtn ? panelHtml(s).replace('<div class="rail-head">', '<div class="rail-head">' + backBtn) : panelHtml(s);
@@ -680,6 +703,44 @@
   // A right click on a cable (no drag): the harness editor's route items (connect.js menuHtml), for the
   // route under the pointer (each end of a cable with three or more ends has its own).
   let menuEl = null;
+  // Drag-select (Chris, 2026-11-12: as in the harness): left to right picks what's wholly inside the box,
+  // right to left what it touches. Blocks by their turned outline, cables by their drawn line.
+  function marqueePick(r, touch) {
+    const s = cur(), x0 = r.x, y0 = r.y, x1 = r.x + r.w, y1 = r.y + r.h;
+    const inside = p => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
+    // Whether a segment meets the box (Liang-Barsky).
+    const meets = (a, b) => {
+      let t0 = 0, t1 = 1; const dx = b.x - a.x, dy = b.y - a.y;
+      for (const [pp, q] of [[-dx, a.x - x0], [dx, x1 - a.x], [-dy, a.y - y0], [dy, y1 - a.y]]) {
+        if (Math.abs(pp) < 1e-9) { if (q < 0) return false; continue; }
+        const t = q / pp;
+        if (pp < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
+      }
+      return true;
+    };
+    const blocks = s.blocks.filter(b => {
+      const { W, H } = sizeOf(b), bx0 = b.x * K, by0 = b.y * K, bx1 = bx0 + W * K, by1 = by0 + H * K;
+      return touch ? bx0 <= x1 && bx1 >= x0 && by0 <= y1 && by1 >= y0 : bx0 >= x0 && bx1 <= x1 && by0 >= y0 && by1 <= y1;
+    }).map(b => b.id);
+    const cables = [];
+    (lastLo || new Map()).forEach(({ cab, routes }) => {
+      const pts = routes.flatMap(rt => CN().draw(rt).pts);
+      if (!pts.length) return;
+      const hit = touch ? pts.some((p, i) => inside(p) || (i && meets(pts[i - 1], p))) : pts.every(inside);
+      if (hit) cables.push(cab.id);
+    });
+    return { blocks, cables };
+  }
+  function drawMarquee(svg, d, p) {
+    if (!d.started) { d.started = true; svg.classList.add('marquee'); }
+    const touch = p.x < d.p.x, r = { x: Math.min(p.x, d.p.x), y: Math.min(p.y, d.p.y), w: Math.abs(p.x - d.p.x), h: Math.abs(p.y - d.p.y) };
+    d.rect = r; d.touch = touch;
+    const gh = svg.querySelector('#sys-ghost');
+    if (gh) gh.innerHTML = `<rect class="cv-marquee ${touch ? 'touch' : 'inside'}" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"/>`;
+    const pick = marqueePick(r, touch), bs = new Set(pick.blocks), cs = new Set(pick.cables);
+    svg.querySelectorAll('.sys-block[data-block]').forEach(el => el.classList.toggle('mq', bs.has(el.dataset.block)));
+    svg.querySelectorAll('.sys-w[data-cable]').forEach(el => el.classList.toggle('mq', cs.has(el.dataset.cable)));
+  }
   // A right click on a block: turn it (Chris, 2026-11-12).
   function openBlockMenu(e, id) {
     closeMenu();
@@ -759,8 +820,14 @@
         drag = Object.assign(base, { kind: 'run', cab: cable(s, cb.dataset.cable), run: near, end: near.route.end, click: cb.dataset.cable });
       } else if (bl && !S.pending) {
         const b = block(s, bl.dataset.block);
-        drag = Object.assign(base, { kind: 'block', bx: b.x, by: b.y, b });
-      } else drag = Object.assign(base, { kind: bl || cb ? 'click' : 'pan', cam: Object.assign({}, S.cam), k: p.k });
+        // A block in a selection of several takes the selection with it: its blocks, and the shapes of
+        // its cables (a cable with one end moving keeps its shape, as in the harness).
+        const group = S.sel && S.sel.kind === 'multi' && S.sel.blocks.includes(b.id);
+        const others = group ? S.sel.blocks.map(id => block(s, id)).filter(x => x && x !== b).map(x => ({ b: x, x: x.x, y: x.y })) : [];
+        const shapes = group ? S.sel.cables.map(id => cable(s, id)).filter(c => c && c.routes).map(c => ({ c, routes: JSON.parse(JSON.stringify(c.routes)) })) : [];
+        drag = Object.assign(base, { kind: 'block', bx: b.x, by: b.y, b, others, shapes });
+      } else if (!bl && !cb && !S.pending) drag = Object.assign(base, { kind: 'marquee', add: e.shiftKey });
+      else drag = Object.assign(base, { kind: bl || cb ? 'click' : 'pan', cam: Object.assign({}, S.cam), k: p.k });
     });
     svg.addEventListener('pointermove', e => {
       const d = drag;
@@ -768,6 +835,7 @@
       if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
       d.moved = true;
       const p = toWorld(svg, e);
+      if (d.kind === 'marquee') { drawMarquee(svg, d, p); return; }
       if (d.kind === 'pan') { S.cam.x = d.cam.x - (e.clientX - d.x) * d.k; S.cam.y = d.cam.y - (e.clientY - d.y) * d.k; svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`); return; }
       if (d.kind === 'click') return;
       if (d.kind === 'end') {
@@ -807,6 +875,9 @@
         // On the grid; Ctrl places it anywhere, as a harness part.
         const bx = d.bx + (p.x - d.p.x) / K, by = d.by + (p.y - d.p.y) / K, any = e.ctrlKey || e.metaKey;
         d.b.x = any ? Math.round(bx * 10) / 10 : snap(bx); d.b.y = any ? Math.round(by * 10) / 10 : snap(by);
+        const ddx = d.b.x - d.bx, ddy = d.b.y - d.by;
+        (d.others || []).forEach(o => { o.b.x = Math.round((o.x + ddx) * 10) / 10; o.b.y = Math.round((o.y + ddy) * 10) / 10; });
+        (d.shapes || []).forEach(({ c, routes }) => { const r = {}; Object.keys(routes).forEach(k => { const rec = routes[k]; r[k] = rec && Array.isArray(rec.v) ? Object.assign({}, rec, { v: rec.v.map((x, i) => +x + (i % 2 ? ddy : ddx) * K) }) : rec; }); c.routes = r; });
         redraw(svg, { fast: true });
       }
     });
@@ -837,6 +908,14 @@
         return;
       }
       if (d.kind === 'block' && d.moved) { cur().updated = now(); persist(); A.refresh(); return; }
+      if (d.kind === 'marquee' && d.moved) {
+        const gh = svg.querySelector('#sys-ghost'); if (gh) gh.innerHTML = '';
+        svg.classList.remove('marquee');
+        const pick = d.rect ? marqueePick(d.rect, d.touch) : { blocks: [], cables: [] };
+        const bs = d.add ? [...new Set(selBlocks(S.sel).concat(pick.blocks))] : pick.blocks, cs = d.add ? [...new Set(selCables(S.sel).concat(pick.cables))] : pick.cables;
+        S.sel = selOf(bs, cs); S.pair = null; S.picking = null; S.adding = null;
+        A.refresh(); return;
+      }
       if (d.moved || d.button !== 0) return;
       // A click: as the editor's click().
       const t = d.t, tab = t.closest('[data-conn]');
@@ -874,7 +953,7 @@
       const a = t.closest('[data-sact]');
       if (a && !a.disabled) { act(a.dataset.sact, a); return; }
       const sl = t.closest('[data-ssel]');
-      if (sl) { const [k, x, y] = sl.dataset.ssel.split(':'); S.sel = k === 'cable' ? { kind: 'cable', id: x } : { kind: 'conn', block: x, conn: y }; S.picking = null; A.refresh(); return; }
+      if (sl) { const [k, x, y] = sl.dataset.ssel.split(':'); S.sel = k === 'cable' ? { kind: 'cable', id: x } : k === 'block' ? { kind: 'block', block: x } : { kind: 'conn', block: x, conn: y }; S.picking = null; A.refresh(); return; }
       const ck = t.closest('[data-scheck]');
       if (ck) { const c = checks(cur(), A.harness)[+ck.dataset.scheck]; if (c && c.sel) { S.sel = c.sel; A.refresh(); } }
     });
@@ -994,6 +1073,13 @@
       case 'delete-conn': change(x => { const b = block(x, S.sel.block), id = S.sel.conn; b.conns = b.conns.filter(c => c.id !== id); x.cables.forEach(c => Object.keys(c.ends).forEach(k => { if (c.ends[k] && c.ends[k].conn === id) c.ends[k] = null; })); S.sel = { kind: 'block', block: b.id }; }); break;
       case 'reset-route': change(x => { const cab = cable(x, S.sel.id); Object.keys(cab.routes || {}).forEach(k => { const r = LM.connect.apply(cab.routes[k], 'reset-route'); if (r) cab.routes[k] = r; else delete cab.routes[k]; }); if (cab.routes && !Object.keys(cab.routes).length) delete cab.routes; }); break;
       case 'delete-cable': change(x => { const id = S.sel.id; x.cables = x.cables.filter(c => c.id !== id); S.sel = null; }); break;
+      case 'delete-multi': change(x => {
+        const bs = new Set(selBlocks(S.sel)), cs = new Set(selCables(S.sel));
+        x.blocks = x.blocks.filter(b => !bs.has(b.id));
+        x.cables = x.cables.filter(c => !cs.has(c.id));
+        x.cables.forEach(c => Object.keys(c.ends).forEach(k => { if (c.ends[k] && bs.has(c.ends[k].block)) c.ends[k] = null; }));
+        S.sel = null;
+      }); break;
       case 'pick-harness': S.picking = { block: S.sel.block, conn: S.sel.conn }; A.refresh(); break;
       case 'cancel-pick': S.picking = null; A.refresh(); break;
       case 'plug': {
@@ -1052,7 +1138,7 @@
     if (e.key.toLowerCase() === 'r' && !mod && S.sel && S.sel.kind === 'block') { e.preventDefault(); act(e.shiftKey ? 'rotate-ccw' : 'rotate-cw'); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) {
       e.preventDefault();
-      act(S.sel.kind === 'block' ? 'delete-block' : S.sel.kind === 'cable' ? 'delete-cable' : (block(cur(), S.sel.block) || {}).source ? '' : 'delete-conn');
+      act(S.sel.kind === 'multi' ? 'delete-multi' : S.sel.kind === 'block' ? 'delete-block' : S.sel.kind === 'cable' ? 'delete-cable' : (block(cur(), S.sel.block) || {}).source ? '' : 'delete-conn');
     }
   }
   // Where a harness end plugs in, across every system (the harness editor's rail shows it).
