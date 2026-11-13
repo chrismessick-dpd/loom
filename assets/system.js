@@ -71,6 +71,11 @@
     return s.blocks.some(b => b.kind === 'system' && (b.system === target || places(S.store[b.system], target, (depth || 0) + 1)));
   }
   const parentsOf = id => live().filter(s => s.id !== id && s.blocks.some(b => b.kind === 'system' && b.system === id));
+  // Is the external connector at path id in s plugged from outside, at any depth? A parent plugs into its
+  // tab, or makes that tab external again and a system above plugs it (Chris, 2026-11-13: a board's power
+  // input passed up through two levels warned that nothing plugged it).
+  const pluggedAbove = (s, id, depth) => depth <= DEPTH && parentsOf(s.id).some(p => p.blocks.some(pb => pb.kind === 'system' && pb.system === s.id &&
+    (pluggedAt(p, pb.id, id).length > 0 || (!!pb.tabs && !!pb.tabs[id] && !!pb.tabs[id].external && pluggedAbove(p, pb.id + '/' + id, depth + 1)))));
   // A tab on a system block stands for a connector inside it: harness ends made from it, and the checks,
   // look through to that board's connector (c.leaf).
   const look = (b, c) => (c && c.leaf ? { b: { id: b.id, name: c.leaf.name, ref: c.leaf.block, source: c.leaf.source }, c: Object.assign({}, c, { ref: c.leaf.ref }) } : { b, c });
@@ -276,7 +281,7 @@
       const at = pluggedAt(s, b.id, c.id), where = `${b.ref} ${c.ref}`;
       // An external connector is plugged from outside, in the systems that place this one.
       if (c.external && fitted(c)) {
-        const id = b.id + '/' + c.id, outside = ps.some(p => p.blocks.some(pb => pb.kind === 'system' && pb.system === s.id && pluggedAt(p, pb.id, id).length));
+        const id = b.id + '/' + c.id, outside = pluggedAbove(s, id, 0);
         if (at.length) add('warn', `${where} is external, but a cable here plugs into it too.`, { kind: 'conn', block: b.id, conn: c.id });
         else if (ps.length && !outside) add('warn', `${where} is external, but nothing plugs into it where ${s.title} is placed (${ps.map(p => p.title).join(', ')}).`, { kind: 'conn', block: b.id, conn: c.id });
         return;

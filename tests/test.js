@@ -919,6 +919,21 @@
       eq(s2.conns[0].pins.map(p => p.label), ['VIN', 'GND'], 'with its pins and nets');
     } finally { delete store[plant.id]; done(); }
   });
+  test('nest: an external connector passed up a level counts as plugged when a system further up plugs it', () => {
+    const { Y, store, pump, top, a, j1, sb, done } = nestFixture();
+    const plant = Y.blank('Gizmo'); plant.title = 'Plant';
+    store[plant.id] = plant;
+    const h = harness('Plant power', { pn: '2200302-001' }), get = id => (id === h.id ? h : null), ends = h.nodes.filter(M.isConn);
+    try {
+      const s2 = Y.addSystem(plant, top, { x: 0, y: 0 }), mains = Y.addDrawn(plant, 'device', { x: -120, y: 0 });
+      sb.tabs[sb.conns[0].id] = { external: true }; Y.resolve();
+      const warned = () => Y.checks(pump, get).some(x => /A1 J1 is external, but nothing plugs into it/.test(x.text));
+      ok(warned(), 'passed up, but nothing plugs it yet');
+      plant.cables.push({ id: 'k1', kind: 'harness', harness: h.id, ends: { [ends[0].id]: { block: s2.id, conn: s2.conns[0].id }, [ends[1].id]: { block: mains.id, conn: mains.conns[0].id } } });
+      ok(!warned(), 'plugged two levels up');
+      ok(!Y.checks(top, get).some(x => /is external, but nothing plugs/.test(x.text)), 'and the machine, which passed it up, doesn’t warn either');
+    } finally { delete store[plant.id]; done(); }
+  });
   test('nest: checks look through a system block, and flag an external connector nothing plugs into, a gone end, and a missing system', () => {
     const { Y, store, pump, top, a, j1, psu, sb, done } = nestFixture();
     const h = harness('Pump power', { pn: '2200300-001' }), get = id => (id === h.id ? h : null), ends = h.nodes.filter(M.isConn);
