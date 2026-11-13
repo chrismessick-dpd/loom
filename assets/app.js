@@ -2751,6 +2751,8 @@
   // Sync once on opening, so names and part numbers edited in Signoff PL come over (quietly: no toast
   // unless something happened or it failed for a reason other than a missing repo).
   if (canSync()) setTimeout(() => syncNow(true), 400);
+  // Accepted from the suite's invitations card (signoff/assets/invites.js): sync to pick up what was joined.
+  window.addEventListener('signoff:invites-accepted', () => { if (canSync()) syncNow(true); });
   // Signed in or out in another tab (Signoff EE, say): show it, and sync once signed in. A sign-in's
   // refresh replaces the token but not who it is (the engine's tokenTag), so it changes nothing here.
   if (!DEMO) {
