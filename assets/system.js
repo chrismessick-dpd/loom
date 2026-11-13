@@ -348,14 +348,18 @@
     return S.cur || (c && S.store[c] && !S.store[c].deleted && !new URLSearchParams(location.search).get('project') && !new URLSearchParams(location.search).get('harness') ? c : null);
   }
   let saveTimer = null;
+  function writeNow() {
+    saveTimer = null;
+    try { localStorage.setItem(NS + 'systems', JSON.stringify(S.store)); localStorage.setItem(NS + 'currentSystem', S.root || S.cur || ''); }
+    catch (e) { A.toast("Couldn't keep this in the browser: " + e.message, 'error'); }
+  }
   function persist() {
     resolveAll();
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      try { localStorage.setItem(NS + 'systems', JSON.stringify(S.store)); localStorage.setItem(NS + 'currentSystem', S.root || S.cur || ''); }
-      catch (e) { A.toast("Couldn't keep this in the browser: " + e.message, 'error'); }
-    }, 200);
+    saveTimer = setTimeout(writeNow, 200);
   }
+  // Writes a save still waiting on its 200 ms timer, before a tool update's reload or the page closing.
+  function flush() { if (saveTimer) { clearTimeout(saveTimer); writeNow(); } }
   const live = () => Object.values(S.store).filter(s => !s.deleted);
   const cur = () => S.store[S.cur] || null;
 
@@ -1853,7 +1857,7 @@
     return c;
   }
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
-    store: () => S.store, persist, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
+    store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; },
     externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree,
     tab: () => S.tab, setTab, setFocus, overviewSel, focused: () => S.focus, root: () => S.root,

@@ -137,7 +137,7 @@
     }
     remote.busy = true; remote.error = '';
     renderSidebar();
-    clearTimeout(saveTimer);
+    flushSaves();   // a save still waiting goes to the browser first, so closing the tab mid-sync can't drop it
     try {
       const curWas = S.cur && S.store[S.cur] ? R.hash(S.store[S.cur]) : '';
       const res = await R.sync(S.store, { thumb: { svg: LM.sheet.diagram, png: drawingPng } });
@@ -189,15 +189,24 @@
     }
   }
   let saveTimer = null;
+  function writeNow() {
+    saveTimer = null;
+    try {
+      localStorage.setItem(NS + 'harnesses', JSON.stringify(S.store));
+      localStorage.setItem(NS + 'current', S.cur || '');
+    } catch (e) { toast("Couldn't keep this in the browser: " + e.message, 'error'); }
+  }
   function persist() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      try {
-        localStorage.setItem(NS + 'harnesses', JSON.stringify(S.store));
-        localStorage.setItem(NS + 'current', S.cur || '');
-      } catch (e) { toast("Couldn't keep this in the browser: " + e.message, 'error'); }
-    }, 200);
+    saveTimer = setTimeout(writeNow, 200);
   }
+  // Writes saves still waiting on their 200 ms timers (harnesses here, systems in system.js), so a tool
+  // update's reload, or the tab closing, never drops the last edit.
+  function flushSaves() {
+    if (saveTimer) { clearTimeout(saveTimer); writeNow(); }
+    if (LM.system && LM.system.flush) LM.system.flush();
+  }
+  window.addEventListener('pagehide', flushSaves);
 
   // ── Changes and undo ──
   function snapshot() { S.past.push(JSON.stringify(H())); if (S.past.length > 120) S.past.shift(); S.future = []; }
@@ -2682,7 +2691,8 @@
   // A page left open keeps running the version it loaded. Now and then (5 s after opening, every 5
   // minutes, when the tab comes back into view) it asks this site which version it serves. If that's
   // another one, it reloads into it once the page is idle (not typing, dragging, wiring, or picking a
-  // board), after writing any pending save. The new page says "Tool updated". A version it already
+  // board, no sync running, no Configure window, ticket, or People sheet open, no cable being drawn or
+  // dragged in a system), after writing any pending save. The new page says "Tool updated". A version it already
   // reloaded for is never tried twice. Asset URLs carry ?v= stamps (tools/stamp_version.py), and the
   // browser's copies are refreshed before the reload too.
   const UPDATE_KEY = 'signoff.toolUpdate.' + location.pathname;   // sessionStorage: { tried, from }
@@ -2696,14 +2706,16 @@
   function pageIdle() {
     const a = document.activeElement;
     const typing = a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable);
-    return !typing && !document.hidden && !gesture && !S.pending && !BM.open;
+    const cfg = document.getElementById('cfg-modal');
+    return !typing && !document.hidden && !gesture && !S.pending && !BM.open && !remote.busy
+      && !(cfg && !cfg.hidden) && !document.querySelector('.tk-wrap, .tk-new, #people-pop, .sheet-wrap')
+      && !(LM.system && LM.system.busy && LM.system.busy());
   }
   async function reloadWhenIdle() {
     if (!updateWaiting) return;
     if (!pageIdle()) { setTimeout(reloadWhenIdle, 30000); return; }
     if (updateMemo({ tried: updateWaiting, from: LM.VERSION }) === null) { updateWaiting = ''; return; }
-    clearTimeout(saveTimer);
-    try { localStorage.setItem(NS + 'harnesses', JSON.stringify(S.store)); localStorage.setItem(NS + 'current', S.cur || ''); } catch (e) { /* storage blocked */ }
+    flushSaves();
     const own = u => { try { return new URL(u, location.href).origin === location.origin; } catch (e) { return false; } };
     const urls = [location.href.split('#')[0]]
       .concat([...document.scripts].map(s => s.src), [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.href))
