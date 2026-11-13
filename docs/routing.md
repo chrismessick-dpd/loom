@@ -126,10 +126,11 @@ otherwise"); maybe a right-click choice of walk around, push, or ignore.
 
 ## Shields and cables (2026-11-13, Chris)
 
-- **A shield's end at the pins drags.** A set that runs to its wires' pins has its end grip on them,
-  under the pins' wide grab circles, so dragging a shield's end pulled a wire off its pin instead. Now
-  the grip wins there, and only the pin's own dot (within 3.4 units, at least 4 px) drags the wire's
-  end (`onDown` in `app.js`, `gripUnder`).
+- **A shield's end at the pins drags.** A set that runs to its wires' pins had its end grip on them,
+  drawn under the connector's card and the pins' grab circles: no bar showed, and a drag moved the
+  connector or pulled a wire off. Set end grips are now drawn over everything but notes (conn.js
+  `grips`, after the dots), and one at a path's end sits `GRIP_IN` (12) along the wires, clear of the
+  card and pin dots; the drag still measures from where the end really is (`dragSetEnd`).
 - **A cable is one thickness.** Wires inside a set pack to their own slots, not to their pins' spacing
   (conn.js `packAt`, `k.o`), and a twist inside a cable adds no margin. A cable's sheath is `CABLE_R`
   (4) past its outer wires, so its thickness is its wire count times `PACK` (5) plus 8: 23 for four

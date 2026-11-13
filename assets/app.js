@@ -858,18 +858,10 @@
       return;
     }
     // A wire-end dot (a splice port, a loose end, or where a wire meets a pin) drags that end.
-    // A set reaching its wires' pins (a shield run to the end) has its end grip on those pins, under
-    // their wide grab circles (Chris, 2026-11-13: dragging the shield pulled a wire off). There the
-    // grip wins, and only the pin's own dot drags the wire's end.
-    let endEl = e.button === 0 && !S.pending && e.target.closest('[data-end]');
-    const gripUnder = endEl && endEl.classList.contains('cv-hitend') && document.elementsFromPoint(e.clientX, e.clientY).find(el => el.closest && el.closest('[data-setend]'));
-    if (gripUnder) {
-      const c = endEl.getScreenCTM(), cx = +endEl.getAttribute('cx'), cy = +endEl.getAttribute('cy');
-      const at = c ? new DOMPoint(cx, cy).matrixTransform(c) : null;
-      if (!at || Math.hypot(at.x - e.clientX, at.y - e.clientY) > Math.max(4, 3.4 * S.cam.k)) endEl = null;
-    }
-    // A nested set's end grip drags that end past its parent's or in from it.
-    const setEndEl = e.button === 0 && !S.pending && !endEl && (gripUnder ? gripUnder.closest('[data-setend]') : e.target.closest('[data-setend]'));
+    const endEl = e.button === 0 && !S.pending && e.target.closest('[data-end]');
+    // A set's end grip drags that end. Grips are drawn over the parts and pin dots (conn.js), and one
+    // on its wires' pins sits a little in from them.
+    const setEndEl = e.button === 0 && !S.pending && !endEl && e.target.closest('[data-setend]');
     // A note's bubble drags the bubble.
     const noteEl = e.button === 0 && !S.pending && !S.placing && e.target.closest('[data-notebox]');
     // A wire's label slides along its wire; a click on one is a click on what's under it.

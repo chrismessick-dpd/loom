@@ -1803,12 +1803,17 @@
   }
   // A grip at each end of every set (canvas only), square to its path, to drag that end along it
   // (app.js). It shows on hover, and stays while its set is selected.
+  const GRIP_IN = 12;
   function setEnds(it, opts) {
     if (opts.sheet) return '';
     return it.sz.spans.map(sp => {
-      const g = it.band(sp), on = spanSel(sp, opts) ? ' on' : '';
+      const g = it.band(sp), on = spanSel(sp, opts) ? ' on' : '', S = it.path ? it.path.S : g.u1, mid = (g.u0 + g.u1) / 2;
       return ['l', 'r'].map(k => {
-        const p = g.at(k === 'l' ? g.u0 : g.u1);
+        // An end on its wires' pins (a shield run to the end) shows its grip GRIP_IN along the wires,
+        // clear of the connector's card and the pin dots (Chris, 2026-11-13: no bar, and it wouldn't
+        // drag). The drag keeps where the end really is (app.js dragSetEnd).
+        const u = k === 'l' ? Math.max(g.u0, Math.min(GRIP_IN, mid)) : Math.min(g.u1, Math.max(S - GRIP_IN, mid));
+        const p = g.at(u);
         return `<g class="cv-setend${on}" data-setend="${esc(sp.s.id)}|${k}" data-set="${esc(sp.s.id)}"><g transform="${local(p)}"><rect class="cv-setend-hit" x="-6" y="${f(p.top)}" width="12" height="${f(p.bot - p.top)}"/>` +
           `<rect class="cv-setend-grip" x="-2" y="${f((p.top + p.bot) / 2 - 8)}" width="4" height="16" rx="2"/></g></g>`;
       }).join('');
@@ -1889,7 +1894,7 @@
   }
   function boxFront(it, opts, Lo, hatch) {
     const sz = it.sz, x = it.x, w = it.w;
-    let o = (it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) : '') + breakMark(it) + (it.b.kind === 'set' ? setEnds(it, opts) + badges(it, opts) : '');
+    let o = (it.b.kind === 'set' ? setAreas(it, opts) + holders(it, opts, hatch) : '') + breakMark(it) + (it.b.kind === 'set' ? badges(it, opts) : '');
     // A stack (wires in no set) is dragged by a clear grab over each row's run.
     if (it.b.kind !== 'set' && !opts.sheet && !(it.path && it.path.routed)) sz.rows.forEach((r, i) => {
       if (r.w) o += `<rect class="cv-grab" x="${f(x)}" y="${f(wireYAt(it, i) - G.BROW + 3)}" width="${f(w)}" height="${G.BROW}"/>`;
@@ -1930,11 +1935,13 @@
     const hatch = opts.sheet ? 'lm-braid-sheet' : 'lm-braid-canvas';
     let backs = h.sets.some(st => st.shield) ? `<defs><pattern id="${hatch}" width="7.5" height="7.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
       `<path class="cv-braid-line" d="M3.75 0V7.5M0 3.75H7.5"/></pattern></defs>` : '';
-    let wires = '', overs = '', fronts = '', ends = '', labels = '';
+    let wires = '', overs = '', fronts = '', ends = '', labels = '', grips = '';
     Lo.items.forEach(it => {
       if (it.kind === 'box') {
         if (it.b.kind === 'set' || it.b.wires.length > 1) backs += boxBack(it, opts);
         fronts += `<g${fx ? ` class="cv-item${fxCls(it, opts)}"` : ''} data-item="${esc(it.key)}"${fxStyle(it, opts)}>${boxFront(it, opts, Lo, hatch)}</g>`;
+        // Set end grips go over everything but notes (over the connectors and pin dots they may sit by).
+        if (it.b.kind === 'set') grips += setEnds(it, opts);
       }
       else if (it.kind === 'conn') ends += connSvg(h, it, opts, Lo);
       else if (it.kind === 'splice') ends += spliceSvg(it, opts, Lo);
@@ -1987,7 +1994,7 @@
       });
     });
     const notes = (h.callouts || []).map(c => noteSvg(c, Lo, opts)).join('');
-    return { svg: backs + wires + overs + runs + fronts + ends + labels + dots + notes, box: Lo.box, layout: Lo };
+    return { svg: backs + wires + overs + runs + fronts + ends + labels + dots + grips + notes, box: Lo.box, layout: Lo };
   }
 
   // A set's badge as drawn (its spot, its dot, and where along the set that is), for dragging it.
