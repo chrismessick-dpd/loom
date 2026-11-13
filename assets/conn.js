@@ -29,12 +29,14 @@
   // the same scale, but no run longer than MAX_RUN; a longer one gets a break (BREAK_W wide). A run
   // with no length is NOMINAL long. Inside a box, wires fan from their pins to their rows over FAN.
   const MIN_RUN = 170, MAX_RUN = 900, NOMINAL = 220, BREAK_W = 26, FAN = 40;
-  // A shield's braid and a cable's sheath reach SET_R above their first wire and below their last,
-  // snug round the wires; a cable is as thick as a shield (Chris, 2026-11-07). A set holding sets
-  // reaches 3 past them, and a bundle keeps room for its lacing knots (BUNDLE_R).
+  // A shield's braid and a cable's sheath reach SHIELD_R and CABLE_R above their first wire and
+  // below their last, snug round the wires (Chris, 2026-11-13: a cable as thin as it can be, growing
+  // only with its wires). A set holding a shield, cable, or bundle reaches NEST_GAP past it; a twist
+  // inside has nothing drawn round it, so it adds nothing. A bundle keeps room for its lacing knots
+  // (BUNDLE_R). SET_R is the least a box's outermost set keeps for its layout (sz.R0: routes, badges).
   // A shield's braid is snug on its wires (Chris): their centers reach the twist's outer rows, and a
   // wire is drawn about 5 wide on the canvas, so 2.5 + 1.5 past their centers.
-  const SET_R = 6, BUNDLE_R = 12, SHIELD_R = 4;
+  const SET_R = 6, BUNDLE_R = 12, SHIELD_R = 4, CABLE_R = 4, NEST_GAP = 3;
   // A cable packs its wires PACK apart, edges touching (Chris, 2026-11-07), so its sheath is as thick
   // as its conductors need: SET_R past its outer wires. They fan in to it from grid spacing and back
   // out over fanLen, and its box keeps LABEL_PAD either side of its wires' labels after the fan-out.
@@ -281,7 +283,7 @@
       const kids = st.sets.map(id => M.set(h, id)).filter(Boolean).map(c => unit(c, depth + 1)).filter(u => u.rows.length);
       parts = parts.concat(kids).sort(byKey);
       const height = kids.length ? 1 + Math.max(...kids.map(u => u.height)) : 0;
-      const R = Math.max(st.bundle ? BUNDLE_R : st.shield ? SHIELD_R : SET_R, ...kids.map(u => u.R + 3));
+      const R = Math.max(st.bundle ? BUNDLE_R : st.shield ? SHIELD_R : st.cable ? CABLE_R : SET_R, ...kids.filter(u => hasEnds(u.spans[0].s)).map(u => u.R + NEST_GAP));
       const rows = [], spans = [];
       let prev = null;
       parts.forEach(pt => {
@@ -297,9 +299,10 @@
       return { kind: 'set', rows, spans, height, R, key: mean(live.map(r => key(r.w))), no: Math.min(...live.map(r => r.w.no)) };
     }
     const u = unit(b.set, 0), root = u.spans[0];
-    // The outermost set has the box to itself; a bundle's lacing keeps BUNDLE_R.
-    root.R = Math.max(b.set.bundle ? BUNDLE_R : SET_R, root.R);
-    sz.rows = u.rows; sz.spans = u.spans; sz.R0 = root.R;
+    // The outermost set has the box to itself; a bundle's lacing keeps BUNDLE_R. Its drawing keeps
+    // its own R (a cable's sheath snug on its wires); the layout keeps at least SET_R.
+    if (b.set.bundle) root.R = Math.max(BUNDLE_R, root.R);
+    sz.rows = u.rows; sz.spans = u.spans; sz.R0 = Math.max(SET_R, root.R);
     // The first wire stays 23 below the box's top (where dragged positions expect it) unless the
     // outermost set reaches higher than that.
     sz.port0 = Math.max(6 + G.BROW - 3, root.R + 4);
@@ -848,7 +851,9 @@
       for (let i = sp.i0; i <= sp.i1; i++) {
         const k = kids.find(o => o.i0 <= i && o.i1 >= i);
         if (k) {
-          if (k.i0 === i) { const L = packLayout(it, k), offs = [...L.values()]; items.push({ L, half: (offs.length ? Math.max(...offs.map(Math.abs)) : 0) + k.R }); }
+          // A twist packs as its wires do (nothing is drawn round it); a shield, cable, or bundle as
+          // wide as its band.
+          if (k.i0 === i) { const L = packLayout(it, k), offs = [...L.values()]; items.push({ L, half: (offs.length ? Math.max(...offs.map(Math.abs)) : 0) + (hasEnds(k.s) ? k.R : PACK / 2) }); }
           continue;
         }
         const r = it.sz.rows[i];
@@ -886,14 +891,22 @@
       it.sz.spans.slice().sort((x, y) => y.depth - x.depth).forEach(sp => {
         const a = it.sz.arc.get(sp.s.id);
         if (!rides(sp.s) || !a) return;
-        const k = { sp, a, c: (rowY(it, sp.i0) + rowY(it, sp.i1)) / 2, F: fanLen(sp), f: packFn(it, sp) };
-        it.sz.rows.slice(sp.i0, sp.i1 + 1).forEach(r => { if (r.w) { if (!chainOf.has(r.w.id)) chainOf.set(r.w.id, []); chainOf.get(r.w.id).push(k); } });
+        // o: each wire's packed offset from the set's middle (its own slot, from its row).
+        const k = { sp, a, it, c: (rowY(it, sp.i0) + rowY(it, sp.i1)) / 2, F: fanLen(sp), f: packFn(it, sp), o: new Map() };
+        it.sz.rows.slice(sp.i0, sp.i1 + 1).forEach((r, j) => { if (r.w) { k.o.set(r.w.id, k.f(rowY(it, sp.i0 + j))); if (!chainOf.has(r.w.id)) chainOf.set(r.w.id, []); chainOf.get(r.w.id).push(k); } });
       });
     });
     const cover = (k, u) => (u < k.a.u0 ? smooth((u - k.a.u0 + k.F) / k.F) : u > k.a.u1 ? smooth((k.a.u1 + k.F - u) / k.F) : 1);
+    // Inside a set a wire sits in its own slot (k.o), plus how far a twist's helix swings it off its
+    // plain height, scaled as its rows are packed. Its slot never follows its pins' spacing, which on a
+    // route eases from one end's to the other's (Chris, 2026-11-13: a cable on spread pins was fat
+    // in one stretch and thin in the rest).
     function packAt(w, u, base) {
       let y = base;
-      (chainOf.get(w.id) || []).forEach(k => { const m = cover(k, u); if (m > 0) y += (k.c + k.f(base) - y) * m; });
+      (chainOf.get(w.id) || []).forEach(k => {
+        const m = cover(k, u);
+        if (m > 0) y += (k.c + k.o.get(w.id) + (base - rowBase(w, k.it, u)) * PACK / PITCH - y) * m;
+      });
       return y;
     }
     // A boxed wire's point at u along its box's path: its packed height, as an offset across it.

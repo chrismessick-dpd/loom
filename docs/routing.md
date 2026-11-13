@@ -124,6 +124,17 @@ otherwise"); maybe a right-click choice of walk around, push, or ignore.
   steps ring connectors only and are unaffected.
 - Tests 34 (the shaped-route test also adds a second wire to a shaped pair).
 
+## Shields and cables (2026-11-13, Chris)
+
+- **A shield's end at the pins drags.** A set that runs to its wires' pins has its end grip on them,
+  under the pins' wide grab circles, so dragging a shield's end pulled a wire off its pin instead. Now
+  the grip wins there, and only the pin's own dot (within 3.4 units, at least 4 px) drags the wire's
+  end (`onDown` in `app.js`, `gripUnder`).
+- **A cable is one thickness.** Wires inside a set pack to their own slots, not to their pins' spacing
+  (conn.js `packAt`, `k.o`), and a twist inside a cable adds no margin. A cable's sheath is `CABLE_R`
+  (4) past its outer wires, so its thickness is its wire count times `PACK` (5) plus 8: 23 for four
+  wires, where a four-wire cable holding a twisted pair was 45 and wider where its pins were spread.
+
 ## What it does
 
 - **Every group of wires travels on a route.** A group is what conn.js calls a box: an outermost set

@@ -692,7 +692,7 @@ links to it so far. Before every commit:
     (`lacing`), the sheath for a cable, and a crosshatch braid for a shield (`holders`; the braid
     goes over the sheath). The pattern ids are `lm-braid-canvas` and `lm-braid-sheet`. A twisted
     set's wires twist inside its stretch. The box's label table is gone. A shield's braid and a
-    cable's sheath reaches `SET_R` (6) past its outer wires, a shield's braid `SHIELD_R` (4: snug, about 1.5 outside its wires' drawn edges), and a
+    cable's sheath reaches `CABLE_R` (4, snug like a shield; was `SET_R` 6 until 2026-11-13, Chris: thinner) past its outer wires, a shield's braid `SHIELD_R` (4: snug, about 1.5 outside its wires' drawn edges), and a
     bundle `BUNDLE_R` (12). On the canvas a shield is metallic (Chris, 2026-11-07): its outline (1.2)
     and its 7.5-unit crosshatch in one steel gray, `#b4b9bf`, with nothing under them; selected, its
     outline goes to the selection blue.
@@ -702,7 +702,7 @@ links to it so far. Before every commit:
     A set nested in a packing set packs at its real width, its wires plus its `R` each side, so its
     neighbors sit against its outside (Chris: a snug shield; `packLayout`, `packFn`).
     Across a cable's stretch its wires run `PACK` (5) apart, edges touching, round its middle, so the sheath is as
-    thick as its conductors need (`SET_R` past the outer ones, more when it holds sets). Before it
+    thick as its conductors need (`CABLE_R` past the outer ones; a shield, cable, or bundle inside adds its band plus `NEST_GAP`, 3, and a twist inside adds nothing, since nothing is drawn round it). A box's layout still keeps at least `SET_R` (`sz.R0`: routes, badges). Each wire packs to its own slot (`k.o`), never to its pins' spacing: on a route that eases from one end's spacing to the other's, so a cable from spread pins (1, 2, 7, 8) used to be fat in one stretch and thin in the rest (Chris, 2026-11-13). Before it
     they fan in from grid spacing and after it back out, each over `fanLen` (24 to 90, longer for
     more wires; a smoothstep, `cover`). A cable inside another packs with it (`packSpans`; nested cables can't be made any more).
     - The box makes room (`sizeBox`): the fan-in before the cable (in `lx`, so the frame and a
