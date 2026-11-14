@@ -795,15 +795,18 @@
       };
       byEnd.forEach((list, x) => {
         const gx = x.g, dx = [gx.dx, gx.dy], px = gx.dx ? [0, 1] : [1, 0];
+        const bs = sizeOf(x.b), R = { x0: x.b.x * K, y0: x.b.y * K, x1: (x.b.x + bs.W) * K, y1: (x.b.y + bs.H) * K };
         list.sort((p, q) => dest(p) - dest(q) || keyOf(p) - keyOf(q));
         list.forEach((o, j) => {
           const o0 = ghost ? 0 : (j - (list.length - 1) / 2) * DW.pitch, S0 = { x: gx.ex + px[0] * o0, y: gx.ey + px[1] * o0 };
           const E = { x: S0.x + dx[0] * DW.trunk, y: S0.y + dx[1] * DW.trunk }, far = x === D.at[0] ? DW.fan / 2 : DW.fan;
           const head = `M${f1(S0.x)} ${f1(S0.y)}L${f1(E.x)} ${f1(E.y)}`;
           pts.push(S0, E);
-          if (o.ghostT) { const Q = o.ghostT.N; push(o, head + curve(E, dx, Q, d, far, DW.fan / 2), Q, o.ghostT); return; }
-          if (o.T) { const { t, Q } = slot(o); push(o, head + curve(E, dx, Q, d, far, DW.fan / 2), Q, t); return; }
-          const J = jpos.get(o.j); push(o, head + curve(E, dx, J, d, far * 0.6, DW.fan * 0.2), J, null);
+          // The curve, or, when it would cross its own block, a way round the block (Chris, 2026-11-13).
+          const to = (Q, l1, l2) => { const rb = roundBlock(E, dx, Q, d, l1, l2, R, px, o0, ghost ? 1 : list.length); if (!rb) return curve(E, dx, Q, d, l1, l2); pts.push(...rb.pts); return rb.d; };
+          if (o.ghostT) { const Q = o.ghostT.N; push(o, head + to(Q, far, DW.fan / 2), Q, o.ghostT); return; }
+          if (o.T) { const { t, Q } = slot(o); push(o, head + to(Q, far, DW.fan / 2), Q, t); return; }
+          const J = jpos.get(o.j); push(o, head + to(J, far * 0.6, DW.fan * 0.2), J, null);
         });
       });
       segs.filter(o => o.jfrom).forEach(o => {
@@ -823,6 +826,50 @@
     });
     devMemo.set(s.id, { key, out });
     return out;
+  }
+  // A device harness's wire from a plugged connector to its far end (E, leaving along a; Q, arriving along q):
+  // null when its curve stays clear of the connector's block R, else a path round the block (Chris, 2026-11-13:
+  // a harness plugged into two connectors of one board had its far ends laid out off the first, and the second's
+  // wires ran across the board). It leaves along a, turns at the corners of the block grown by how far out E
+  // is, the shorter way round, and comes in to Q along q. Wires of one trunk nest: the one nearest the way it
+  // turns runs innermost (o0 is its offset along px, n the trunk's wire count). Returns { d, pts }.
+  function roundBlock(E, a, Q, q, l1, l2, R, px, o0, n) {
+    const c1 = { x: E.x + a[0] * l1, y: E.y + a[1] * l1 }, c2 = { x: Q.x - q[0] * l2, y: Q.y - q[1] * l2 }, m = 2;
+    let hit = false;
+    for (let i = 1; i < 32 && !hit; i++) {
+      const t = i / 32, u = 1 - t, x = u * u * u * E.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * Q.x, y = u * u * u * E.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * Q.y;
+      hit = x > R.x0 - m && x < R.x1 + m && y > R.y0 - m && y < R.y1 + m;
+    }
+    if (!hit) return null;
+    const sE = a[1] < 0 ? 0 : a[0] > 0 ? 1 : a[1] > 0 ? 2 : 3;
+    const out = sE === 0 ? R.y0 - E.y : sE === 1 ? E.x - R.x1 : sE === 2 ? E.y - R.y1 : R.x0 - E.x;
+    const Qa = { x: Q.x - q[0] * 24, y: Q.y - q[1] * 24 };
+    const way = pad => {
+      const G = { x0: R.x0 - pad, y0: R.y0 - pad, x1: R.x1 + pad, y1: R.y1 + pad };
+      const C = [{ x: G.x0, y: G.y0 }, { x: G.x1, y: G.y0 }, { x: G.x1, y: G.y1 }, { x: G.x0, y: G.y1 }];
+      const dq = [G.y0 - Qa.y, Qa.x - G.x1, Qa.y - G.y1, G.x0 - Qa.x], sQ = dq.indexOf(Math.max(...dq));
+      if (sQ === sE) return null;
+      const cw = [], ccw = [];
+      for (let i = sE; i !== sQ;) { i = (i + 1) % 4; cw.push(C[i]); }
+      for (let i = sE; i !== sQ; i = (i + 3) % 4) ccw.push(C[i]);
+      const E1 = { x: E.x + a[0] * Math.max(0, pad - out), y: E.y + a[1] * Math.max(0, pad - out) };
+      const len = l => { const P = [E1, ...l, Qa]; let s = 0; for (let i = 1; i < P.length; i++) s += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); return s; };
+      return { E1, list: len(cw) <= len(ccw) ? cw : ccw };
+    };
+    const base = Math.max(out, 16), w0 = way(base);
+    if (!w0) return null;
+    const turn = (w0.list[0].x - E.x) * px[0] + (w0.list[0].y - E.y) * px[1];
+    const k = Math.round(turn > 0 ? (n - 1) / 2 - o0 / DW.pitch : (n - 1) / 2 + o0 / DW.pitch);
+    const w = way(base + Math.max(0, k) * DW.pitch) || w0;
+    const P = [E, w.E1, ...w.list, Qa, Q].filter((p, i, l) => !i || Math.hypot(p.x - l[i - 1].x, p.y - l[i - 1].y) > 0.5);
+    const f1 = v => v.toFixed(1);
+    let s = '';
+    for (let i = 1; i < P.length - 1; i++) {
+      const A = P[i - 1], B = P[i], N = P[i + 1], la = Math.hypot(B.x - A.x, B.y - A.y), lb = Math.hypot(N.x - B.x, N.y - B.y), r = Math.min(18, la / 2, lb / 2);
+      s += `L${f1(B.x + (A.x - B.x) / la * r)} ${f1(B.y + (A.y - B.y) / la * r)}Q${f1(B.x)} ${f1(B.y)} ${f1(B.x + (N.x - B.x) / lb * r)} ${f1(B.y + (N.y - B.y) / lb * r)}`;
+    }
+    s += `L${f1(Q.x)} ${f1(Q.y)}`;
+    return { d: s, pts: P };
   }
   // What a system's drawing covers, mm: its blocks and its device harness drawings.
   function drawnExtent(s) {
@@ -1476,7 +1523,20 @@
   const snapU = v => { const g = gridOf(cur()) * K; return g ? Math.round(v / g) * g : v; };
   const stepU = () => gridOf(cur()) * K;
   let drag = null, lastLo = null;
-  function redraw(svg, view) { lastLo = layout(cur(), view); svg.innerHTML = svgHtml(cur(), lastLo); svg.classList.toggle('wiring', !!S.pending); }
+  // A mini view's frame is worked out when the system resolves; the placed system's drawing can change after
+  // (its harnesses load, Cable labels add caption lanes), and a stale frame spilled the drawing over the block's
+  // header (Chris, 2026-11-13). Before each draw, a block whose frame no longer fits is resolved again.
+  function freshMinis(s, depth) {
+    s.blocks.forEach(b => {
+      const ch = b.kind === 'system' ? childOf(b) : null;
+      if (!ch) return;
+      if (depth < 3) freshMinis(ch, depth + 1);
+      const mf = miniFrame(b, ch), m = b.mini, near = (p, q) => Math.abs(p - q) < 1e-6;
+      const same = mf && m ? ['f', 'ox', 'oy'].every(k => near(mf[k], m[k])) && ['x', 'y', 'w', 'h'].every(k => near(mf.E[k], m.E[k])) : !mf === !m;
+      if (!same) resolveBlock(b, [s.id]);
+    });
+  }
+  function redraw(svg, view) { freshMinis(cur(), 0); lastLo = layout(cur(), view); svg.innerHTML = svgHtml(cur(), lastLo); svg.classList.toggle('wiring', !!S.pending); }
   const tabAt = e => { const el = document.elementFromPoint(e.clientX, e.clientY); return el && el.closest && el.closest('#sys-canvas [data-conn]'); };
   const tabRef = el => ({ block: el.dataset.block, conn: el.dataset.conn });
   const sameTab = (a, b) => !!a && !!b && a.block === b.block && a.conn === b.conn;
@@ -2127,7 +2187,7 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent,
+    externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0),
     tab: () => S.tab, setTab, setFocus, overviewSel, focused: () => S.focus, root: () => S.root,
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, saveFile, openDoc };
 })(window.LM = window.LM || {});

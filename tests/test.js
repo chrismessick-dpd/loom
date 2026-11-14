@@ -1039,6 +1039,37 @@
     ok(D3.boxes.some(b => b.label === 'Pump motor'), 'the motor past the splice is drawn');
     eq(D3.paths.length, 5, 'both halves of the spliced wire are drawn');
   });
+  test('system: a device harness plugged into two connectors of one board goes round the board, not across it', () => {
+    const { Y, s, a, c, h } = sysFixture();
+    c.exit = 'right';
+    const c2 = { id: 'c2', ref: 'J2', pins: [{ pin: '1' }, { pin: '2' }], x: 2, y: Math.max(4, a.h / 2), exit: 'left', used: true, placed: 'hand' };
+    a.conns.push(c2);
+    const [p1, p2] = h.nodes.filter(M.isConn);
+    p2.atDevice = true; p2.name = 'Fan motor';
+    const p3 = M.addConnector(h, 0, 300, { family: 'generic-rect', pins: 2 });
+    M.addWire(h, { node: p1.id, pin: '1' }, { node: p2.id, pin: '1' }, { color: 'RD' });
+    M.addWire(h, { node: p3.id, pin: '1' }, { node: p2.id, pin: '2' }, { color: 'YE' });
+    M.addWire(h, { node: p3.id, pin: '2' }, { node: p2.id, pin: '3' }, { color: 'BK' });
+    s.cables.push({ id: 'k1', kind: 'harness', harness: h.id, ends: { [p1.id]: { block: a.id, conn: c.id }, [p3.id]: { block: a.id, conn: c2.id } }, lengthMm: null });
+    const get = id => (id === h.id ? h : null), D = Y.devLayout(s, get).get('k1');
+    ok(D && D.boxes[0].x > (a.x + a.w) * 4, 'the motor is laid out off J1, past the board’s right side');
+    const R = { x0: a.x * 4, y0: a.y * 4, x1: (a.x + a.w) * 4, y1: (a.y + a.h) * 4 };
+    const inside = d => { const n = d.match(/-?\d+(\.\d+)?/g).map(Number); for (let i = 2; i + 1 < n.length; i += 2) if (n[i] > R.x0 + 1 && n[i] < R.x1 - 1 && n[i + 1] > R.y0 + 1 && n[i + 1] < R.y1 - 1) return true; return false; };
+    eq(D.paths.filter(p => /Q/.test(p.d)).length, 2, 'J2’s two wires go round, J1’s doesn’t need to');
+    ok(!D.paths.some(p => inside(p.d)), 'no wire has a point inside the board');
+  });
+  test('nest: a mini view whose drawing changed since it resolved gets a fresh frame before a draw', () => {
+    const { Y, top, a, sb, done } = nestFixture();
+    try {
+      const w0 = sb.mini.E.w;
+      a.w += 200;
+      eq(sb.mini.E.w, w0, 'stale until something resolves it');
+      Y.freshMinis(top);
+      ok(sb.mini.E.w > w0 + 150, 'the frame fits the wider drawing');
+      const hd = Math.min(46, sb.h * 4 / 2) / 4;
+      ok(sb.mini.oy >= hd, 'and stays under the header');
+    } finally { done(); }
+  });
   test('nest: a placed system’s connectors sit where they are in its mini view, and follow it', () => {
     const { Y, pump, a, j1, j2, sb, done } = nestFixture();
     try {

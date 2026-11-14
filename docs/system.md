@@ -141,6 +141,14 @@ with the shared-net wires for two); the old harness stays when a harness is made
 New harness here and Plug in a harness… on a connector are unchanged. Right-click a cable for Walk around
 parts, Go behind parts, Reset route, and Remove.
 
+**Straight out of the port** (2026-11-13, Chris: dragging a cable toward a tab that leaves from its top or
+bottom made a loop, and the lead-ins inside a placed system's block couldn't be dragged). A top or bottom exit
+runs a lead-in from the tab to just past its block's edge before the route starts. Drag the level run next to
+that end down (or up) to the tab's height and it sticks there; the end then leaves from the tab's side, toward
+where the route goes, so the cable runs straight out of the port and the lead-in goes (`portLines` in
+`system.js`). The new side is the connector's exit (`c.exit`, a placed system's `b.tabs`), as if picked in
+*Cables leave from*; dragged away again before letting go, the old exit comes back, and one undo reverts both.
+
 ## The idea
 
 A **system** is a second kind of Loom document, beside a harness. It places **blocks** (EE boards,
