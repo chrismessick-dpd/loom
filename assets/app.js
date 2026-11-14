@@ -462,8 +462,8 @@
       return `<div class="side-group"><button class="side-group-head" data-act="toggle-group" data-group="${esc(gkey(k))}"${hold ? ' data-holds-open' : ''} aria-expanded="${open}" title="Client project">` +
         `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>` +
         `<span class="side-group-name">${esc(k || 'No project')}</span><span class="side-group-count">${groups.get(k).length}</span></button>` +
-        (open ? groups.get(k).map(row).join('') : '') + `</div>`;
-    }).join('') : systems.concat(list).map(row).join(''))
+        (open ? groups.get(k).map(h => row(h)).join('') : '') + `</div>`;
+    }).join('') : systems.concat(list).map(h => row(h)).join(''))
       : '<div class="side-empty">No harnesses yet.</div>');
     // Fold or unfold every group: the button in the Harnesses heading, beside New.
     const foldBtn = $('[data-act="fold-groups"]');
