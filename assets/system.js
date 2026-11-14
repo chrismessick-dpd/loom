@@ -1511,7 +1511,7 @@
     return `<div class="sys-crumbs">${parts.concat(tail ? [`<span>${esc(tail)}</span>`] : []).join('<span class="sep">›</span>')}</div>`;
   }
   function listHead(eyebrow, title, sub, crumbs, actions) {
-    return `<div class="page-head lm-head"><div class="page-head-text">${crumbs}<div class="eyebrow">${eyebrow}</div><h1 class="page-title">${esc(title)}</h1>${sub ? `<div class="page-sub">${sub}</div>` : ''}</div>${actions ? `<div class="lm-actions">${actions}</div>` : ''}</div>`;
+    return `<div class="page-head lm-head"><div class="page-head-text">${crumbs}${eyebrow ? `<div class="eyebrow">${eyebrow}</div>` : ''}<h1 class="page-title">${esc(title)}</h1>${sub ? `<div class="page-sub">${sub}</div>` : ''}</div>${actions ? `<div class="lm-actions">${actions}</div>` : ''}</div>`;
   }
   // A harness's analysis (wire lengths), kept until it changes: List redraws on every refresh.
   const ANALYSES = new WeakMap();
@@ -1553,11 +1553,12 @@
   // and the cables in each) or Cables (each cable once). Name over part number; Type and Status always;
   // From / To, Length, and Wires from the filter menu. Mode and columns kept in this browser; folds per session.
   const LIST_COLS = [['ends', 'From / To'], ['length', 'Length'], ['wires', 'Wires']];
+  const LIST_ON = { ends: false, length: false, wires: true };   // to start (Chris, 2026-11-14)
   function listPrefs() {
     let v = {};
     try { v = JSON.parse(localStorage.getItem(NS + 'sysList') || '{}') || {}; } catch (e) { /* storage blocked */ }
     const cols = {};
-    LIST_COLS.forEach(([k]) => { cols[k] = !(v.cols && v.cols[k] === false); });
+    LIST_COLS.forEach(([k]) => { cols[k] = v.cols && typeof v.cols[k] === 'boolean' ? v.cols[k] : LIST_ON[k]; });
     return { mode: v.mode === 'flat' ? 'flat' : 'tree', cols };
   }
   const setListPrefs = p => { try { localStorage.setItem(NS + 'sysList', JSON.stringify(p)); } catch (e) { /* storage blocked */ } };
@@ -1583,9 +1584,9 @@
     };
     const cabRow = (cab, lvl) => {
       const h = harnessOf(cab), st = statusOf(cab, h), k = kindOf(cab), pn = pnOf(h, cab);
-      const title = `<b>${esc(titleOf(cab, h))}</b>` + (h ? drill('harness', h.id, path, 'harness') : '');
+      const title = `<b>${esc(titleOf(cab, h))}</b>`;
       const cells = { ends: `<td>${esc(endsText(cab)) || '<span class="sys-none">—</span>'}</td>`, length: `<td class="num">${cab.lengthMm ? U.fmtLen(cab.lengthMm) : ''}</td>`, wires: `<td class="num">${h ? h.wires.length : ''}</td>` };
-      return `<tr${rowAttr('cable:' + cab.id, 'cab')}>${nameCell(lvl, lvl ? spacer : '', title, esc(pn || NOPN))}<td>${chip(CAB_CHIP[k] || k, 'k-' + k)}</td>` +
+      return `<tr${rowAttr('cable:' + cab.id, 'cab')}>${nameCell(lvl, lvl ? spacer : '', title, esc(pn || NOPN))}<td class="sys-ltype">${chip(CAB_CHIP[k] || k, 'k-' + k)}${h ? drill('harness', h.id, path, 'harness') : ''}</td>` +
         `<td class="sys-lst"><span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}</td>${cols.map(([c]) => cells[c]).join('')}</tr>`;
     };
     let rows = '';
@@ -1596,9 +1597,9 @@
       s.blocks.slice().sort((a, b) => natural(a.ref, b.ref)).forEach(b => {
         const ch = childOf(b), bk = 'b:' + b.id;
         const conns = b.conns.filter(c => pluggedAt(s, b.id, c.id).length || (fitted(c) && c.used)).sort((x, y) => natural(x.ref, y.ref));
-        const name = `<b>${esc(b.ref)} ${esc(ch ? ch.title : b.name || '')}</b>` + (ch ? drill('system', ch.id, path + '>' + ch.id, 'system') : '');
+        const name = `<b>${esc(b.ref)} ${esc(ch ? ch.title : b.name || '')}</b>`;
         const sub = `${conns.length} of ${b.conns.length} connector${b.conns.length === 1 ? '' : 's'} used${b.source ? ' · Signoff EE' : ''}`;
-        rows += `<tr${rowAttr('block:' + b.id, 'blk')}>${nameCell(0, conns.length ? caret(bk) : spacer, name, sub)}<td>${chip(b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board')}</td><td></td>${blank}</tr>`;
+        rows += `<tr${rowAttr('block:' + b.id, 'blk')}>${nameCell(0, conns.length ? caret(bk) : spacer, name, sub)}<td class="sys-ltype">${chip(b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board')}${ch ? drill('system', ch.id, path + '>' + ch.id, 'system') : ''}</td><td></td>${blank}</tr>`;
         if (closed.has(bk)) return;
         conns.forEach(c => {
           const at = pluggedAt(s, b.id, c.id), ck = `c:${b.id}:${c.id}`;
@@ -1619,20 +1620,20 @@
     const menu = S.listColsOpen ? `<div class="sys-lmenu" role="menu"><div class="sys-lmenu-h">Columns</div>${LIST_COLS.map(([k, l]) => `<label class="sys-lopt"><input type="checkbox" data-slcol="${k}"${pr.cols[k] ? ' checked' : ''}><span>${l}</span></label>`).join('')}<p class="sys-lmenu-note">Name, Type, and Status always show.</p></div>` : '';
     const tools = `<div class="sys-ltools"><div class="seg" role="tablist">${[['tree', 'Hierarchy', 'Blocks, their connectors, and the cables in each'], ['flat', 'Cables', 'Just the cables and harnesses, each once']].map(([m, l, tip]) => `<button class="${pr.mode === m ? 'on' : ''}" data-sact="list-mode" data-mode="${m}" title="${tip}">${l}</button>`).join('')}</div>` +
       `<div class="sys-lcols"><button class="icon-btn${S.listColsOpen ? ' on' : ''}" data-sact="list-cols" title="Choose columns" aria-label="Choose columns" aria-expanded="${S.listColsOpen ? 'true' : 'false'}">${FUNNEL}</button>${menu}</div></div>`;
-    return `<div class="page wide sys-wpage">` + listHead('List', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable${nCab === 1 ? '' : 's'}`, crumbsHtml(path)) + tools +
+    return `<div class="page wide sys-wpage">` + listHead('', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable${nCab === 1 ? '' : 's'}`, crumbsHtml(path)) + tools +
       `<div class="card table-wrap"><table class="table compact sys-wtable sys-ltable">${head}<tbody>${rows || `<tr><td colspan="${nc}" class="pc-muted">${pr.mode === 'flat' ? 'No cables yet.' : 'Nothing placed yet.'}</td></tr>`}</tbody></table></div>` +
       `<p class="f-hint">Click a row to see it in the panel. ${pr.mode === 'flat' ? 'Each cable is listed once.' : 'A cable is listed under every connector it plugs into.'} The › beside a placed system or harness lists just it, a harness with its ends and wires.</p></div>`;
   }
   function harnessListHtml(f) {
     const h = A.harness(f.id), s = S.store[focusSys(f)];
-    if (!h) return `<div class="page wide sys-wpage">${listHead('List', 'Missing harness', '', crumbsHtml(f.path))}</div>`;
+    if (!h) return `<div class="page wide sys-wpage">${listHead('', 'Missing harness', '', crumbsHtml(f.path))}</div>`;
     const A0 = an(h), cabs = s ? s.cables.filter(c => kindOf(c) === 'harness' && c.harness === h.id) : [];
     const ends = h.nodes.filter(M.isConn).map(n => {
       const where = n.atDevice ? 'Its device' : cabs.map(c => endName(s, c.ends[n.id])).filter(Boolean).join(', ') || 'Not plugged in here';
       return `<tr${rowAttr(`end:${h.id}:${n.id}`, 'end')}>${item(0, `<span class="mono">${esc(n.ref)}</span> ${esc(n.name || '')} ${typeHtml(endType(n))}`)}<td>${M.pinList(n).length} pins</td><td colspan="5">${esc(where)}</td></tr>`;
     }).join('');
     const wires = M.fromTo(h, A0).map(r => `<tr${rowAttr(`wire:${h.id}:${r.wire.id}:`, 'wire')}>${item(0, `<span class="mono">${esc(r.name)}</span>`)}<td class="mono">${esc(r.from)}</td><td class="mono">${esc(r.to)}</td><td>${esc(r.signal)}</td><td>${swatchHtml(r.wire.color)}</td><td>${esc(gaugeMetric(r.gauge)) || '<span class="sys-none">—</span>'}</td><td class="num">${U.fmtLen(r.length)}</td></tr>`).join('');
-    return `<div class="page wide sys-wpage">` + listHead('List', h.title, `Loom harness<span class="sep">·</span>${esc(h.pn || NOPN)}<span class="sep">·</span>${h.nodes.filter(M.isConn).length} ends<span class="sep">·</span>${h.wires.length} wire${h.wires.length === 1 ? '' : 's'}`, crumbsHtml(f.path, h.title),
+    return `<div class="page wide sys-wpage">` + listHead('', h.title, `Loom harness<span class="sep">·</span>${esc(h.pn || NOPN)}<span class="sep">·</span>${h.nodes.filter(M.isConn).length} ends<span class="sep">·</span>${h.wires.length} wire${h.wires.length === 1 ? '' : 's'}`, crumbsHtml(f.path, h.title),
       `<button class="btn btn-primary" data-sact="open-harness-id" data-harness="${esc(h.id)}">Open in Loom</button>`) +
       `<h4 class="sys-h">Ends</h4><div class="card table-wrap"><table class="table compact sys-wtable"><thead><tr><th>End</th><th>Pins</th><th colspan="5">Plugs into, in ${esc(s ? s.title : 'this system')}</th></tr></thead><tbody>${ends || '<tr><td colspan="7" class="pc-muted">No ends.</td></tr>'}</tbody></table></div>` +
       `<h4 class="sys-h">Wires</h4><div class="card table-wrap"><table class="table compact sys-wtable"><thead><tr><th>Wire</th><th>From</th><th>To</th><th>Signal</th><th>Color</th><th>Gauge</th><th class="num">Length</th></tr></thead><tbody>${wires || '<tr><td colspan="7" class="pc-muted">No wires yet.</td></tr>'}</tbody></table></div></div>`;

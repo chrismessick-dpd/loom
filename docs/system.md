@@ -109,7 +109,8 @@ keeps listing the pick.
   plugged into each (a cable under every connector it plugs into; carets fold, per session in `S.listClosed`);
   Cables lists each cable once, by name. A cable's row is its name with its part number (or "no P/N")
   underneath, a Type chip (Harness, Purchased, Generic), and its Status. The funnel button opens a Columns
-  menu: From / To (its ends, "A1 J2 → A2 J1"), Length, and Wires, all on to start. Mode and columns are kept
+  menu: From / To (its ends, "A1 J2 → A2 J1"), Length, and Wires; only Wires is on to start. The › that lists a
+  harness or placed system on its own sits right of the Type chip, and no "List" eyebrow sits over the title. Mode and columns are kept
   in this browser (`<ns>sysList`). Harness wires no longer show in the system list. For a harness (its ›):
   its ends, where they plug in, and its from/to list, as before.
   A click on any row selects it and shows it in the panel: a block, connector, or cable gets its usual panel,

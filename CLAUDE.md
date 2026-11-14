@@ -24,7 +24,7 @@ links to it so far. Before every commit:
 
 - **System List like PL's (2026-11-14, Chris: the List was busy).** A Hierarchy | Cables switch: blocks,
   connectors, and cables folding (the default), or just the cables, each once. Name over part number, Type chip,
-  Status, and a funnel menu for From / To, Length, and Wires (`listHtml`, `listPrefs`, `<ns>sysList`). Harness
+  Status (the › right of the chip), and a funnel menu for From / To, Length (both off to start), and Wires (`listHtml`, `listPrefs`, `<ns>sysList`). Harness
   wires show only in a harness's own list (its ›). See `docs/system.md`, *Overview, Detail, and List*.
 - **Exits face their cable (2026-11-13, Chris: hairpins, a tab leaving away from its cable and doubling back).** A
   tab with no exit picked leaves from the nearest edge that doesn't face away from its cable's other ends
