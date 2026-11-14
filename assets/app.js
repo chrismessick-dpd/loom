@@ -478,11 +478,13 @@
     // build hash (EE keeps that off the sidebar).
     const pill = $('#sync-pill');
     if (!pill) return;
-    const last = R && R.lastSync(), login = R && R.login();
+    // Before the first sync after a sign-in, the sign-in itself says who it is. Never the data repo's
+    // owner: that read as the wrong account (Chris, 2026-11-13).
+    const last = R && R.lastSync(), login = (R && R.login()) || (canSync() && window.SignoffAuth ? window.SignoffAuth.status().login : '');
     let tone, title, sub, tip, who = false;
     if (DEMO) { tone = 'idle'; title = 'Demo mode'; sub = 'Changes stay in this browser'; tip = 'Demo harnesses never leave this browser.'; }
     else if (!canSync()) { tone = 'idle'; title = 'Local only'; sub = 'Click to sign in'; tip = 'Sign in to GitHub to keep harnesses in Loom’s private repo.'; }
-    else if (remote.busy) { tone = 'busy'; title = 'Syncing…'; sub = login ? '@' + login : R.config().owner; who = !!login; tip = ''; }
+    else if (remote.busy) { tone = 'busy'; title = 'Syncing…'; sub = login ? '@' + login : 'Checking your token'; who = !!login; tip = ''; }
     else if (remote.error) { tone = 'error'; title = 'Sync failed'; sub = remote.error; tip = remote.error; }
     else if (dirty.size) { tone = 'warn'; title = `${dirty.size} unsynced change${dirty.size === 1 ? '' : 's'}`; sub = login ? '@' + login : 'Click to sync'; who = !!login; tip = 'Changed since the last sync.'; }
     else if (last && last.errors && last.errors.length) { tone = 'warn'; title = 'Synced with problems'; sub = last.errors[0].message; tip = last.errors.map(e => e.message).join('\n'); }
