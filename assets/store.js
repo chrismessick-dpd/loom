@@ -163,22 +163,37 @@
       else delete cache[pathOf(id)];
     });
   }
-  // The base stamp of a local copy: its own syncBase. A copy kept before syncBase existed (2026-11-14)
-  // falls back to the kept copy of what the last sync left (`base` for harnesses, IndexedDB for systems),
-  // which a sync wrote with the hash it recorded.
+  // The base stamp of a local copy: its own syncBase, or '' (never synced here, or kept before syncBase
+  // existed, 2026-11-14). Only a copy's own base is a base: the kept copies of the last sync (`base`,
+  // IndexedDB) are shared by every tab, so one tab's newer copy would make another tab's older copy look
+  // edited on top of it, and push it over the newer file.
   function baseOf(kind, d) {
-    if (!d) return '';
-    if (typeof d[BASE] === 'string' && d[BASE]) return d[BASE];
-    const kept = kind === 'system' ? sysStamps[d.id] : (read('base', {})[d.id] && stampKey(read('base', {})[d.id]));
-    return kept || '';
+    return d && typeof d[BASE] === 'string' && d[BASE] ? d[BASE] : '';
+  }
+  // The stamp of the kept copy of what the last sync left (harnesses: localStorage `base`, read once while
+  // it doesn't change; systems: IndexedDB, read at start).
+  let keptMemo = { raw: null, map: {} };
+  function keptStamp(kind, id) {
+    if (kind === 'system') return sysStamps[id] || '';
+    let raw = null;
+    try { raw = localStorage.getItem(NS + 'base'); } catch (e) { raw = null; }
+    if (raw !== keptMemo.raw) {
+      const map = {};
+      try { const all = JSON.parse(raw || '{}') || {}; Object.keys(all).forEach(k => { map[k] = stampKey(all[k]); }); } catch (e) { /* none */ }
+      keptMemo = { raw, map };
+    }
+    return keptMemo.map[id] || '';
   }
   // Whether this browser has edits to a document that its last sync didn't take (never synced counts).
-  // With a base: its stamp moved off it. Without one: its bytes differ from what the last sync recorded,
-  // unless it was stamped before that sync finished (Signoff EE's `since`).
+  // With a base: its stamp moved off it. Without one (a copy from before syncBase): unedited when its stamp
+  // is the kept copy's, or its bytes are what the last sync recorded, or it was stamped before that sync
+  // finished (Signoff EE's `since`); else edited, with no base, so the merge makes a copy, never an overwrite.
   function edited(kind, d) {
     if (!d) return false;
     const b = baseOf(kind, d);
     if (b) return stampKey(d) !== b;
+    const kept = keptStamp(kind, d.id);
+    if (kept && kept === stampKey(d)) return false;
     const synced = read(kind === 'system' ? 'sysSynced' : 'synced', {})[d.id];
     if (!synced) return true;
     if (synced === hash(d)) return false;
@@ -340,6 +355,9 @@
     if (!tok) { const e = new Error('Not signed in'); e.code = 'signin'; throw e; }
     const tag = SGM().tokenTag(tok);
     let who = read('who', {});
+    // Systems sync right after harnesses, so until a systems sync records its own time, the last harness
+    // sync's (a little earlier, so it errs toward a copy) bounds their "stamped before the last sync".
+    if (!read('sysLastSync', null) && read('lastSync', null)) write('sysLastSync', { at: read('lastSync', null).at });
     const mk = (full, extra) => new SG.GitHubStore(Object.assign({ owner: full.split('/')[0], repo: full.split('/')[1], branch: 'main', dataPath: '', token: tok, summarize }, extra || {}), fetchImpl);
     const dataFull = cfg.owner + '/' + cfg.dataRepo;
     const data = mk(dataFull);

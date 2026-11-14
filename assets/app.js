@@ -79,7 +79,8 @@
   const resolveHooks = {
     store: kind => (kind === 'system' ? LM.system.store() : S.store),
     login: () => (R && R.login()) || '',
-    synced: (kind, id) => { const d = kind === 'system' ? LM.system.get(id) : S.store[id]; return !!(d && d.syncBase) || (kind === 'system' ? false : R.wasSynced(id)); },
+    // Whether GitHub has it (so deleting it leaves a tombstone): a synced base, or the last sync saw its file.
+    synced: (kind, id) => { const d = kind === 'system' ? LM.system.get(id) : S.store[id]; return !!(d && d.syncBase) || (kind === 'system' ? R.canDiscard('system', id) : R.wasSynced(id)); },
     toast: (m, t, a) => toast(m, t, a),
     put(kind, changes, openId) {
       const st = kind === 'system' ? LM.system.store() : S.store;
@@ -189,6 +190,9 @@
           rs.gone.forEach(id => { if (ss[id] && R.stampKey(ss[id]) === rs.beforeStamp[id]) delete ss[id]; });
           rs.conflicts.forEach(s => { ss[s.id] = s; });
           sysCopies = rs.conflicts.length;
+          // The open system deleted elsewhere (a tombstone came in): close it, as for a harness.
+          const open = LM.system.current();
+          if (open && (!ss[open] || ss[open].deleted)) LM.system.close();
           LM.system.persist();
         }
       } catch (e) { toast("Couldn't sync systems: " + (e.message || e), 'error'); }

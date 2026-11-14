@@ -939,6 +939,34 @@
     eq(rs.store[s.id].title, 'Theirs');
     eq(rs.conflicts.map(c => [c.title, c.conflictOf.id]), [[s.title + ' (conflict copy)', s.id]]);
   });
+  test('first sync after the upgrade: a system with no base and no kept copy, only drawn, is unedited', async () => {
+    const hub = setup();
+    const { s, get } = sysFixture();
+    const rs = await R.syncSystems({ [s.id]: s }, get, opts(hub));
+    const old = JSON.parse(JSON.stringify(rs.store[s.id])); delete old.syncBase; old.blocks[0].h += 9;
+    // As before 2026-11-14: no systems sync time, no copy in IndexedDB; a harness sync ran after this one.
+    localStorage.removeItem(NSP + 'sysLastSync');
+    await new Promise((ok2, bad) => { const r = indexedDB.deleteDatabase('loom-sysbase'); r.onsuccess = ok2; r.onerror = bad; r.onblocked = ok2; });
+    await R.loadSysBase();
+    localStorage.setItem(NSP + 'lastSync', JSON.stringify({ at: new Date(Date.now() + 1000).toISOString() }));
+    eq(R.edited('system', old), true, 'nothing to go by yet');
+    await R.sync({}, opts(hub));   // the harness sync, which runs first, seeds the systems' time
+    eq(R.edited('system', old), false, 'stamped before the last sync: unedited');
+  });
+  test('first sync after the upgrade: an old copy with no base never goes over another tab’s newer sync', async () => {
+    const hub = setup();
+    const h = harness('Legacy');
+    const first = await R.sync({ [h.id]: h }, opts(hub));
+    const tabB = JSON.parse(JSON.stringify(first.store)); delete tabB[h.id].syncBase;   // kept before syncBase
+    const a = JSON.parse(JSON.stringify(first.store)); a[h.id].title = 'Tab A'; a[h.id].updated = Date.now() + 1000;
+    await R.sync(a, opts(hub));   // tab A: the kept copy, stamps, and lastSync are now its
+    tabB[h.id].place = { 'n:b': { x: 2, y: 2 } };
+    let res = await R.sync(JSON.parse(JSON.stringify(tabB)), opts(hub));
+    eq([res.store[h.id].title, res.conflicts.length, res.pushed], ['Tab A', 0, 0], 'only drawn: GitHub’s');
+    tabB[h.id].title = 'Tab B'; tabB[h.id].updated = Date.now() + 5000;
+    res = await R.sync(tabB, opts(hub));
+    eq(res.conflicts.map(c => c.title), ['Tab A (conflict copy)'], 'a real edit with no base: a copy, never an overwrite');
+  });
   // ── Resolve a conflict copy (resolve.js) ──
   test('resolve: a copy finds its original by conflictOf, or an older one by its title', () => {
     const RS = LM.resolve, o = harness('Main harness'), other = harness('Other');
