@@ -1000,6 +1000,15 @@
     eq([D2.boxes[0].x - x0, D2.boxes[0].y - D.boxes[0].y], [40, -20], 'dragged 10 mm right and 5 mm up');
     ok(Y.drawnExtent(s).x + Y.drawnExtent(s).w > a.x + a.w + 10, 'the drawing counts in the system’s extent');
     ok(!/"conns"|"mini"/.test(JSON.stringify(s.cables[0])), 'nothing derived is stored');
+    // Through a splice: the board's wire meets a junction, and the devices beyond it are still reached.
+    const sp = M.addNode(h, 'splice', 400, 300), m2 = M.addConnector(h, 640, 500, { family: 'generic-rect', pins: 2, name: 'Pump motor' });
+    m2.atDevice = true;
+    M.addWire(h, { node: p1.id, pin: '4' }, { node: sp.id }, { color: 'GN' });
+    M.addWire(h, { node: sp.id }, { node: m2.id, pin: '1' }, { color: 'GN' });
+    const D3 = Y.devLayout(s, get).get('k1');
+    eq(D3.juncs.length, 1, 'the splice is a junction');
+    ok(D3.boxes.some(b => b.label === 'Pump motor'), 'the motor past the splice is drawn');
+    eq(D3.paths.length, 5, 'both halves of the spliced wire are drawn');
   });
   test('nest: a placed system’s connectors sit where they are in its mini view, and follow it', () => {
     const { Y, pump, a, j1, j2, sb, done } = nestFixture();

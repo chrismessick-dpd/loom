@@ -23,8 +23,8 @@ links to it so far. Before every commit:
 ## Status (2026-11-06)
 
 - **Device harnesses drawn, and mini views (2026-11-13, Chris).** In a system, a harness built onto its device
-  is drawn as itself (its wires in color out to plain far-end boxes, or dots for flying leads; far ends drag,
-  `cab.devAt`), and a placed system's block shows that system's drawing small, with its tabs where its connectors
+  is drawn as itself (its wires in color out to plain far-end boxes, or dots for flying leads, splices as
+  junction dots, a caption with its name; far ends drag, `cab.devAt`), and a placed system's block shows that system's drawing small, with its tabs where its connectors
   sit in it, so cables run into the view (`devLayout`, `miniFrame`, `miniSvg` in `system.js`). See
   `docs/system.md`, *Device harnesses drawn* and *Mini views*. Tests 65.
 

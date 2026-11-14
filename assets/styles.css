@@ -1154,6 +1154,10 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-dtext { font: 600 16px var(--font, sans-serif); fill: var(--cv-ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .sys-dtext.lead { dominant-baseline: auto; fill: var(--cv-ink-2); }
 .sys-ddot { fill: var(--text-3); stroke: var(--cv-conn-edge); stroke-width: 0.8; }
+.sys-djunc { fill: var(--cv-paper); stroke: var(--cv-conn-edge); stroke-width: 1.6; }
+.sys-w.sel .sys-djunc, .sys-w.linked .sys-djunc { stroke: var(--accent); }
+.sys-dcap { font: 600 13px var(--font, sans-serif); fill: var(--cv-ink-2); }
+.sys-dcap.sel, .sys-w.linked .sys-dcap { fill: var(--accent); }
 /* A placed system's mini view (Chris, 2026-11-13): its drawing small inside its block, nothing to click. */
 .sys-mini { pointer-events: none; }
 .sys-mini * { vector-effect: non-scaling-stroke; }

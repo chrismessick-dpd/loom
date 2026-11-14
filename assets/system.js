@@ -169,8 +169,10 @@
       if (b.kind !== 'system' || !b.conns) return;
       const t = b.tabs || {};
       b.conns.forEach(c => {
-        const o = {};
-        if (Math.abs(c.x - c.ax) > 1e-6 || Math.abs(c.y - c.ay) > 1e-6) { o.x = c.x; o.y = c.y; }
+        const o = {}, was = t[c.id] || {};
+        // A mini view places the tabs itself; a spot the parent set by hand before stays stored as it was.
+        if (b.mini) { if (was.x != null) { o.x = was.x; o.y = was.y; } }
+        else if (Math.abs(c.x - c.ax) > 1e-6 || Math.abs(c.y - c.ay) > 1e-6) { o.x = c.x; o.y = c.y; }
         if (c.exit) o.exit = c.exit;
         if (c.external) o.external = true;
         if (c.fn !== c.fn0) o.fn = c.fn;
@@ -663,17 +665,20 @@
   // A harness built onto its device (its n.atDevice ends: a motor, a sensor, flying leads) is drawn in the
   // system as a simple picture of itself, in place of a stub: out of each connector it plugs into, its wires
   // run in their colors as one trunk, then fan out to its far ends, each a plain box with its name, or, for
-  // flying leads, the wires ending in dots. No tables. Loom lays it out off the connector's exit, spreading
-  // the drawings out of one side of a block so their far ends don't overlap; dragging the far ends moves them
-  // (cab.devAt, mm, kept with the system). A harness with no wires yet draws a faint line to each far end.
-  // Lengths are in canvas units (K per mm), not to scale.
-  const DW = { pitch: 5, trunk: 90, fan: 130, lead: 60, box: 34, gap: 16, font: 16 };
+  // flying leads, the wires ending in dots. Splices are small junction dots between the trunk and the far ends,
+  // so a harness that splits through splices (several board connectors and motors) still reaches every device.
+  // A caption over the far ends names the harness (with Cable labels). No tables. Loom lays it out off the
+  // connector's exit, spreading the drawings out of one side of a block so they don't overlap; dragging the far
+  // ends or the caption moves them (cab.devAt, mm, kept with the system). A harness with no wires yet draws a
+  // dashed line to each device end. Lengths are in canvas units (K per mm), not to scale.
+  const DW = { pitch: 5, trunk: 90, fan: 130, lead: 60, box: 34, gap: 16, font: 16, cap: 24, chars: 40 };
   const devMemo = new Map();
-  const devLabel = n => (n.family === 'flying' ? n.name || 'Flying leads' : n.name || n.ref || 'Device');
+  const clip = (t, n) => (t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t);
+  const devLabel = n => n.name || n.ref || (n.family === 'flying' ? 'Flying leads' : 'Device');
   const pinIdx = (n, pin) => { const l = M.pinList(n).map(String), i = l.indexOf(String(pin)); return i < 0 ? 999 : i; };
   function devKey(s, cabs, hOf) {
-    return JSON.stringify([s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), (b.conns || []).map(c => [c.id, c.x, c.y, c.exit || c.exit0 || ''])]),
-      cabs.map(c => { const h = hOf(c); return [c.id, c.ends, c.devAt || null, h.nodes.map(n => [n.id, n.ref, n.name || '', n.family || '', !!n.atDevice]), h.wires.map(w => [w.id, w.from, w.to, w.color || ''])]; })]);
+    return JSON.stringify([labelsOn(), s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), (b.conns || []).map(c => [c.id, c.x, c.y, c.exit || c.exit0 || ''])]),
+      cabs.map(c => { const h = hOf(c); return [c.id, c.ends, c.devAt || null, c.kind || '', c.lengthMm || null, h.title, h.pn || '', h.nodes.map(n => [n.id, n.kind, n.ref, n.name || '', n.family || '', !!n.atDevice]), h.wires.map(w => [w.id, w.from, w.to, w.color || ''])]; })]);
   }
   // get: a harness by id, where the app's hooks aren't there (tests); else the app's.
   function devLayout(s, get) {
@@ -681,32 +686,56 @@
     const cabs = s.cables.filter(c => deviceEnds(hOf(c)).length);
     const key = devKey(s, cabs, hOf), memo = devMemo.get(s.id);
     if (memo && memo.key === key) return memo.out;
-    const drafts = [];
+    const caps = labelsOn(), drafts = [];
     cabs.forEach(cab => {
       const h = hOf(cab), at = cableEnds(s, cab, h).filter(x => x.g);
       if (!at.length) return;
       const plugged = new Map(at.map(x => [x.n.id, x])), nodes = new Map(h.nodes.map(n => [n.id, n]));
-      const ws = [];
+      const isJ = n => !!n && !M.isConn(n);
+      const order = (x, pin) => at.indexOf(x) * 1000 + pin;
+      // The wires as pieces: from a plugged connector (src) or a junction (jfrom), to a far connector (T) or a
+      // junction (j). Junctions are reached from the plugged ends, then onward.
+      const segs = [], jFirst = new Map(), seen = new Set(), queue = [];
       h.wires.forEach(w => {
         const a = plugged.get(w.from.node), b = plugged.get(w.to.node);
         if (!!a === !!b) return;
-        const from = a ? w.from : w.to, to = a ? w.to : w.from, T = nodes.get(to.node);
-        if (T) ws.push({ w, x: a || b, pin: pinIdx((a || b).n, from.pin), T, tpin: M.isConn(T) ? pinIdx(T, to.pin) : 0 });
+        const x = a || b, from = a ? w.from : w.to, to = a ? w.to : w.from, T = nodes.get(to.node);
+        if (!T) return;
+        seen.add(w.id);
+        const src = { x, o: order(x, pinIdx(x.n, from.pin)) };
+        if (isJ(T)) { segs.push({ w, src, j: T.id }); if (!jFirst.has(T.id)) queue.push(T.id); jFirst.set(T.id, Math.min(jFirst.has(T.id) ? jFirst.get(T.id) : Infinity, src.o)); }
+        else segs.push({ w, src, T, tpin: pinIdx(T, to.pin) });
       });
-      const ghost = !ws.length, x0 = at[0];
-      // The far ends, in the order their wires leave the first connector, so the fan doesn't cross itself.
-      const first = T => Math.min(...ws.filter(o => o.T === T).map(o => (o.x === x0 ? 0 : 1000) + o.pin));
-      const targets = ghost ? deviceEnds(h) : [...new Set(ws.map(o => o.T))].sort((p, q) => first(p) - first(q));
-      ws.sort((p, q) => targets.indexOf(p.T) - targets.indexOf(q.T) || p.tpin - q.tpin || p.pin - q.pin);
-      const g = x0.g, d = [g.dx, g.dy], pv = g.dx ? [0, 1] : [1, 0], horiz = !!g.dx;
+      while (queue.length) {
+        const jid = queue.shift();
+        h.wires.forEach(w => {
+          if (seen.has(w.id) || (w.from.node !== jid && w.to.node !== jid)) return;
+          const to = w.from.node === jid ? w.to : w.from, U = nodes.get(to.node);
+          if (!U || plugged.has(U.id)) return;
+          seen.add(w.id);
+          if (isJ(U)) { segs.push({ w, jfrom: jid, j: U.id }); if (!jFirst.has(U.id)) { jFirst.set(U.id, jFirst.get(jid)); queue.push(U.id); } }
+          else segs.push({ w, jfrom: jid, T: U, tpin: pinIdx(U, to.pin) });
+        });
+      }
+      const ghost = !segs.length;
+      const keyOf = o => (o.src ? o.src.o : jFirst.get(o.jfrom));
+      // The far ends, in the order their wires leave the plugged connectors, so the fan doesn't cross itself.
+      const firstT = new Map();
+      segs.forEach(o => { if (o.T) firstT.set(o.T, Math.min(firstT.has(o.T) ? firstT.get(o.T) : Infinity, keyOf(o))); });
+      const targets = ghost ? deviceEnds(h) : [...firstT.keys()].sort((p, q) => firstT.get(p) - firstT.get(q));
+      const g = at[0].g, d = [g.dx, g.dy], pv = g.dx ? [0, 1] : [1, 0], horiz = !!g.dx;
       const tg = targets.map(T => {
-        const nw = ghost ? 1 : ws.filter(o => o.T === T).length, leads = T.family === 'flying', label = devLabel(T), tw0 = U.textW(label, DW.font);
+        const into = segs.filter(o => o.T === T).sort((p, q) => keyOf(p) - keyOf(q) || p.tpin - q.tpin);
+        const nw = ghost ? 1 : into.length, leads = T.family === 'flying', full = devLabel(T), label = clip(full, DW.chars), tw0 = U.textW(label, DW.font);
         const Lp = horiz ? Math.max(leads ? 20 : DW.box, nw * DW.pitch + 14) : Math.max(tw0 + (leads ? 12 : 20), nw * DW.pitch + 14);
         const Ld = horiz ? (leads ? DW.lead + 10 + tw0 : tw0 + 20) : (leads ? DW.lead : DW.box);
-        return { T, nw, leads, label, Lp, Ld, tw: tw0 };
+        return { T, into, nw, leads, label, full, Lp, Ld };
       });
-      const span = tg.reduce((n, t) => n + t.Lp, 0) + DW.gap * Math.max(0, tg.length - 1);
-      drafts.push({ cab, h, at, ws, tg, ghost, g, d, pv, horiz, span, axis: horiz ? g.ey : g.ex, group: x0.b.id + '|' + g.side });
+      const st = status(h), caption = caps ? clip(`${st.glyph} ${h.title}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`, 64) : '', capW = caption ? U.textW(caption, 13) : 0;
+      let span = tg.reduce((n, t) => n + t.Lp, 0) + DW.gap * Math.max(0, tg.length - 1);
+      const lane = caption && horiz ? DW.cap : 0;
+      if (caption && !horiz) span = Math.max(span, capW);
+      drafts.push({ cab, h, at, segs, tg, ghost, g, d, pv, horiz, span: span + lane, lane, caption, capW, st, keyOf, axis: horiz ? g.ey : g.ex, group: at[0].b.id + '|' + g.side });
     });
     // Drawings out of one side of a block, spread along it so none overlap, then shifted back so the spread
     // sits about the connectors it comes from.
@@ -720,46 +749,77 @@
       list.forEach(D => { D.c -= back; });
     });
     const out = new Map();
+    const f1 = v => v.toFixed(1);
+    const curve = (A, a, Q, q, l1, l2) => `C${f1(A.x + a[0] * l1)} ${f1(A.y + a[1] * l1)} ${f1(Q.x - q[0] * l2)} ${f1(Q.y - q[1] * l2)} ${f1(Q.x)} ${f1(Q.y)}`;
     drafts.forEach(D => {
-      const { cab, g, d, pv, horiz, tg, ws, ghost } = D, off = cab.devAt || { dx: 0, dy: 0 };
+      const { cab, g, d, pv, horiz, tg, segs, ghost, keyOf } = D, off = cab.devAt || { dx: 0, dy: 0 };
       const pt = (o, a, b) => ({ x: o.x + d[0] * a + pv[0] * b, y: o.y + d[1] * a + pv[1] * b });
       const ex = { x: g.ex, y: g.ey }, reach = DW.trunk + DW.fan;
       const B = { x: ex.x + d[0] * reach + pv[0] * (D.c - D.axis) + off.dx * K, y: ex.y + d[1] * reach + pv[1] * (D.c - D.axis) + off.dy * K };
-      const boxes = [], leads = [], paths = [], pts = [ex];
-      let u = -D.span / 2;
+      const boxes = [], leads = [], paths = [], juncs = [], pts = [ex];
+      let u = -D.span / 2 + D.lane;
       tg.forEach(t => {
         t.N = pt(B, 0, u + t.Lp / 2); u += t.Lp + DW.gap;
         const a = t.N, rect = horiz ? { x: d[0] > 0 ? a.x : a.x - t.Ld, y: a.y - t.Lp / 2, w: t.Ld, h: t.Lp } : { x: a.x - t.Lp / 2, y: d[1] > 0 ? a.y : a.y - t.Ld, w: t.Lp, h: t.Ld };
         pts.push({ x: rect.x, y: rect.y }, { x: rect.x + rect.w, y: rect.y + rect.h });
-        if (!t.leads) boxes.push(Object.assign({ label: t.label, cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, ghost }, rect));
+        if (!t.leads) boxes.push(Object.assign({ label: t.label, full: t.full, cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, ghost }, rect));
         else {
-          const e = pt(a, DW.lead, 0), lx = horiz ? e.x + d[0] * 10 : e.x, ly = horiz ? e.y + 5.5 : e.y + d[1] * 18 + (d[1] > 0 ? 5.5 : 0);
-          t.lead = { label: t.label, lx, ly, anchor: horiz ? (d[0] > 0 ? 'start' : 'end') : 'middle', dots: [], ghost };
+          const e = pt(a, DW.lead, 0), lx = horiz ? e.x + d[0] * 10 : e.x, ly = horiz ? e.y + 5.5 : e.y + d[1] * 18 + (d[1] > 0 ? 5.5 : 0), w = U.textW(t.label, DW.font);
+          t.lead = { label: t.label, full: t.full, lx, ly, anchor: horiz ? (d[0] > 0 ? 'start' : 'end') : 'middle', dots: [], ghost };
           leads.push(t.lead);
+          pts.push({ x: lx - (horiz ? (d[0] > 0 ? 0 : w) : w / 2), y: ly - 14 }, { x: lx + (horiz ? (d[0] > 0 ? w : 0) : w / 2), y: ly + 5 });
         }
       });
-      // Each wire: from its pin's slot at the connector's exit, along the trunk, then a smooth fan to its slot
-      // at the far end (a lead runs on to its dot).
+      // A wire's slot at its far end: the k-th of the wires into it.
+      const slot = o => { const t = tg.find(x => x.T === o.T), k = t.into.indexOf(o); return { t, Q: pt(t.N, 0, (k - (t.nw - 1) / 2) * DW.pitch) }; };
+      // Junctions: between the trunks and the far ends, level with the middle of the far ends they feed.
+      const jdepth = DW.trunk + DW.fan * 0.5, jpos = new Map(), feeds = new Map();
+      segs.forEach(o => { if (o.jfrom && o.T) { if (!feeds.has(o.jfrom)) feeds.set(o.jfrom, []); feeds.get(o.jfrom).push(slot(o).Q); } });
+      const jids = [...new Set(segs.filter(o => o.j).map(o => o.j))];
+      jids.forEach(id => {
+        const qs = feeds.get(id) || [], along = qs.length ? qs.reduce((n, q) => n + (horiz ? q.y : q.x), 0) / qs.length : (horiz ? B.y : B.x);
+        const base = pt(ex, jdepth, 0), J = horiz ? { x: base.x + off.dx * K, y: along } : { x: along, y: base.y + off.dy * K };
+        jpos.set(id, J); pts.push(J);
+        const n = D.h.nodes.find(x => x.id === id);
+        juncs.push({ x: J.x, y: J.y, ref: n ? n.ref || 'Splice' : 'Splice' });
+      });
+      // Trunk wires, per plugged connector, ordered by where they go, so the fan doesn't cross.
+      const dest = o => (o.T ? tg.findIndex(t => t.T === o.T) * 1000 + o.tpin : (() => { const qs = feeds.get(o.j) || []; return qs.length ? tg.findIndex(t => qs.some(q => Math.abs((horiz ? q.y - t.N.y : q.x - t.N.x)) < t.Lp / 2 + 1)) * 1000 - 1 : 1e6; })());
       const byEnd = new Map();
-      (ghost ? tg.map(t => ({ x: D.at[0], t })) : ws.map(o => ({ o, x: o.x, t: tg.find(t => t.T === o.T) }))).forEach(r => { if (!byEnd.has(r.x)) byEnd.set(r.x, []); byEnd.get(r.x).push(r); });
-      const slotN = new Map();
+      (ghost ? tg.map(t => ({ ghostT: t, src: { x: D.at[0] } })) : segs.filter(o => o.src)).forEach(o => { const x = o.src.x; if (!byEnd.has(x)) byEnd.set(x, []); byEnd.get(x).push(o); });
+      const colorOfW = o => (o.w ? M.colorInfo(o.w.color) : null);
+      const push = (o, path, Q, t) => {
+        const ci = colorOfW(o), base = ci && ci.base ? ci.base : '';
+        if (t && t.leads) { const e = pt(Q, DW.lead, 0); path += `L${f1(e.x)} ${f1(e.y)}`; t.lead.dots.push({ x: e.x, y: e.y, color: base }); }
+        paths.push({ d: path, color: base, stripe: ci && ci.stripe ? ci.stripe : '', ghost });
+      };
       byEnd.forEach((list, x) => {
         const gx = x.g, dx = [gx.dx, gx.dy], px = gx.dx ? [0, 1] : [1, 0];
-        list.forEach((r, j) => {
+        list.sort((p, q) => dest(p) - dest(q) || keyOf(p) - keyOf(q));
+        list.forEach((o, j) => {
           const o0 = ghost ? 0 : (j - (list.length - 1) / 2) * DW.pitch, S0 = { x: gx.ex + px[0] * o0, y: gx.ey + px[1] * o0 };
-          const E = { x: S0.x + dx[0] * DW.trunk, y: S0.y + dx[1] * DW.trunk }, k = slotN.get(r.t) || 0;
-          slotN.set(r.t, k + 1);
-          const Q = pt(r.t.N, 0, ghost ? 0 : (k - (r.t.nw - 1) / 2) * DW.pitch), far = x === D.at[0] ? DW.fan / 2 : DW.fan;
-          let path = `M${S0.x.toFixed(1)} ${S0.y.toFixed(1)}L${E.x.toFixed(1)} ${E.y.toFixed(1)}C${(E.x + dx[0] * far).toFixed(1)} ${(E.y + dx[1] * far).toFixed(1)} ${(Q.x - d[0] * DW.fan / 2).toFixed(1)} ${(Q.y - d[1] * DW.fan / 2).toFixed(1)} ${Q.x.toFixed(1)} ${Q.y.toFixed(1)}`;
-          const ci = ghost ? null : M.colorInfo(r.o.w.color), base = ci && ci.base ? ci.base : '';
-          if (r.t.leads) { const e = pt(Q, DW.lead, 0); path += `L${e.x.toFixed(1)} ${e.y.toFixed(1)}`; r.t.lead.dots.push({ x: e.x, y: e.y, color: base }); }
-          paths.push({ d: path, color: base, stripe: ci && ci.stripe ? ci.stripe : '', ghost });
+          const E = { x: S0.x + dx[0] * DW.trunk, y: S0.y + dx[1] * DW.trunk }, far = x === D.at[0] ? DW.fan / 2 : DW.fan;
+          const head = `M${f1(S0.x)} ${f1(S0.y)}L${f1(E.x)} ${f1(E.y)}`;
           pts.push(S0, E);
+          if (o.ghostT) { const Q = o.ghostT.N; push(o, head + curve(E, dx, Q, d, far, DW.fan / 2), Q, o.ghostT); return; }
+          if (o.T) { const { t, Q } = slot(o); push(o, head + curve(E, dx, Q, d, far, DW.fan / 2), Q, t); return; }
+          const J = jpos.get(o.j); push(o, head + curve(E, dx, J, d, far * 0.6, DW.fan * 0.2), J, null);
         });
       });
-      leads.forEach(l => { const w = U.textW(l.label, DW.font); pts.push({ x: l.lx - (l.anchor === 'end' ? w : l.anchor === 'middle' ? w / 2 : 0), y: l.ly - 14 }, { x: l.lx + (l.anchor === 'start' ? w : l.anchor === 'middle' ? w / 2 : 0), y: l.ly + 5 }); });
+      segs.filter(o => o.jfrom).forEach(o => {
+        const J = jpos.get(o.jfrom);
+        if (o.T) { const { t, Q } = slot(o); push(o, `M${f1(J.x)} ${f1(J.y)}` + curve(J, d, Q, d, DW.fan * 0.2, DW.fan * 0.2), Q, t); }
+        else { const J2 = jpos.get(o.j); push(o, `M${f1(J.x)} ${f1(J.y)}L${f1(J2.x)} ${f1(J2.y)}`, J2, null); }
+      });
+      // The caption: over the far ends (a side exit), or past them (up or down).
+      let cap = null;
+      if (D.caption) {
+        const maxLd = Math.max(0, ...tg.map(t => t.Ld)), top = pt(B, 0, -D.span / 2);
+        cap = horiz ? { x: d[0] > 0 ? top.x : top.x - D.capW, y: top.y + 15, text: D.caption } : { x: top.x, y: B.y + d[1] * (maxLd + 22) + (d[1] > 0 ? 4 : 0), text: D.caption };
+        pts.push({ x: cap.x, y: cap.y - 14 }, { x: cap.x + D.capW, y: cap.y + 4 });
+      }
       const box = { x0: Math.min(...pts.map(q => q.x)), y0: Math.min(...pts.map(q => q.y)), x1: Math.max(...pts.map(q => q.x)), y1: Math.max(...pts.map(q => q.y)) };
-      out.set(cab.id, { paths, boxes, leads, box, lane: [ex, { x: ex.x + d[0] * DW.trunk, y: ex.y + d[1] * DW.trunk }] });
+      out.set(cab.id, { paths, boxes, leads, juncs, cap, box, lane: [ex, { x: ex.x + d[0] * DW.trunk, y: ex.y + d[1] * DW.trunk }] });
     });
     devMemo.set(s.id, { key, out });
     return out;
@@ -943,10 +1003,12 @@
         html += `<g class="sys-dharn"><title>${tip}</title>` + D.paths.map(p => `<path class="sys-dhit" d="${p.d}"/>`).join('') +
           D.paths.map(p => `<path class="sys-dglow" d="${p.d}"/>`).join('') +
           D.paths.map(p => `<path class="sys-dedge" d="${p.d}"/><path class="sys-dwire${p.ghost ? ' ghost' : ''}"${p.color ? ` style="stroke:${p.color}"` : ''} d="${p.d}"/>` + (p.stripe ? `<path class="sys-dstripe" style="stroke:${p.stripe}" d="${p.d}"/>` : '')).join('') +
-          D.boxes.map(x => `<g class="sys-dend" data-devgrab="${cab.id}"><rect class="sys-dbox${x.ghost ? ' ghost' : ''}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="3"/><text class="sys-dtext" x="${x.cx}" y="${x.cy}">${esc(x.label)}</text></g>`).join('') +
-          D.leads.map(l => `<g class="sys-dend" data-devgrab="${cab.id}">${l.dots.map(q => `<circle class="sys-ddot"${q.color ? ` style="fill:${q.color}"` : ''} cx="${q.x}" cy="${q.y}" r="4.2"/>`).join('')}<text class="sys-dtext lead" x="${l.lx}" y="${l.ly}" style="text-anchor:${l.anchor}">${esc(l.label)}</text></g>`).join('') + '</g>';
-        lane = laneOfPts(D.lane);
-        mid = { x: D.lane[1].x, y: D.lane[1].y };
+          D.juncs.map(j => `<circle class="sys-djunc" cx="${j.x}" cy="${j.y}" r="4.5"><title>${esc(j.ref)}</title></circle>`).join('') +
+          D.boxes.map(x => `<g class="sys-dend" data-devgrab="${cab.id}"><title>${esc(x.full)}</title><rect class="sys-dbox${x.ghost ? ' ghost' : ''}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="3"/><text class="sys-dtext" x="${x.cx}" y="${x.cy}">${esc(x.label)}</text></g>`).join('') +
+          D.leads.map(l => `<g class="sys-dend" data-devgrab="${cab.id}"><title>${esc(l.full)}</title>${l.dots.map(q => `<circle class="sys-ddot"${q.color ? ` style="fill:${q.color}"` : ''} cx="${q.x}" cy="${q.y}" r="4.2"/>`).join('')}<text class="sys-dtext lead" x="${l.lx}" y="${l.ly}" style="text-anchor:${l.anchor}">${esc(l.label)}</text></g>`).join('') +
+          (D.cap ? `<g class="sys-dend" data-devgrab="${cab.id}"><text class="sys-dcap${on ? ' sel' : ''}" x="${D.cap.x}" y="${D.cap.y}">${esc(D.cap.text)}</text></g>` : '') + '</g>';
+        // Its name is the caption over its far ends, not a floating label.
+        lane = null; mid = null;
       } else if (at.length === 1) {
         const g = at[0].g, x2 = g.ex + g.dx * STUB_U * 2.2, y2 = g.ey + g.dy * STUB_U * 2.2;
         html += `<g class="sys-open">${wire(`M${g.ex} ${g.ey}L${x2} ${y2}`, 'open')}<circle class="sys-ring" cx="${x2}" cy="${y2}" r="5"/></g>`;

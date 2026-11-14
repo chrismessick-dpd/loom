@@ -49,19 +49,25 @@ harnesses between them, with board-to-board harnesses in the parent; in the side
 - **Device harnesses drawn** (Chris, 2026-11-13, in place of the stub and device mark): the harness as a simple
   picture of itself, no tables (`devLayout`). Out of each connector it plugs into, its wires run in their colors
   (stripes too) as one trunk, then fan to its far ends: a plain box with the end's name, or for flying leads the
-  wires ending in a dot each, with the name past them. Wires are ordered by far end and pin so the fan doesn't
-  cross. Loom lays each out off its connector's exit and spreads the drawings out of one side of a block so their
-  far ends don't overlap; dragging the far ends moves them (`cab.devAt`, mm, kept with the system; one undo). A
+  wires ending in a dot each, with the name past them (names over 40 characters shortened, whole on hover; an end
+  with no name shows its ref). Splices are small junction dots between the trunks and the far ends, so a harness
+  that splits through splices still reaches every device (a real one: 9 board connectors, 3 splices, 12
+  motors). Wires are ordered by far end and pin so the fan doesn't cross. Loom lays each out off its
+  connector's exit and spreads the drawings out of one side of a block so they don't overlap; dragging the far
+  ends or the caption moves them (`cab.devAt`, mm, kept with the system; one undo). The caption over the far ends
+  (status glyph, name, part number; shown with Cable labels) takes the place of the floating cable label. A
   harness with no wires yet draws a dashed line to each device end. Not to scale (canvas units, `DW`). A click on
-  a wire or far end selects the cable; its label sits on the trunk. Fit takes the drawings in (`drawnExtent`).
+  a wire or far end selects the cable. Fit takes the drawings in (`drawnExtent`).
 - **Mini views** (Chris, 2026-11-13): a placed system's block draws that system's whole drawing (its blocks, its
   cables, and its device harness drawings) shrunk to fit under the header (`miniFrame`, `miniXf`, `miniSvg`; three
   levels deep at most), nothing in it clickable, and its name moves into the header beside the ref. Each tab sits
   where its connector is in the mini view and leaves the way that connector leaves its own system (`c.exit0`;
   the parent's Exit choice still wins), so the parent's cables route into the view to it, as they do to a board
-  connector inside its board. The block keeps its size (it no longer grows to hold its tabs), and a tab's spot set
-  by hand in the parent is ignored while there's a mini view. Nothing derived is stored: `b.mini`, the tabs, and
-  `exit0` aren't enumerable.
+  connector inside its board. The block keeps its size (it no longer grows to hold its tabs). A tab's spot set by
+  hand in the parent (`b.tabs[id].x`, `.y`: a real system's 33 placed systems have one on every tab) isn't used while
+  there's a mini view, but stays stored as it was (`keepTabs`). Cable shapes stored against the old tab spots redraw
+  from the new ones. Nothing derived is stored: `b.mini`, the tabs, and `exit0` aren't enumerable. Tried on a
+  local, never-synced copy of `loom_data`: a top system draws in about 0.13 s, one placing 33 systems in about 0.3 s.
 - Not done: restructuring the imported real system into board systems (data in `loom_data`, a separate
   step to confirm with Chris), a parent's BOM rolling up its children's harnesses, and dragging a tab along its
   block (X and Y in the panel for now).
