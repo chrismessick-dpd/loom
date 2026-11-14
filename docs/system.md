@@ -68,6 +68,19 @@ harnesses between them, with board-to-board harnesses in the parent; in the side
   there's a mini view, but stays stored as it was (`keepTabs`). Cable shapes stored against the old tab spots redraw
   from the new ones. Nothing derived is stored: `b.mini`, the tabs, and `exit0` aren't enumerable. Tried on a
   local, never-synced copy of `loom_data`: a top system draws in about 0.13 s, one placing 33 systems in about 0.3 s.
+- **Routing and fit (Chris, 2026-11-13).** A device harness's wires run at right angles with rounded corners
+  (`RADIUS`), as cables do: out of a trunk each wire turns toward its far end at its own depth, the wire on the side
+  it turns toward first, so they step across without crossing (`elbow`, `roundPts`). When any wire of a trunk would
+  cross its own block (a harness plugged into connectors on both sides of a board, its far ends laid out off the
+  first), the whole trunk goes round the block together, nested, the shorter way for the trunk's middle
+  (`roundBlock`, `crosses`). In a mini view: the header gap goes on whichever side of a turned block faces up; far
+  ends are small squares, and flying leads end in dots (`miniBox`, `.sys-mdot`); the block is as tall as its header
+  and drawing at its width (`fitMini`, stored in `b.w`/`b.h`), counting only what the mini view draws (`mbox`, and
+  tabs past a block's edge); a frame gone stale (harnesses loading later, Cable labels) is redone before a draw
+  (`freshMinis`).
+- **Turn the system** (Chris, 2026-11-13): ⟳ beside Fit turns the whole system 90° clockwise (Shift-click:
+  counterclockwise) as one undoable edit: every block turns as R turns it and swings round the middle of all the
+  blocks, text stays upright, cables re-route, and dragged labels and device drawings turn their offsets (`turnAll`).
 - Not done: restructuring the imported real system into board systems (data in `loom_data`, a separate
   step to confirm with Chris), a parent's BOM rolling up its children's harnesses, and dragging a tab along its
   block (X and Y in the panel for now).

@@ -1071,8 +1071,24 @@
     ok(D && D.boxes[0].x > (a.x + a.w) * 4, 'the motor is laid out off J1, past the board’s right side');
     const R = { x0: a.x * 4, y0: a.y * 4, x1: (a.x + a.w) * 4, y1: (a.y + a.h) * 4 };
     const inside = d => { const n = d.match(/-?\d+(\.\d+)?/g).map(Number); for (let i = 2; i + 1 < n.length; i += 2) if (n[i] > R.x0 + 1 && n[i] < R.x1 - 1 && n[i + 1] > R.y0 + 1 && n[i + 1] < R.y1 - 1) return true; return false; };
-    eq(D.paths.filter(p => /Q/.test(p.d)).length, 2, 'J2’s two wires go round, J1’s doesn’t need to');
+    const nums = d => d.match(/-?\d+(\.\d+)?/g).map(Number), fromJ2 = D.paths.filter(p => nums(p.d)[0] < (R.x0 + R.x1) / 2);
+    eq(fromJ2.length, 2, 'J2’s two wires');
+    ok(fromJ2.every(p => { const n = nums(p.d); for (let i = 1; i < n.length; i += 2) if (n[i] < R.y0 || n[i] > R.y1) return true; return false; }), 'go round the board, above or below it');
+    ok(D.paths.every(p => !/C/.test(p.d)), 'at right angles, no wide curves');
     ok(!D.paths.some(p => inside(p.d)), 'no wire has a point inside the board');
+  });
+  test('system: turning the whole system 90° turns every block about the middle, and back', () => {
+    const { Y, s, a, d } = sysFixture();
+    s.cables.push({ id: 'k9', kind: 'link', ends: {}, routes: { x: { v: [1] } }, labelOff: { dx: 10, dy: 0 } });
+    const right = d.x > a.x;
+    Y.turnAll(s, 90);
+    eq([a.rot, d.rot], [90, 90], 'each block turns as R turns it');
+    ok(right && d.y > a.y + 10, 'the block that was to the right is now below');
+    ok(!s.cables[0].routes, 'cables re-route');
+    eq(s.cables[0].labelOff, { dx: -0, dy: 10 }, 'a dragged label turns with it');
+    Y.turnAll(s, -90);
+    eq([a.rot, d.rot], [0, 0], 'turned back');
+    ok(d.x > a.x + 10, 'and the device is right of the board again');
   });
   test('nest: a mini view whose drawing changed since it resolved gets a fresh frame before a draw', () => {
     const { Y, top, a, sb, done } = nestFixture();

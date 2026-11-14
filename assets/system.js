@@ -717,7 +717,7 @@
   // connector's exit, spreading the drawings out of one side of a block so they don't overlap; dragging the far
   // ends or the caption moves them (cab.devAt, mm, kept with the system). A harness with no wires yet draws a
   // dashed line to each device end. Lengths are in canvas units (K per mm), not to scale.
-  const DW = { pitch: 5, trunk: 90, fan: 130, lead: 60, box: 34, gap: 16, font: 16, cap: 24, chars: 40 };
+  const DW = { pitch: 5, trunk: 90, fan: 130, turn: 24, lead: 60, box: 34, gap: 16, font: 16, cap: 24, chars: 40 };
   const devMemo = new Map();
   const clip = (t, n) => (t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t);
   const devLabel = n => n.name || n.ref || (n.family === 'flying' ? 'Flying leads' : 'Device');
@@ -796,7 +796,6 @@
     });
     const out = new Map();
     const f1 = v => v.toFixed(1);
-    const curve = (A, a, Q, q, l1, l2) => `C${f1(A.x + a[0] * l1)} ${f1(A.y + a[1] * l1)} ${f1(Q.x - q[0] * l2)} ${f1(Q.y - q[1] * l2)} ${f1(Q.x)} ${f1(Q.y)}`;
     drafts.forEach(D => {
       const { cab, g, d, pv, horiz, tg, segs, ghost, keyOf } = D, off = cab.devAt || { dx: 0, dy: 0 };
       const pt = (o, a, b) => ({ x: o.x + d[0] * a + pv[0] * b, y: o.y + d[1] * a + pv[1] * b });
@@ -840,26 +839,39 @@
         if (t && t.leads) { const e = pt(Q, DW.lead, 0); path += `L${f1(e.x)} ${f1(e.y)}`; t.lead.dots.push({ x: e.x, y: e.y, color: base }); }
         paths.push({ d: path, color: base, stripe: ci && ci.stripe ? ci.stripe : '', ghost });
       };
+      // Every wire runs at right angles with rounded corners, as system cables do (Chris, 2026-11-13: not wide
+      // curves). Out of a trunk each wire turns toward its far end at its own depth, the wire on the side it
+      // turns toward first, so a trunk's wires step across without crossing; a wire that would cross its own
+      // block goes round it (roundBlock).
       byEnd.forEach((list, x) => {
         const gx = x.g, dx = [gx.dx, gx.dy], px = gx.dx ? [0, 1] : [1, 0];
         const bs = sizeOf(x.b), R = { x0: x.b.x * K, y0: x.b.y * K, x1: (x.b.x + bs.W) * K, y1: (x.b.y + bs.H) * K };
         list.sort((p, q) => dest(p) - dest(q) || keyOf(p) - keyOf(q));
-        list.forEach((o, j) => {
+        const ws = list.map((o, j) => {
           const o0 = ghost ? 0 : (j - (list.length - 1) / 2) * DW.pitch, S0 = { x: gx.ex + px[0] * o0, y: gx.ey + px[1] * o0 };
-          const E = { x: S0.x + dx[0] * DW.trunk, y: S0.y + dx[1] * DW.trunk }, far = x === D.at[0] ? DW.fan / 2 : DW.fan;
-          const head = `M${f1(S0.x)} ${f1(S0.y)}L${f1(E.x)} ${f1(E.y)}`;
+          const E = { x: S0.x + dx[0] * DW.trunk, y: S0.y + dx[1] * DW.trunk };
+          const tq = o.ghostT ? { t: o.ghostT, Q: o.ghostT.N } : o.T ? slot(o) : { t: null, Q: jpos.get(o.j) };
+          return { o, o0, S0, E, t: tq.t, Q: tq.Q, w: (tq.Q.x - E.x) * px[0] + (tq.Q.y - E.y) * px[1] };
+        });
+        // One way round for the whole trunk, chosen for the middle of where its wires go.
+        const Qm = { x: ws.reduce((n, v) => n + v.Q.x, 0) / ws.length, y: ws.reduce((n, v) => n + v.Q.y, 0) / ws.length };
+        const rankOf = new Map();
+        [ws.filter(v => v.w > 0.5).sort((p, q) => q.o0 - p.o0), ws.filter(v => v.w < -0.5).sort((p, q) => p.o0 - q.o0)].forEach(g => g.forEach((v, k) => rankOf.set(v, k)));
+        ws.forEach(v => { v.P = elbow(v.E, dx, v.Q, d, DW.turn + (rankOf.get(v) || 0) * DW.pitch); });
+        const round = ws.some(v => crosses(v.P, R));  // one wire round, the trunk all round together
+        ws.forEach(v => {
+          const { o, o0, S0, E, t, Q, P } = v;
           pts.push(S0, E);
-          // The curve, or, when it would cross its own block, a way round the block (Chris, 2026-11-13).
-          const to = (Q, l1, l2) => { const rb = roundBlock(S0, E, dx, Q, d, l1, l2, R, px, o0, ghost ? 1 : list.length); if (!rb) return head + curve(E, dx, Q, d, l1, l2); pts.push(...rb.pts); return `M${f1(S0.x)} ${f1(S0.y)}` + rb.d; };
-          if (o.ghostT) { const Q = o.ghostT.N; push(o, to(Q, far, DW.fan / 2), Q, o.ghostT); return; }
-          if (o.T) { const { t, Q } = slot(o); push(o, to(Q, far, DW.fan / 2), Q, t); return; }
-          const J = jpos.get(o.j); push(o, to(J, far * 0.6, DW.fan * 0.2), J, null);
+          const rb = round ? roundBlock(S0, E, dx, Q, d, P, R, px, o0, ghost ? 1 : list.length, Qm, true) : null;
+          if (rb) { pts.push(...rb.pts); push(o, `M${f1(S0.x)} ${f1(S0.y)}` + rb.d, Q, t); return; }
+          pts.push(...P);
+          push(o, `M${f1(S0.x)} ${f1(S0.y)}` + roundPts([S0, ...P]), Q, t);
         });
       });
       segs.filter(o => o.jfrom).forEach(o => {
         const J = jpos.get(o.jfrom);
-        if (o.T) { const { t, Q } = slot(o); push(o, `M${f1(J.x)} ${f1(J.y)}` + curve(J, d, Q, d, DW.fan * 0.2, DW.fan * 0.2), Q, t); }
-        else { const J2 = jpos.get(o.j); push(o, `M${f1(J.x)} ${f1(J.y)}L${f1(J2.x)} ${f1(J2.y)}`, J2, null); }
+        if (o.T) { const { t, Q } = slot(o), P = elbow(J, d, Q, d, ((Q.x - J.x) * d[0] + (Q.y - J.y) * d[1]) / 2); push(o, `M${f1(J.x)} ${f1(J.y)}` + roundPts(P), Q, t); }
+        else { const J2 = jpos.get(o.j); push(o, `M${f1(J.x)} ${f1(J.y)}` + roundPts(elbow(J, d, J2, d, ((J2.x - J.x) * d[0] + (J2.y - J.y) * d[1]) / 2)), J2, null); }
       });
       // The caption: over the far ends (a side exit), or past them (up or down).
       let cap = null;
@@ -880,6 +892,28 @@
     devMemo.set(s.id, { key, out });
     return out;
   }
+  // Points from E (leaving along a) to Q (arriving along q) at right angles: out m along a, across, then on
+  // to Q; or one corner when a and q are square to each other. E first, Q last.
+  function elbow(E, a, Q, q, m) {
+    const u = (Q.x - E.x) * a[0] + (Q.y - E.y) * a[1], p = [a[1] ? 1 : 0, a[0] ? 1 : 0], w = (Q.x - E.x) * p[0] + (Q.y - E.y) * p[1];
+    if (a[0] * q[0] + a[1] * q[1] === 0) return [E, { x: E.x + a[0] * u, y: E.y + a[1] * u }, Q];
+    if (Math.abs(w) < 0.5) return [E, Q];
+    const mm = u > 0 ? Math.max(0, Math.min(m, u - 1)) : Math.max(m, 12);
+    const A = { x: E.x + a[0] * mm, y: E.y + a[1] * mm }, B = { x: A.x + p[0] * w, y: A.y + p[1] * w };
+    return [E, A, B, Q];
+  }
+  // A path through points (the first is where it already is): straight runs, each corner rounded (RADIUS, less
+  // where a run is short). No move.
+  function roundPts(P) {
+    const f1 = v => v.toFixed(1);
+    P = P.filter((p, i, l) => !i || Math.hypot(p.x - l[i - 1].x, p.y - l[i - 1].y) > 0.5);
+    let s = '';
+    for (let i = 1; i < P.length - 1; i++) {
+      const A = P[i - 1], B = P[i], N = P[i + 1], la = Math.hypot(B.x - A.x, B.y - A.y), lb = Math.hypot(N.x - B.x, N.y - B.y), r = Math.min(RADIUS, la / 2, lb / 2);
+      s += `L${f1(B.x + (A.x - B.x) / la * r)} ${f1(B.y + (A.y - B.y) / la * r)}Q${f1(B.x)} ${f1(B.y)} ${f1(B.x + (N.x - B.x) / lb * r)} ${f1(B.y + (N.y - B.y) / lb * r)}`;
+    }
+    return P.length > 1 ? s + `L${f1(P[P.length - 1].x)} ${f1(P[P.length - 1].y)}` : s;
+  }
   // A device harness's wire from a plugged connector to its far end (E, leaving along a; Q, arriving along q):
   // null when its curve stays clear of the connector's block R, else a path round the block (Chris, 2026-11-13:
   // a harness plugged into two connectors of one board had its far ends laid out off the first, and the second's
@@ -888,27 +922,30 @@
   // turns runs innermost (o0 is its offset along px, n the trunk's wire count). The path starts at the tab (S0),
   // so its first turn rounds too, even when the trunk already reaches the way round (Chris, 2026-11-13: a square
   // corner there). Returns { d, pts }: d from S0, without its move.
-  function roundBlock(S0, E, a, Q, q, l1, l2, R, px, o0, n) {
-    const c1 = { x: E.x + a[0] * l1, y: E.y + a[1] * l1 }, c2 = { x: Q.x - q[0] * l2, y: Q.y - q[1] * l2 }, m = 2;
-    let hit = false;
-    for (let i = 1; i < 32 && !hit; i++) {
-      const t = i / 32, u = 1 - t, x = u * u * u * E.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * Q.x, y = u * u * u * E.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * Q.y;
-      hit = x > R.x0 - m && x < R.x1 + m && y > R.y0 - m && y < R.y1 + m;
-    }
-    if (!hit) return null;
+  // Whether a path's points (straight runs between them) pass through the block R.
+  function crosses(P0, R) {
+    const m = 2, inR = (x, y) => x > R.x0 - m && x < R.x1 + m && y > R.y0 - m && y < R.y1 + m;
+    for (let i = 1; i < P0.length; i++) for (let k = 1; k < 16; k++) { const t = k / 16; if (inR(P0[i - 1].x + (P0[i].x - P0[i - 1].x) * t, P0[i - 1].y + (P0[i].y - P0[i - 1].y) * t)) return true; }
+    return false;
+  }
+  function roundBlock(S0, E, a, Q, q, P0, R, px, o0, n, Qm, force) {
+    if (!force && !crosses(P0, R)) return null;
     const sE = a[1] < 0 ? 0 : a[0] > 0 ? 1 : a[1] > 0 ? 2 : 3;
     const out = sE === 0 ? R.y0 - E.y : sE === 1 ? E.x - R.x1 : sE === 2 ? E.y - R.y1 : R.x0 - E.x;
     const Qa = { x: Q.x - q[0] * 24, y: Q.y - q[1] * 24 };
     const way = pad => {
       const G = { x0: R.x0 - pad, y0: R.y0 - pad, x1: R.x1 + pad, y1: R.y1 + pad };
       const C = [{ x: G.x0, y: G.y0 }, { x: G.x1, y: G.y0 }, { x: G.x1, y: G.y1 }, { x: G.x0, y: G.y1 }];
-      const dq = [G.y0 - Qa.y, Qa.x - G.x1, Qa.y - G.y1, G.x0 - Qa.x], sQ = dq.indexOf(Math.max(...dq));
+      const Qt = Qm ? { x: Qm.x - q[0] * 24, y: Qm.y - q[1] * 24 } : Qa;
+      const dq = [G.y0 - Qt.y, Qt.x - G.x1, Qt.y - G.y1, G.x0 - Qt.x], sQ = dq.indexOf(Math.max(...dq));
       if (sQ === sE) return null;
       const cw = [], ccw = [];
       for (let i = sE; i !== sQ;) { i = (i + 1) % 4; cw.push(C[i]); }
       for (let i = sE; i !== sQ; i = (i + 3) % 4) ccw.push(C[i]);
       const E1 = { x: E.x + a[0] * Math.max(0, pad - out), y: E.y + a[1] * Math.max(0, pad - out) };
-      const len = l => { const P = [E1, ...l, Qa]; let s = 0; for (let i = 1; i < P.length; i++) s += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); return s; };
+      // Measured from the trunk's middle, so every wire of a trunk picks the same way round.
+      const E1c = { x: E1.x - px[0] * o0, y: E1.y - px[1] * o0 };
+      const len = l => { const P = [E1c, ...l, Qt]; let s = 0; for (let i = 1; i < P.length; i++) s += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); return s; };
       return { E1, list: len(cw) <= len(ccw) ? cw : ccw };
     };
     const base = Math.max(out, 16), w0 = way(base);
@@ -916,15 +953,10 @@
     const turn = (w0.list[0].x - E.x) * px[0] + (w0.list[0].y - E.y) * px[1];
     const k = Math.round(turn > 0 ? (n - 1) / 2 - o0 / DW.pitch : (n - 1) / 2 + o0 / DW.pitch);
     const w = way(base + Math.max(0, k) * DW.pitch) || w0;
-    const P = [S0, E, w.E1, ...w.list, Qa, Q].filter((p, i, l) => !i || Math.hypot(p.x - l[i - 1].x, p.y - l[i - 1].y) > 0.5);
-    const f1 = v => v.toFixed(1);
-    let s = '';
-    for (let i = 1; i < P.length - 1; i++) {
-      const A = P[i - 1], B = P[i], N = P[i + 1], la = Math.hypot(B.x - A.x, B.y - A.y), lb = Math.hypot(N.x - B.x, N.y - B.y), r = Math.min(18, la / 2, lb / 2);
-      s += `L${f1(B.x + (A.x - B.x) / la * r)} ${f1(B.y + (A.y - B.y) / la * r)}Q${f1(B.x)} ${f1(B.y)} ${f1(B.x + (N.x - B.x) / lb * r)} ${f1(B.y + (N.y - B.y) / lb * r)}`;
-    }
-    s += `L${f1(Q.x)} ${f1(Q.y)}`;
-    return { d: s, pts: P };
+    // Round the last corner square onto Q's way in: from it, along the side, then in along q.
+    const L = w.list[w.list.length - 1], last = elbow(L, q[0] ? [0, Math.sign(Qa.y - L.y) || 1] : [Math.sign(Qa.x - L.x) || 1, 0], Q, q, 0).slice(1);
+    const P = [S0, E, w.E1, ...w.list, ...last].filter((p, i, l) => !i || Math.hypot(p.x - l[i - 1].x, p.y - l[i - 1].y) > 0.5);
+    return { d: roundPts(P), pts: P };
   }
   // What a system's drawing covers, mm, as a mini view draws it: its blocks and its device harness drawings (no
   // names or captions, far ends small).
@@ -1574,7 +1606,7 @@
     page.classList.add('sys-on');
     if (!page.querySelector('.sys-view')) {
       page.innerHTML = `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><span id="sys-grid-menu"></span></div>
+        <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><button class="icon-btn" data-sact="turn-all" title="Turn the system 90° clockwise (Shift-click: counterclockwise)" aria-label="Turn the system 90°">⟳</button><span id="sys-grid-menu"></span></div>
         <div class="hud-br"><label class="seg glass hud-check" title="Show each cable’s name and part number, on a dot you can slide along it"><input type="checkbox" data-slabels id="sys-labels"><span>Cable labels</span></label></div></div>
         <div class="sys-wires" id="sys-wires" hidden></div>
         <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div>`;
@@ -2133,6 +2165,27 @@
     b.x = snap(cx - n.W / 2); b.y = snap(cy - n.H / 2);
     s.cables.forEach(cab => { if (Object.values(cab.ends).some(e => e && e.block === b.id)) delete cab.routes; });
   }
+  // Turn the whole system 90° (Chris, 2026-11-13: a button by Fit; part of the system, text upright): every block
+  // turns as R turns it and its middle swings round the middle of all the blocks, so the drawing turns as one.
+  // Cables re-route (their shapes are forgotten, as for one block), and labels and device drawings that were
+  // dragged keep their offsets turned with it. One undo.
+  function turnAll(s, deg) {
+    if (!s.blocks.length) return;
+    const x0 = Math.min(...s.blocks.map(b => b.x)), y0 = Math.min(...s.blocks.map(b => b.y));
+    const x1 = Math.max(...s.blocks.map(b => b.x + sizeOf(b).W)), y1 = Math.max(...s.blocks.map(b => b.y + sizeOf(b).H));
+    const px = (x0 + x1) / 2, py = (y0 + y1) / 2, cw = deg > 0;
+    const turn = (dx, dy) => (cw ? { dx: -dy, dy: dx } : { dx: dy, dy: -dx });
+    s.blocks.forEach(b => {
+      const a = sizeOf(b), t = turn(b.x + a.W / 2 - px, b.y + a.H / 2 - py);
+      b.rot = (rotOf(b) + deg + 360) % 360;
+      const n = sizeOf(b);
+      b.x = snap(px + t.dx - n.W / 2); b.y = snap(py + t.dy - n.H / 2);
+    });
+    s.cables.forEach(cab => {
+      delete cab.routes;
+      ['labelOff', 'devAt'].forEach(k => { const o = cab[k]; if (o && (o.dx || o.dy)) cab[k] = turn(o.dx || 0, o.dy || 0); });
+    });
+  }
   // A clear spot for a new block: right of everything.
   function freeSpot(s) { return s.blocks.length ? { x: Math.max(...s.blocks.map(b => b.x + sizeOf(b).W)) + 40, y: Math.min(...s.blocks.map(b => b.y)) } : { x: 0, y: 0 }; }
   async function act(a, el, arg) {
@@ -2148,6 +2201,7 @@
       case 'undo': swap(S.past, S.future); break;
       case 'redo': swap(S.future, S.past); break;
       case 'fit': S.cam = bounds(s); A.refresh(); break;
+      case 'turn-all': { const ccw = arg === 'ccw' || !!(window.event && window.event.shiftKey); change(x => turnAll(x, ccw ? -90 : 90)); S.cam = bounds(cur()); A.refresh(); break; }
       case 'add-drawn': case 'add-device': { const b = change(x => addDrawn(x, a === 'add-device' ? 'device' : 'board', freeSpot(x))); S.sel = { kind: 'block', block: b.id }; S.cam = null; A.refresh(); break; }
       case 'add-board':
         S.adding = 'board'; S.boardsErr = ''; A.refresh();
@@ -2386,7 +2440,7 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0),
+    externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll,
     tab: () => S.tab, setTab, setFocus, overviewSel, focused: () => S.focus, root: () => S.root,
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, saveFile, openDoc };
 })(window.LM = window.LM || {});
