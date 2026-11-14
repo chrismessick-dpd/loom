@@ -850,10 +850,10 @@
           const head = `M${f1(S0.x)} ${f1(S0.y)}L${f1(E.x)} ${f1(E.y)}`;
           pts.push(S0, E);
           // The curve, or, when it would cross its own block, a way round the block (Chris, 2026-11-13).
-          const to = (Q, l1, l2) => { const rb = roundBlock(E, dx, Q, d, l1, l2, R, px, o0, ghost ? 1 : list.length); if (!rb) return curve(E, dx, Q, d, l1, l2); pts.push(...rb.pts); return rb.d; };
-          if (o.ghostT) { const Q = o.ghostT.N; push(o, head + to(Q, far, DW.fan / 2), Q, o.ghostT); return; }
-          if (o.T) { const { t, Q } = slot(o); push(o, head + to(Q, far, DW.fan / 2), Q, t); return; }
-          const J = jpos.get(o.j); push(o, head + to(J, far * 0.6, DW.fan * 0.2), J, null);
+          const to = (Q, l1, l2) => { const rb = roundBlock(S0, E, dx, Q, d, l1, l2, R, px, o0, ghost ? 1 : list.length); if (!rb) return head + curve(E, dx, Q, d, l1, l2); pts.push(...rb.pts); return `M${f1(S0.x)} ${f1(S0.y)}` + rb.d; };
+          if (o.ghostT) { const Q = o.ghostT.N; push(o, to(Q, far, DW.fan / 2), Q, o.ghostT); return; }
+          if (o.T) { const { t, Q } = slot(o); push(o, to(Q, far, DW.fan / 2), Q, t); return; }
+          const J = jpos.get(o.j); push(o, to(J, far * 0.6, DW.fan * 0.2), J, null);
         });
       });
       segs.filter(o => o.jfrom).forEach(o => {
@@ -885,8 +885,10 @@
   // a harness plugged into two connectors of one board had its far ends laid out off the first, and the second's
   // wires ran across the board). It leaves along a, turns at the corners of the block grown by how far out E
   // is, the shorter way round, and comes in to Q along q. Wires of one trunk nest: the one nearest the way it
-  // turns runs innermost (o0 is its offset along px, n the trunk's wire count). Returns { d, pts }.
-  function roundBlock(E, a, Q, q, l1, l2, R, px, o0, n) {
+  // turns runs innermost (o0 is its offset along px, n the trunk's wire count). The path starts at the tab (S0),
+  // so its first turn rounds too, even when the trunk already reaches the way round (Chris, 2026-11-13: a square
+  // corner there). Returns { d, pts }: d from S0, without its move.
+  function roundBlock(S0, E, a, Q, q, l1, l2, R, px, o0, n) {
     const c1 = { x: E.x + a[0] * l1, y: E.y + a[1] * l1 }, c2 = { x: Q.x - q[0] * l2, y: Q.y - q[1] * l2 }, m = 2;
     let hit = false;
     for (let i = 1; i < 32 && !hit; i++) {
@@ -914,7 +916,7 @@
     const turn = (w0.list[0].x - E.x) * px[0] + (w0.list[0].y - E.y) * px[1];
     const k = Math.round(turn > 0 ? (n - 1) / 2 - o0 / DW.pitch : (n - 1) / 2 + o0 / DW.pitch);
     const w = way(base + Math.max(0, k) * DW.pitch) || w0;
-    const P = [E, w.E1, ...w.list, Qa, Q].filter((p, i, l) => !i || Math.hypot(p.x - l[i - 1].x, p.y - l[i - 1].y) > 0.5);
+    const P = [S0, E, w.E1, ...w.list, Qa, Q].filter((p, i, l) => !i || Math.hypot(p.x - l[i - 1].x, p.y - l[i - 1].y) > 0.5);
     const f1 = v => v.toFixed(1);
     let s = '';
     for (let i = 1; i < P.length - 1; i++) {
