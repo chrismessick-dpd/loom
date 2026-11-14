@@ -226,8 +226,53 @@
       if (pc.at) { c.x = +(pc.at.x - o.x0 - TAB.w / 2).toFixed(2); c.y = +(o.y1 - pc.at.y - TAB.h / 2).toFixed(2); c.side = pc.at.side; c.placed = pc.at.from === 'netlist' ? 'netlist' : 'pnp'; }
       else { c.x = 2 + (loose++) * (TAB.w + 2); c.y = b.h - TAB.h; c.placed = 'hand'; }
     });
+    // The board's real edge from its package's outline Gerber (Chris, 2026-11-13), in the block's own frame.
+    if (pkg.shape && pkg.shape.pts) {
+      const q = pkg.shape.pts, pts = [];
+      for (let i = 0; i + 1 < q.length; i += 2) pts.push(+(q[i] - o.x0).toFixed(3), +(o.y1 - q[i + 1]).toFixed(3));
+      b.shape = { pts, file: pkg.shape.file || '' };
+    }
     s.blocks.push(b);
     return b;
+  }
+  // A board drawn as its outline: its edge as a path in the block's own frame (mm), and the turn that puts
+  // that frame on the canvas (as tabSpot turns a connector): translate(X, Y) scale(K) matrix(...).
+  const median = a => { const v = a.slice().sort((x, y) => x - y), m = v.length >> 1; return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
+  const shaped = b => b.kind === 'board' && b.shape && Array.isArray(b.shape.pts) && b.shape.pts.length >= 6;
+  function shapeD(b) {
+    const q = b.shape.pts;
+    let d = '';
+    for (let i = 0; i + 1 < q.length; i += 2) d += (i ? 'L' : 'M') + (+q[i]).toFixed(2) + ' ' + (+q[i + 1]).toFixed(2);
+    return d + 'Z';
+  }
+  function shapeXf(b) {
+    const r = rotOf(b), m = r === 90 ? [0, 1, -1, 0, b.h, 0] : r === 180 ? [-1, 0, 0, -1, b.w, b.h] : r === 270 ? [0, -1, 1, 0, 0, b.w] : [1, 0, 0, 1, 0, 0];
+    return `translate(${b.x * K} ${b.y * K}) scale(${K}) matrix(${m.join(' ')})`;
+  }
+  // Fabcheck's picture of the board's top (boards.js picture), read once and drawn inside its edge: the
+  // picture is the outline's extent 8% larger, centered (Fabcheck's fit). Not stored with the system; with
+  // no sign-in, or no picture stored, the board is drawn plain.
+  const pics = new Map();
+  function picOf(b) {
+    const id = b.source && b.source.id;
+    if (!id || !LM.boards) return null;
+    if (!pics.has(id)) {
+      pics.set(id, 'loading');
+      LM.boards.picture(id).then(r => { pics.set(id, r || null); if (r && A && A.refresh) A.refresh(); }, () => pics.set(id, null));
+    }
+    const r = pics.get(id);
+    return r && r !== 'loading' ? r : null;
+  }
+  function shapeSvg(b, pic, cls) {
+    const id = 'sysclip-' + b.id, d = shapeD(b);
+    let o = `<g class="${cls}" transform="${shapeXf(b)}"><clipPath id="${id}"><path d="${d}"/></clipPath><path class="sys-board" d="${d}"/>`;
+    // The picture is the latest Send's, which may be another revision than the package read: drawn only when
+    // its proportions are the outline's (within 2%).
+    if (pic && Math.abs(pic.w / pic.h - b.w / b.h) <= 0.02 * (b.w / b.h)) {
+      const s0 = Math.min(pic.w / (1.08 * b.w), pic.h / (1.08 * b.h)), IW = pic.w / s0, IH = pic.h / s0;
+      o += `<image clip-path="url(#${id})" href="${pic.url}" x="${(b.w / 2 - IW / 2).toFixed(3)}" y="${(b.h / 2 - IH / 2).toFixed(3)}" width="${IW.toFixed(3)}" height="${IH.toFixed(3)}" preserveAspectRatio="none"/>`;
+    }
+    return o + `<path class="sys-board-edge" d="${d}" vector-effect="non-scaling-stroke"/></g>`;
   }
   // Every cable end plugged into a connector: [{ cable, node }].
   const pluggedAt = (s, bid, cid) => s.cables.flatMap(c => Object.keys(c.ends).filter(k => { const e = c.ends[k]; return e && e.block === bid && e.conn === cid; }).map(k => ({ cable: c, node: k })));
@@ -913,7 +958,7 @@
     let o = '';
     s.blocks.forEach(b => {
       const X = b.x * K, Y = b.y * K, { W, H } = sizeOf(b);
-      o += `<rect class="sys-mb ${b.kind}" x="${X}" y="${Y}" width="${W * K}" height="${H * K}" rx="6"/>`;
+      o += shaped(b) ? shapeSvg(b, picOf(b), 'sys-mshape') : `<rect class="sys-mb ${b.kind}" x="${X}" y="${Y}" width="${W * K}" height="${H * K}" rx="6"/>`;
       if (b.kind === 'system' && b.mini && childOf(b) && depth < 3) o += `<g transform="${miniXf(b)}">${miniSvg(childOf(b), depth + 1)}</g>`;
       else if (b.name) { const fs = Math.max(4, Math.min(W * K * 0.9 / Math.max(1, U.textW(b.name, 1)), H * K * 0.3)); o += `<text class="sys-mt" x="${X + W * K / 2}" y="${Y + H * K / 2}" style="font-size:${fs.toFixed(1)}px">${esc(b.name)}</text>`; }
       (b.conns || []).filter(c => fitted(c) && (c.used || pluggedAt(s, b.id, c.id).length)).forEach(c => { const g = tabGeom(b, c); o += `<rect class="sys-mtab" x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}"/>`; });
@@ -1006,6 +1051,18 @@
       // The harness editor's connector card (conn.js, with fx): paper card and shadow, a lit header,
       // the darker connector edge, and glass, so blocks stand off the stage as connectors do.
       const W = sizeOf(b).W * K, Hh = sizeOf(b).H * K, r = 8, hd = Math.min(46, Hh / 2);
+      if (shaped(b)) {
+        // A board drawn as itself (Chris, 2026-11-13): its edge, Fabcheck's picture inside it, and its ref and
+        // name on a small label at the top left; with no picture, the name in the middle as on any block.
+        const pic = picOf(b), fr = Math.max(14, Math.min(26, Hh / 8)), name = String(b.name || '');
+        const lw = U.textW(b.ref, fr) + (pic && name ? 10 + U.textW(name, fr * 0.72) : 0) + 16;
+        const fs = Math.max(7, Math.min(44, (W - 20) / Math.max(1, U.textW(name, 1)), Hh * 0.3));
+        html += `<g class="cv-conn sys-block board shaped${bs ? ' sel' : ''}" data-block="${b.id}">` + shapeSvg(b, pic, 'sys-shape') +
+          `<rect class="sys-lab-bg" x="${X + 6}" y="${Y + 6}" width="${lw.toFixed(1)}" height="${(fr * 1.5).toFixed(1)}" rx="${(fr * 0.4).toFixed(1)}"/>` +
+          `<text class="sys-ref" x="${X + 14}" y="${(Y + 6 + fr * 1.08).toFixed(1)}" style="font-size:${fr.toFixed(0)}px">${esc(b.ref)}</text>` +
+          (pic && name ? `<text class="sys-hname" x="${(X + 14 + U.textW(b.ref, fr) + 10).toFixed(1)}" y="${(Y + 6 + fr * 1.05).toFixed(1)}" style="font-size:${(fr * 0.72).toFixed(1)}px">${esc(name)}</text>` : '') +
+          (!pic && name ? `<text class="sys-center" x="${X + W / 2}" y="${Y + Hh / 2}" style="font-size:${fs.toFixed(1)}px">${esc(name)}</text>` : '');
+      } else
       html += `<g class="cv-conn sys-block ${b.kind}${bs ? ' sel' : ''}" data-block="${b.id}">` +
         `<rect class="cv-card" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/>` +
         `<path class="cv-headbg" d="M${X} ${Y + hd}V${Y + r}Q${X} ${Y} ${X + r} ${Y}H${X + W - r}Q${X + W} ${Y} ${X + W} ${Y + r}V${Y + hd}Z"/>` +
@@ -1207,7 +1264,7 @@
     const used = b.conns.filter(c => fitted(c) && c.used).length, pop = b.conns.filter(fitted).length;
     return `<div class="rail-head"><div class="eyebrow">${b.kind === 'device' ? 'Device' : 'Board'} ${esc(b.ref)}</div><div class="rail-title">${esc(b.name)}</div></div>` +
       fld('Ref', inp('b.ref', b.ref)) + fld('Name', inp('b.name', b.name)) +
-      (b.source ? `<p class="hint">From Signoff EE: ${esc(b.source.name)}${b.source.label ? ' · ' + esc(b.source.label) : ''}. ${esc(String(b.w))} × ${esc(String(b.h))} mm, from its pick-and-place and netlist.</p><div class="sys-actions">${btn('refresh-board', S.busy ? 'Reading…' : 'Refresh from Signoff EE', S.busy ? ' disabled' : '')}${btn('open-ee', 'Open in Signoff EE')}</div>`
+      (b.source ? `<p class="hint">From Signoff EE: ${esc(b.source.name)}${b.source.label ? ' · ' + esc(b.source.label) : ''}. ${esc(String(b.w))} × ${esc(String(b.h))} mm, ${shaped(b) ? `drawn as its outline${b.shape.file ? ' (' + esc(b.shape.file) + ')' : ''}${picOf(b) ? ' with Fabcheck’s picture of its top' : ''}` : 'from its pick-and-place and netlist. Refresh to draw it as its outline, when its package has one'}.</p><div class="sys-actions">${btn('refresh-board', S.busy ? 'Reading…' : 'Refresh from Signoff EE', S.busy ? ' disabled' : '')}${btn('open-ee', 'Open in Signoff EE')}</div>`
         : `<div class="field-row">${fld('Width, mm', inp('b.w', b.w, ' type="number" min="5"'))}${fld('Height, mm', inp('b.h', b.h, ' type="number" min="5"'))}</div>`) +
       `<h4 class="sys-h">Connectors <span class="count">${pop} populated, ${used} used, of ${b.conns.length}</span></h4>` +
       `<div class="sys-ctab"><div class="sys-crow sys-chead"><span>Connector</span><span>Populated</span><span>Used</span><span></span></div>${b.conns.map(c => `<div class="sys-crow${fitted(c) ? '' : ' off'}"><button class="sys-link" data-ssel="conn:${b.id}:${c.id}">${esc(c.ref)}</button>` +
@@ -2092,18 +2149,26 @@
           if (!bd) throw new Error(`${b0.source.name} isn't in Signoff EE any more, or this sign-in can't read it.`);
           const pkg = await LM.boards.loadBoard(bd);
           const fresh = addBoard(blank(''), bd, pkg, { x: 0, y: 0 });
-          let added = 0;
+          let added = 0, kept = false;
           change(x => {
             const b = block(x, b0.id);
+            // Where each connector sits on the canvas before, so the block can move to keep them there (a new
+            // outline changes the block's frame, Chris, 2026-11-13), and cables keep their shapes when it can.
+            const was = new Map(b.conns.map(c => { const g = tabGeom(b, c); return [c.ref.toUpperCase(), { x: g.cx, y: g.mid }]; }));
             b.w = fresh.w; b.h = fresh.h; b.name = b.name || fresh.name; b.source = fresh.source;
+            if (fresh.shape) b.shape = fresh.shape; else delete b.shape;
             fresh.conns.forEach(f => {
               const c = b.conns.find(k => k.ref.toUpperCase() === f.ref.toUpperCase());
               if (!c) { b.conns.push(f); added++; return; }
               Object.assign(c, { pins: f.pins, x: f.x, y: f.y, side: f.side, placed: f.placed, mpn: f.mpn, mfr: f.mfr, desc: f.desc });
             });
-            x.cables.forEach(cab => { delete cab.routes; });
+            const moves = b.conns.filter(c => was.has(c.ref.toUpperCase())).map(c => { const g = tabGeom(b, c), w0 = was.get(c.ref.toUpperCase()); return { dx: w0.x - g.cx, dy: w0.y - g.mid }; });
+            const mx = moves.length ? median(moves.map(m => m.dx)) : 0, my = moves.length ? median(moves.map(m => m.dy)) : 0;
+            b.x = +(b.x + mx / K).toFixed(2); b.y = +(b.y + my / K).toFixed(2);
+            kept = moves.length > 0 && moves.every(m => Math.hypot(m.dx - mx, m.dy - my) < 2);
+            if (!kept) x.cables.forEach(cab => { delete cab.routes; });
           });
-          A.toast(`${b0.ref} refreshed from ${pkg.source ? pkg.source.label : 'its package'}${added ? `, with ${added} new connector${added > 1 ? 's' : ''}` : ''}.`);
+          A.toast(`${b0.ref} refreshed from ${pkg.source ? pkg.source.label : 'its package'}${added ? `, with ${added} new connector${added > 1 ? 's' : ''}` : ''}${pkg.shape ? ', drawn as its outline' : ''}${kept ? '' : '. Its connectors moved, so cable shapes were reset'}.`);
         } catch (e) { A.toast(e.code === 'signin' ? 'Sign in to GitHub in Settings to read Signoff EE’s boards.' : e.message, 'error'); }
         S.busy = ''; A.refresh();
         break;

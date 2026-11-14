@@ -293,14 +293,26 @@ Derived at every edit, as a harness's checks are, and listed in the system's Che
 
 ## Board geometry: the traps
 
-- **Origin.** PnP coordinates are relative to the board's origin, while the preview is cropped to the
-  outline. Fabcheck's `preview/index.json` has `board` w and h but no origin. Fabcheck should add the
-  outline's `bbox` (in the PnP's frame), an additive change to the *Board previews* contract in
-  `ee_design_review/docs/fabcheck-link.md`. Until then, and for older runs, fall back to the PnP's own
-  extents, and let the user nudge the picture under the tabs.
-- **Revision.** `preview/` is whatever the latest Send wrote, while `boards.js` reads the tagged
-  revision's package. Use the picture only when its `runId` is that revision's run, else draw the
-  outline box alone.
+- **The outline (built 2026-11-13, Chris: draw a board as its real outline when the data is there).** `boards.js`
+  `boardShape` reads the package's outline-like Gerbers (Outline, Profile, Edge cuts, Board, GKO, GM1, or Mech1)
+  with Fabcheck's own parser and `outlineLoops` (`util.js`, `gerber.js`, and `classify.js`, vendored). Gerbers
+  and the pick-and-place share the design's origin (checked on a real board: a 135 by 100 mm outline from 0, 0,
+  every part inside), so a loop is used only when 95% of the placed parts lie inside it, the smallest such loop
+  winning. The block is then the outline's extent with no margin, and its edge is kept as `b.shape`
+  (`{ pts, file }`, mm, in the block's own frame, y down). Only the largest loop is drawn: an inner loop on the
+  outline layer isn't always a cutout (the real board's wasn't).
+- **Refresh** from Signoff EE moves the block so its connectors stay where they were on the canvas (the frame
+  changes when the outline arrives) and keeps cable shapes when every connector moved by the same amount.
+  Blocks added before keep the old box until refreshed.
+- **The picture.** A shaped board draws Fabcheck's stored top picture inside its edge (`boards.js` `picture`,
+  `fabcheck/<id>/preview/top.webp`, read once a page with the sign-in; the demo's are Signoff EE's). Fabcheck
+  frames it as the outline's extent 8% larger, centered (`boardPreviews`, `fit`), so it needs no origin. It's
+  the latest Send's picture, which may be another revision than the package read, so it's drawn only when its
+  proportions match the outline within 2%. It isn't stored with the system: with no sign-in or no picture, the
+  board draws plain. 640 px wide, it softens when zoomed in close; vector linework (silkscreen and the 3D body
+  layer) was the other option Chris weighed.
+- **Connector outlines** aren't drawn yet. The real package's 3D body layer closed a loop round only 3 of its
+  22 connectors, and its IPC-356 has no pad sizes; the picture's silkscreen shows them instead.
 - **Missing connectors.** A connector not fitted in the build variant has no PnP row: place it by hand
   (kept on the block, marked as placed by hand).
 - **Bottom side.** Bottom connectors are mirrored in the top view and drawn dashed, with "bottom" in

@@ -22,6 +22,14 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Boards drawn as themselves (2026-11-13, Chris: the real outline when the data is there, and a more realistic
+  board; he chose Fabcheck's picture).** Reading a board's package now also reads its outline Gerber (`boards.js`
+  `boardShape`, with Fabcheck's `util.js`, `gerber.js`, and `classify.js` vendored by `tools/sync_vendor.py`): the
+  block is the outline's extent and keeps its edge (`b.shape`). A shaped board draws its edge with Fabcheck's
+  stored top picture inside (`boards.js` `picture`, read with the sign-in, never stored), a label with its ref and
+  name, and the same in mini views (`shapeSvg`, `shapeXf`, `picOf` in `system.js`). Refresh from Signoff EE moves
+  the block to keep its connectors in place, and keeps cable shapes when it can. Existing blocks change only when
+  refreshed. See `docs/system.md`, *Board geometry*. Tests 70.
 - **History (2026-11-13, Chris: as Signoff EE's and PL's; `../signoff/docs/history.md`).** *History* in the
   harness's details panel, beside Duplicate, opens a sheet of the harness's versions from git (`assets/history.js`,
   `LM.history`; the engine's `fileHistory` and `historyBlocks`, vendored).

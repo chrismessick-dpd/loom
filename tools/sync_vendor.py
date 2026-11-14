@@ -3,6 +3,8 @@ at the source and re-run this.
 
 - ipc356.js, assembly.js   Fabcheck's netlist and BOM parsers (pcb_dfm), so Loom reads fab packages
                            the way Fabcheck does.
+- util.js, gerber.js,      Fabcheck's helpers, Gerber parser, and layer sorting (pcb_dfm), for a board's
+  classify.js              real outline (outlineLoops) in Loom systems.
 - model.js, github.js      the Signoff engine (ee_design_review): GitHubStore, which syncs Loom's
                            harnesses with its private data repo, and the merge helpers it needs.
 
@@ -18,7 +20,8 @@ EE = ROOT.parent / "ee_design_review" / "assets"
 FAB_HEADER = ("/* Vendored from pcb_dfm/assets/{name} (Fabcheck). Do not edit here: re-copy with tools/sync_vendor.py. */\n"
               "window.Fab = window.Fab || {{}};\n")
 EE_HEADER = "/* Vendored from ee_design_review/assets/{name} (the Signoff engine). Do not edit here: re-copy with tools/sync_vendor.py. */\n"
-FILES = [(FAB, "ipc356.js", FAB_HEADER), (FAB, "assembly.js", FAB_HEADER),
+FILES = [(FAB, "util.js", FAB_HEADER), (FAB, "gerber.js", FAB_HEADER), (FAB, "classify.js", FAB_HEADER),
+         (FAB, "ipc356.js", FAB_HEADER), (FAB, "assembly.js", FAB_HEADER),
          (EE, "model.js", EE_HEADER), (EE, "github.js", EE_HEADER), (EE, "auth.js", EE_HEADER)]
 
 stale = []

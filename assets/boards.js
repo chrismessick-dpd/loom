@@ -152,7 +152,79 @@
     }
     const conns = connectors(net, bom);
     const placed = place(conns, net, pnp);
-    return { connectors: conns, netlist: net.name, bom: bom ? bom.name : null, pnp: pnp ? pnp.name : null, outline: placed.outline, fit: placed.fit };
+    const shape = await boardShape(zip, names, placed.pts);
+    // With the board's real edge, the block is the board itself: its outline's extent, no margin.
+    const outline = shape ? { x0: shape.bbox[0], y0: shape.bbox[1], x1: shape.bbox[2], y1: shape.bbox[3], from: 'gerber' } : placed.outline;
+    return { connectors: conns, netlist: net.name, bom: bom ? bom.name : null, pnp: pnp ? pnp.name : null, outline, shape, fit: placed.fit };
+  }
+
+  // The board's real edge (Chris, 2026-11-13: draw a board as its outline when the package has it): the
+  // largest closed loop on an outline-like Gerber layer (Outline, Profile, Edge cuts, Board, GKO, GM1, or
+  // Mech1), read with Fabcheck's parser and its outlineLoops. Gerbers and the pick-and-place share the
+  // design's origin, so it's used only when nearly every placed part (pts) lies inside it; of those, the
+  // smallest wins (a panel or drawing frame would hold them too). { pts (flat x, y in mm, y up), bbox,
+  // file }, or null.
+  const OUTLINE_NAME = /(outline|profile|edge[._ -]?cuts|board|\.gko$|\.gm1$|\.gml$|mech(anical)?_?1(?!\d))/i;
+  async function boardShape(zip, names, pts) {
+    const F = window.Fab;
+    if (!F || !F.gerber || !F.classify || !pts || pts.length < 3) return null;
+    let best = null;
+    for (const n of names.filter(n => OUTLINE_NAME.test(n.split('/').pop()) && !/\.(pdf|txt|csv|xlsx?|zip|drl|drr|ipc|356|json|md|htm|html|png|jpe?g|webp)$/i.test(n))) {
+      let loops;
+      try { loops = F.classify.outlineLoops(F.gerber.parse(await zip.file(n).async('string'), n)).filter(l => l.closed && l.area > 1 && l.pts && l.pts.length >= 6); } catch (e) { continue; }
+      if (!loops.length) continue;
+      const L = loops.sort((a, b) => b.area - a.area)[0], bb = L.bbox;
+      const inside = pts.filter(q => q.x >= bb[0] - 0.5 && q.x <= bb[2] + 0.5 && q.y >= bb[1] - 0.5 && q.y <= bb[3] + 0.5).length / pts.length;
+      if (inside < 0.95) continue;
+      if (!best || L.area < best.area) best = { pts: L.pts, bbox: bb, area: L.area, file: n };
+    }
+    if (!best) return null;
+    let p = best.pts.map(v => Math.round(v * 1000) / 1000);
+    // A drawn outline keeps at most about 600 points (arcs come in fine steps).
+    if (p.length > 1200) { const k = Math.ceil(p.length / 1200), q = []; for (let i = 0; i < p.length; i += 2 * k) q.push(p[i], p[i + 1]); p = q; }
+    return { pts: p, bbox: best.bbox.map(v => Math.round(v * 1000) / 1000), file: best.file.split('/').pop() };
+  }
+
+  // Fabcheck's picture of the board's top, stored with its runs beside the review (fabcheck/<id>/preview/,
+  // drawn 4% wider and taller than the board's outline, centered; pcb_dfm app.js boardPreviews). Read once a
+  // page; { url, w, h } (pixels), or null with no sign-in or no picture. The demo's are Signoff EE's.
+  const pics = new Map(), trees = new Map();
+  let reposP = null;
+  async function readRepos() {
+    const st = settings(), repos = [];
+    for (let page = 1; page < 6; page++) {
+      const got = await gh(`/user/repos?per_page=100&page=${page}`);
+      got.forEach(r => { if (r.owner && r.owner.login.toLowerCase() === st.owner.toLowerCase() && (r.name === st.dataRepo || r.name.startsWith(st.prefix))) repos.push(r.full_name); });
+      if (got.length < 100) break;
+    }
+    return repos;
+  }
+  function picture(id) {
+    if (!id) return Promise.resolve(null);
+    if (pics.has(id)) return pics.get(id);
+    const p = (async () => {
+      let url;
+      if (DEMO) url = `../ee_design_review/assets/demo-previews/${encodeURIComponent(id)}-top.webp`;
+      else {
+        if (!token()) return null;
+        if (!reposP) reposP = readRepos();
+        const repos = await reposP, re = new RegExp(`(^|/)fabcheck/${id.replace(/[^\w-]/g, '')}/preview/top\\.(webp|png)$`);
+        for (const full of repos) {
+          if (!trees.has(full)) trees.set(full, gh(`/repos/${full}/git/trees/main?recursive=1`).then(t => t.tree).catch(() => []));
+          const e = (await trees.get(full)).find(x => x.type === 'blob' && re.test(x.path));
+          if (!e) continue;
+          const bytes = await blob(full, e.sha);
+          url = URL.createObjectURL(new Blob([bytes], { type: /png$/.test(e.path) ? 'image/png' : 'image/webp' }));
+          break;
+        }
+        if (!url) return null;
+      }
+      const img = new Image();
+      await new Promise((ok, no) => { img.onload = ok; img.onerror = () => no(new Error('no picture')); img.src = url; });
+      return img.naturalWidth ? { url, w: img.naturalWidth, h: img.naturalHeight } : null;
+    })().catch(() => null);
+    pics.set(id, p);
+    return p;
   }
 
   // Where each connector sits, in the pick-and-place's mm (y up). The pick-and-place lists only the
@@ -207,7 +279,7 @@
     pads.forEach(c => { xs.push(c.x * fit.k + fit.dx); ys.push(c.y * fit.k + fit.dy); });
     const m = 4;
     const outline = xs.length ? { x0: Math.min(...xs) - m, y0: Math.min(...ys) - m, x1: Math.max(...xs) + m, y1: Math.max(...ys) + m, from: pnp ? 'pnp+netlist' : 'netlist' } : null;
-    return { outline, fit };
+    return { outline, fit, pts: xs.map((x, i) => ({ x, y: ys[i] })) };
   }
 
   // ── Connectors ──
@@ -260,5 +332,5 @@
     return out;
   }
 
-  LM.boards = { DEMO, token, listBoards, loadBoard, readZip, matches, place, padCenters, fitScale, reset: () => { boardsCache = null; pkgCache.clear(); } };
+  LM.boards = { DEMO, token, listBoards, loadBoard, readZip, boardShape, picture, matches, place, padCenters, fitScale, reset: () => { boardsCache = null; pkgCache.clear(); reposP = null; trees.clear(); } };
 })(window.LM = window.LM || {});

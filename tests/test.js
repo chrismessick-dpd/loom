@@ -865,6 +865,22 @@
     ok(res.outline.x0 <= 5 - 4 + 0.01, 'the outline takes in the netlist-only connector');
   });
 
+  test('system: a board with an outline is its outline’s size, its edge kept in its own frame (y down)', () => {
+    const Y = LM.system, s = Y.blank('Gizmo');
+    // A made-up 60 by 40 mm board with a notch, from 10, 5 in its design's coordinates (y up), and one connector.
+    const pts = [10, 5, 70, 5, 70, 45, 40, 45, 40, 35, 10, 35];
+    const pkg = { outline: { x0: 10, y0: 5, x1: 70, y1: 45 }, shape: { pts, bbox: [10, 5, 70, 45], file: 'Gizmo_Outline.gbr' },
+      connectors: [{ ref: 'J1', pins: [{ pin: '1' }, { pin: '2' }], at: { x: 20, y: 30, side: 'top', from: 'pnp' } }] };
+    const b = Y.addBoard(s, { id: 'pg1', name: 'Gizmo board' }, pkg, { x: 0, y: 0 });
+    eq([b.w, b.h], [60, 40], 'the block is the outline’s extent, no margin');
+    eq(b.shape.pts.slice(0, 4), [0, 40, 60, 40], 'the first corner (10, 5) is the bottom left: 0, 40 down from the top');
+    eq(b.shape.pts.slice(6, 8), [30, 0], 'the notch’s top corner (40, 45) is at the top edge');
+    eq(b.shape.file, 'Gizmo_Outline.gbr', 'it names the layer it came from');
+    const c = b.conns[0];
+    eq([+(c.x + Y.TAB.w / 2).toFixed(2), +(c.y + Y.TAB.h / 2).toFixed(2)], [10, 15], 'J1 sits in the same frame: 10 right, 15 down');
+    const plain = Y.addBoard(s, { id: 'pg2', name: 'Plain' }, Object.assign({}, pkg, { shape: null }), { x: 0, y: 0 });
+    ok(!plain.shape, 'with no outline in its package, a board stays a plain block');
+  });
   test('system: an unpopulated connector is skipped by the used checks, and a cable on one is an error', () => {
     const { Y, s, a, c, h, get } = sysFixture();
     c.placed = 'netlist';
