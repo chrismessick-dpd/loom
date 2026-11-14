@@ -148,6 +148,11 @@ that end down (or up) to the tab's height and it sticks there; the end then leav
 where the route goes, so the cable runs straight out of the port and the lead-in goes (`portLines` in
 `system.js`). The new side is the connector's exit (`c.exit`, a placed system's `b.tabs`), as if picked in
 *Cables leave from*; dragged away again before letting go, the old exit comes back, and one undo reverts both.
+A lead-in drags too: pulled sideways, its end leaves from that side of the tab and the line sits where it's
+dropped (`leadNear`, `leadGrab`). And the vertical run next to an end leaving from its tab's side, dragged across
+the tab, makes that end leave from the other side; it never comes nearer the block than the side exit's stub
+(`sideClear`), since nearer, the route fits no terminal and loops back (Chris, 2026-11-13: dragged right, it looped
+back to the left).
 
 ## The idea
 

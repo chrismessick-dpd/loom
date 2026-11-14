@@ -938,6 +938,7 @@
       }
       out.set(cab.id, { cab, h, ends, at, routes, dev: deviceEnds(h).map(n => n.name || n.ref) });
     });
+    out.step = step;
     return out;
   }
   const midOf = r => r.mid;
@@ -1554,21 +1555,54 @@
   // shape's first or last level value) dragged to the tab's height makes that end leave from the tab's
   // side, toward where the route goes. Each: { end, y (the tab's middle), b, c, exit0 (as it was), side }.
   function portLines(d) {
-    const R0 = d.run.route, L = lastLo && lastLo.get(d.cab.id), n = d.v0.length, out = [];
-    if (d.axis !== 'h' || !L) return out;
-    const one = (T, lead, x, k, end) => {
-      if (!x || k !== d.k || !lead || Math.abs(lead.x - T.x) > 0.5 || Math.abs(lead.y - T.y) < 0.5) return;
-      const b = block(cur(), x.b.id), c = b && conn(b, x.c.id);
-      if (!c) return;
-      const g = tabGeom(b, c), nx = end === 'A' ? d.v0[2] : d.v0[n - 3];
-      const side = nx >= g.cx ? 'right' : 'left';
-      // Where its first bend may come, clear of the block's side (a side exit's stub, terminals()).
-      const clear = side === 'right' ? (b.x + sizeOf(b).W) * K + STUB_U : b.x * K - STUB_U;
-      out.push({ end, y: g.mid, b, c, exit0: c.exit, side, clear });
-    };
-    one(R0.A, R0.A.from, L.at[0], 1, 'A');
-    one(R0.B, R0.B.to, L.at.find(x => x.n.id === R0.end), n - 2, 'B');
+    const R0 = d.run.route, n = d.v0.length, out = [];
+    if (d.axis !== 'h') return out;
+    d.tabs.forEach(t => {
+      const T = t.end === 'A' ? R0.A : R0.B, lead = t.end === 'A' ? R0.A.from : R0.B.to;
+      if ((t.end === 'A' ? 1 : n - 2) !== d.k || !isLead(T, lead)) return;
+      const g = tabGeom(t.b, t.c), nx = t.end === 'A' ? d.v0[2] : d.v0[n - 3];
+      out.push(Object.assign({ y: g.mid, side: nx >= g.cx ? 'right' : 'left' }, t));
+    });
     return out;
+  }
+  const isLead = (T, lead) => !!lead && Math.abs(lead.x - T.x) < 0.5 && Math.abs(lead.y - T.y) > 0.5;
+  // The tabs at a dragged route's two ends: { end ('A' or 'B'), b, c, exit0 (its exit as the drag found it) }.
+  function endTabs(d) {
+    const R0 = d.run.route, L = lastLo && lastLo.get(d.cab.id), out = [];
+    if (!L) return out;
+    [['A', L.at[0]], ['B', L.at.find(x => x.n.id === R0.end)]].forEach(([end, x]) => {
+      const b = x && block(cur(), x.b.id), c = b && conn(b, x.c.id);
+      if (c) out.push({ end, b, c, exit0: c.exit });
+    });
+    return out;
+  }
+  // A lead-in's drag: the end will leave from its tab's side, so the shape gains a vertical run where the
+  // lead was (at the pointer), joined to the route at the lead's far end (its terminal's height). k is that run.
+  function leadGrab(R0, end, p) {
+    const v0 = R0.v.slice(), T = end === 'A' ? R0.A : R0.B, x = p.x;
+    const v = !v0.length ? [x] : end === 'A' ? [x, T.y].concat(v0) : v0.concat([T.y, x]), k = end === 'A' ? 0 : v.length - 1;
+    const lines = [k - 2 >= 0 ? v[k - 2] : null, k + 2 < v.length ? v[k + 2] : null].filter(x0 => x0 != null).map(Number);
+    return { v0: v, k, axis: 'v', lines };
+  }
+  // Where the first bend out of a tab leaving from its block's left or right side may come: the side exit's
+  // stub, out past the block's edge and onto the search grid (terminals(), onGrid). Nearer, the route fits
+  // no terminal and doubles back into a loop (Chris, 2026-11-13).
+  function sideClear(b, side) {
+    const st = (lastLo && lastLo.step) || 12;
+    return side === 'right' ? Math.ceil(((b.x + sizeOf(b).W) * K + STUB_U) / st) * st : Math.floor((b.x * K - STUB_U) / st) * st;
+  }
+  // A cable's lead-in nearest a point (the line from a tab leaving from its top or bottom out past its
+  // block's edge, before the route starts): { route, end, d }, within reach of the line, or null.
+  function leadNear(cabId, p) {
+    const L = lastLo && lastLo.get(cabId);
+    if (!L) return null;
+    let best = null;
+    L.routes.forEach(r => [['A', r.A, r.A.from], ['B', r.B, r.B.to]].forEach(([end, T, lead]) => {
+      if (!isLead(T, lead)) return;
+      const y0 = Math.min(T.y, lead.y), y1 = Math.max(T.y, lead.y), dd = Math.hypot(p.x - T.x, p.y - Math.max(y0, Math.min(y1, p.y)));
+      if (dd <= r.half + 12 && (!best || dd < best.d)) best = { route: r, end, d: dd };
+    }));
+    return best;
   }
   // A cable's kept route record for one end (the harness's record: v, a, b, mode), set or cleared.
   function keepRoute(cab, end, rec) {
@@ -1719,6 +1753,11 @@
       } else if (run) {
         const [cid, end, j] = run.dataset.run.split('|'), r = lastLo.get(cid).routes.find(x => x.end === end), R = r && CN().runOf(r, +j);
         if (R) drag = Object.assign(base, { kind: 'run', cab: cable(s, cid), run: R, end });
+      } else if (cb && !S.pending && leadNear(cb.dataset.cable, p)) {
+        // A lead-in (Chris, 2026-11-13: they couldn't be dragged): dragged sideways, its end leaves from that
+        // side of the tab, and the line sits where it's dragged.
+        const ld = leadNear(cb.dataset.cable, p);
+        drag = Object.assign(base, { kind: 'run', cab: cable(s, cb.dataset.cable), run: { route: ld.route }, lead: ld.end, end: ld.route.end, click: cb.dataset.cable });
       } else if (cb && !S.pending && (() => { const n = runNear(cb.dataset.cable, p); return n && n.d <= n.route.half + 12; })()) {
         // As the editor's runUnder: a cable's line drags the run under it, selected or not; a click
         // without moving still selects it.
@@ -1788,11 +1827,12 @@
         // breaks the run where it's grabbed and drags the piece from there.
         const free = e.ctrlKey || e.metaKey;
         if (!d.snap) {
-          const st = CN().grab(d.run, snapU, d.brk);
+          const st = d.lead ? leadGrab(d.run.route, d.lead, d.p) : CN().grab(d.run, snapU, d.brk);
           if (!st) { drag = null; return; }
           S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true;
           d.keep = { a: d.run.route.A.side, b: d.run.route.B.side, mode: d.cab.routes && d.cab.routes[d.end] && d.cab.routes[d.end].mode };
           Object.assign(d, st, { p0: toWorld(svg, { clientX: d.x, clientY: d.y }) });
+          d.tabs = endTabs(d);
           d.ports = portLines(d);
           d.lines = d.lines.concat(d.ports.map(q => q.y));
           svg.classList.add('dragging');
@@ -1802,13 +1842,23 @@
         // Level with the port of an end that leaves from its tab's top or bottom: that end leaves from the
         // tab's side instead, straight out of the port, and its lead-in goes (Chris, 2026-11-13: the cable
         // climbed out past the block's edge and came back down in a loop).
-        d.ports.forEach(q => { if (q.exit0) q.c.exit = q.exit0; else delete q.c.exit; });
+        d.tabs.forEach(t => { if (t.exit0) t.c.exit = t.exit0; else delete t.c.exit; });
         const q = d.ports.find(o => Math.abs(v[d.k] - o.y) < 0.01);
+        let near = null;
         if (q) {
-          q.c.exit = turnSide(q.side, 360 - rotOf(q.b));
           v = q.end === 'A' ? v.slice(2) : v.slice(0, v.length - 2);
-          const i = q.end === 'A' ? 0 : v.length - 1, cl = snapU(q.clear);
-          if (q.side === 'right' ? v[i] < cl : v[i] > cl) v[i] = cl;
+          near = { t: q, i: q.end === 'A' ? 0 : v.length - 1, side: q.side };
+        } else if (d.axis === 'v' && (d.k === 0 || d.k === v.length - 1)) {
+          // The vertical run next to an end that leaves from its tab's side (or a lead-in, dragged): dragged
+          // across the tab, the end leaves from the other side (Chris, 2026-11-13: dragged right, it looped
+          // back to the left), and it never comes nearer than the side's stub.
+          const t = d.tabs.find(o => o.end === (d.lead || (d.k === 0 ? 'A' : 'B'))), g = t && tabGeom(t.b, t.c);
+          if (g && (g.dx || d.lead)) near = { t, i: d.k, side: v[d.k] >= g.cx ? 'right' : 'left' };
+        }
+        if (near) {
+          near.t.c.exit = turnSide(near.side, 360 - rotOf(near.t.b));
+          const cl = sideClear(near.t.b, near.side), i = near.i;
+          if (near.side === 'right' ? v[i] < cl : v[i] > cl) v[i] = cl;
         }
         keepRoute(d.cab, d.end, Object.assign({ v }, d.keep));
         redraw(svg, { fast: true });
