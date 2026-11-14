@@ -1052,6 +1052,35 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-wtable td[colspan] { white-space: normal; }
 .sys-wtable .sys-link { font-weight: 600; text-align: left; }
 .sys-wpn { font-size: 11.5px; color: var(--text-3); margin-left: 4px; }
+/* The system List, like Signoff PL's (2026-11-14): Hierarchy or Cables, name over part number, a column menu. */
+.sys-wires .sys-ltable { min-width: 640px; }
+.sys-ltable td { vertical-align: middle; padding-top: 7px; padding-bottom: 7px; }
+.sys-ltable .sys-wi { min-width: 260px; }
+.sys-ltable tr.conn td { font-weight: 400; }
+.sys-ltable td:nth-child(n) { white-space: normal; }
+.sys-ltable td:nth-child(2), .sys-ltable td.num { white-space: nowrap; }
+.sys-lname { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sys-llabel { min-width: 0; }
+.sys-llabel b { font-weight: 600; }
+.sys-ltable tr.conn .sys-llabel > .mono { font-weight: 600; }
+.sys-lsub { font-size: 12px; color: var(--text-3); margin-top: 1px; font-variant-numeric: tabular-nums; }
+.sys-ltable tr.cab .sys-lsub { font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; }
+.sys-caret { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border: none; background: none; color: var(--text-3); border-radius: 4px; cursor: pointer; padding: 0; }
+.sys-caret svg { transition: transform 0.15s ease; }
+.sys-caret.closed svg { transform: rotate(-90deg); }
+.sys-caret:hover { background: var(--bg-sunk); color: var(--text); }
+.sys-cspace { width: 18px; flex: none; }
+.sys-chip { display: inline-block; padding: 1px 7px; border-radius: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; background: var(--bg-sunk); color: var(--text-2); box-shadow: inset 0 0 0 1px var(--hair); white-space: nowrap; }
+.sys-chip.k-harness { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
+.sys-lst { font-size: 12.5px; color: var(--text-2); }
+.sys-ltools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+.sys-lcols { position: relative; }
+.sys-lcols .icon-btn.on { background: var(--accent-soft); color: var(--accent); }
+.sys-lmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 200px; padding: 10px 12px; background: var(--bg-elev); border: 1px solid var(--hair); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); display: grid; gap: 6px; }
+.sys-lmenu-h { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.sys-lopt { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; color: var(--text); cursor: pointer; }
+.sys-lopt input { margin: 0; accent-color: var(--accent); }
+.sys-lmenu-note { margin: 2px 0 0; font-size: 11.5px; color: var(--text-3); }
 .sys-wsw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.55); }
 .sys-canvas-wrap { grid-area: auto; }
 .sys-canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }

@@ -103,11 +103,15 @@ A pick shows where it's placed (Chris, 2026-11-13): its block and that block's c
 with **Open <system>**, never opened by itself. A pick placed in the open system goes to Overview, one deeper to
 Detail with its parent drawn (picking a system two levels down draws the one placing it, with it selected). List
 keeps listing the pick.
-- **List** (first called Wires; Chris renamed it) takes the canvas's place beside the panel. For a system:
-  each block, its used or plugged connectors, the cables plugged into each, and a harness cable's wires from that
-  end (pin, signal or the board's net, color, gauge in mm² first, far end and where it plugs, and length); for a
-  harness, its ends, where they plug in, and its from/to list. Under each item's name, what it is and its part
-  number: "Board · generic · no P/N", "Loom harness · <name> · <P/N>", "Purchased cable · <P/N>", and so on.
+- **List** (first called Wires; Chris renamed it) takes the canvas's place beside the panel. For a system it
+  is laid out like Signoff PL's list (2026-11-14, Chris: the old one was busy): a **Hierarchy | Cables** switch
+  over the table. Hierarchy (the default) folds each block, its used or plugged connectors, and the cables
+  plugged into each (a cable under every connector it plugs into; carets fold, per session in `S.listClosed`);
+  Cables lists each cable once, by name. A cable's row is its name with its part number (or "no P/N")
+  underneath, a Type chip (Harness, Purchased, Generic), and its Status. The funnel button opens a Columns
+  menu: From / To (its ends, "A1 J2 → A2 J1"), Length, and Wires, all on to start. Mode and columns are kept
+  in this browser (`<ns>sysList`). Harness wires no longer show in the system list. For a harness (its ›):
+  its ends, where they plug in, and its from/to list, as before.
   A click on any row selects it and shows it in the panel: a block, connector, or cable gets its usual panel,
   editable as on the canvas; a harness's wire or end gets a read-only panel (`wirePanelHtml`, `endPanelHtml`;
   a system never edits a harness). **Open in Loom** under the panel's head opens a harness, wire, or end in the

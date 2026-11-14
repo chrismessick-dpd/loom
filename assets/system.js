@@ -1546,52 +1546,82 @@
       : k === 'wire' ? { kind: 'wire', harness: x, wire: y, cable: z || null } : k === 'end' ? { kind: 'end', harness: x, node: y } : null;
   }
   const rowAttr = (key, cls) => ` class="sys-wr ${cls}${key === selKey(S.sel) ? ' on' : ''}" data-ssel="${esc(key)}"`;
-  const HEAD = '<thead><tr><th>Item</th><th>Pin</th><th>Signal</th><th>Color</th><th>Gauge</th><th>Far end</th><th class="num">Length</th></tr></thead>';
   const item = (lvl, html) => `<td class="sys-wi" style="--lvl:${lvl}">${html}</td>`;
   // The system a list shows: the picked system, the one holding a picked harness, or the open system.
   const listSys = f => (f ? (f.kind === 'harness' ? focusSys(f) : f.id) : S.root);
+  // The system List (2026-11-14, Chris: like Signoff PL's list): Hierarchy (blocks, their used connectors,
+  // and the cables in each) or Cables (each cable once). Name over part number; Type and Status always;
+  // From / To, Length, and Wires from the filter menu. Mode and columns kept in this browser; folds per session.
+  const LIST_COLS = [['ends', 'From / To'], ['length', 'Length'], ['wires', 'Wires']];
+  function listPrefs() {
+    let v = {};
+    try { v = JSON.parse(localStorage.getItem(NS + 'sysList') || '{}') || {}; } catch (e) { /* storage blocked */ }
+    const cols = {};
+    LIST_COLS.forEach(([k]) => { cols[k] = !(v.cols && v.cols[k] === false); });
+    return { mode: v.mode === 'flat' ? 'flat' : 'tree', cols };
+  }
+  const setListPrefs = p => { try { localStorage.setItem(NS + 'sysList', JSON.stringify(p)); } catch (e) { /* storage blocked */ } };
+  const chip = (t, cls) => `<span class="sys-chip${cls ? ' ' + cls : ''}">${esc(t)}</span>`;
+  const CAB_CHIP = { harness: 'Harness', bought: 'Purchased', link: 'Generic' };
+  const FUNNEL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 3h12l-4.6 5.4V13l-2.8-1.4V8.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+  const CHEV = '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   function listHtml() {
     const f = S.focus;
     if (f && f.kind === 'harness') return harnessListHtml(f);
     const s = S.store[listSys(f)];
     if (!s) return '';
-    const path = f ? f.path : S.root;
-    let rows = '', nCab = 0, nWire = 0;
-    const cableRows = (cab, here, lvl, c) => {
-      const h = harnessOf(cab), st = statusOf(cab, h), ends = endsOf(cab, h);
-      const far = ends.filter(n => n.id !== here).map(n => endName(s, cab.ends[n.id]) || `${n.ref} not plugged`)
-        .concat(deviceEnds(h).map(n => `${n.ref} at its device`));
-      const title = `<b class="sys-wname">${esc(titleOf(cab, h))}</b>${pnHtml(h, cab)}` + (h ? drill('harness', h.id, path, 'harness') : '');
-      nCab++;
-      rows += `<tr${rowAttr('cable:' + cab.id, 'cab')}>${item(lvl, `<span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span> ${title} ${typeHtml(cableType(cab, h))}`)}<td></td><td></td><td></td><td></td><td>${esc(far.join(', ') || '—')}</td><td class="num">${cab.lengthMm ? U.fmtLen(cab.lengthMm) : ''}</td></tr>`;
-      const n = h && here && M.node(h, here);
-      if (!n) return;
-      const A0 = an(h);
-      h.wires.map(w => ({ w, at: w.from.node === n.id ? w.from : w.to.node === n.id ? w.to : null, to: w.from.node === n.id ? w.to : w.from }))
-        .filter(x => x.at).sort((a, b) => natural(a.at.pin, b.at.pin)).forEach(({ w, at, to }) => {
-          const pin = c && c.pins.find(p => String(p.pin) === String(at.pin)), net = pin ? pin.label || pin.net || '' : '';
-          const tn = M.node(h, to.node), where = tn && cab.ends[tn.id] ? endName(s, cab.ends[tn.id]) : tn && tn.atDevice ? 'at its device' : '';
-          nWire++;
-          rows += `<tr${rowAttr(`wire:${h.id}:${w.id}:${cab.id}`, 'wire')}>${item(lvl + 1, `<span class="mono">${esc(M.wireName(w))}</span>`)}<td class="mono">${esc(at.pin || '')}</td><td>${esc(w.signal || net)}</td><td>${swatchHtml(w.color)}</td><td>${esc(gaugeMetric(w.gauge)) || '<span class="sys-none">—</span>'}</td>` +
-            `<td><span class="mono">${esc(M.endText(h, to))}</span>${where ? ` <span class="pc-muted">· ${esc(where)}</span>` : ''}</td><td class="num">${U.fmtLen(A0.wireLen.get(w.id))}</td></tr>`;
-        });
+    const path = f ? f.path : S.root, pr = listPrefs(), cols = LIST_COLS.filter(([k]) => pr.cols[k]);
+    const closed = S.listClosed || (S.listClosed = new Set());
+    const nameCell = (lvl, caret, title, sub) => `<td class="sys-wi" style="--lvl:${lvl}"><div class="sys-lname">${caret}<div class="sys-llabel">${title}${sub ? `<div class="sys-lsub">${sub}</div>` : ''}</div></div></td>`;
+    const caret = key => `<button class="sys-caret${closed.has(key) ? ' closed' : ''}" data-sact="list-fold" data-key="${esc(key)}" aria-label="${closed.has(key) ? 'Expand' : 'Collapse'}">${CHEV}</button>`;
+    const spacer = '<span class="sys-cspace"></span>';
+    const blank = cols.map(() => '<td></td>').join('');
+    const endsText = cab => {
+      const h = harnessOf(cab);
+      const xs = endsOf(cab, h).map(n => endName(s, cab.ends[n.id]) || `${n.ref} not plugged`).concat(deviceEnds(h).map(n => `${n.ref} at its device`));
+      return xs.length === 2 ? `${xs[0]} → ${xs[1]}` : xs.join(', ');
     };
-    s.blocks.slice().sort((a, b) => natural(a.ref, b.ref)).forEach(b => {
-      const ch = childOf(b);
-      const conns = b.conns.filter(c => pluggedAt(s, b.id, c.id).length || (fitted(c) && c.used)).sort((x, y) => natural(x.ref, y.ref));
-      const name = ch ? esc(ch.title) + drill('system', ch.id, path + '>' + ch.id, 'system') : esc(b.name || '');
-      rows += `<tr${rowAttr('block:' + b.id, 'blk')}>${item(0, `<b>${esc(b.ref)}</b> ${name} ${typeHtml(blockType(b))}`)}<td colspan="6" class="pc-muted">${conns.length} connector${conns.length === 1 ? '' : 's'} used of ${b.conns.length}</td></tr>`;
-      conns.forEach(c => {
-        const at = pluggedAt(s, b.id, c.id);
-        rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn')}>${item(1, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ` <span class="pc-muted">${esc(c.fn)}</span>` : ''} ${typeHtml(connType(c))}`)}<td colspan="6" class="pc-muted">${c.pins.length} pins${at.length ? '' : c.external ? ' · external: plugged in from ' + esc(parentsOf(s.id).map(p => p.title).join(', ') || 'the systems placing this one') : ' · nothing plugged in'}</td></tr>`;
-        at.forEach(x => cableRows(x.cable, x.node, 2, c));
+    const cabRow = (cab, lvl) => {
+      const h = harnessOf(cab), st = statusOf(cab, h), k = kindOf(cab), pn = pnOf(h, cab);
+      const title = `<b>${esc(titleOf(cab, h))}</b>` + (h ? drill('harness', h.id, path, 'harness') : '');
+      const cells = { ends: `<td>${esc(endsText(cab)) || '<span class="sys-none">—</span>'}</td>`, length: `<td class="num">${cab.lengthMm ? U.fmtLen(cab.lengthMm) : ''}</td>`, wires: `<td class="num">${h ? h.wires.length : ''}</td>` };
+      return `<tr${rowAttr('cable:' + cab.id, 'cab')}>${nameCell(lvl, lvl ? spacer : '', title, esc(pn || NOPN))}<td>${chip(CAB_CHIP[k] || k, 'k-' + k)}</td>` +
+        `<td class="sys-lst"><span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}</td>${cols.map(([c]) => cells[c]).join('')}</tr>`;
+    };
+    let rows = '';
+    const nCab = s.cables.length;
+    if (pr.mode === 'flat') {
+      s.cables.slice().sort((a, b) => natural(titleOf(a, harnessOf(a)), titleOf(b, harnessOf(b)))).forEach(cab => { rows += cabRow(cab, 0); });
+    } else {
+      s.blocks.slice().sort((a, b) => natural(a.ref, b.ref)).forEach(b => {
+        const ch = childOf(b), bk = 'b:' + b.id;
+        const conns = b.conns.filter(c => pluggedAt(s, b.id, c.id).length || (fitted(c) && c.used)).sort((x, y) => natural(x.ref, y.ref));
+        const name = `<b>${esc(b.ref)} ${esc(ch ? ch.title : b.name || '')}</b>` + (ch ? drill('system', ch.id, path + '>' + ch.id, 'system') : '');
+        const sub = `${conns.length} of ${b.conns.length} connector${b.conns.length === 1 ? '' : 's'} used${b.source ? ' · Signoff EE' : ''}`;
+        rows += `<tr${rowAttr('block:' + b.id, 'blk')}>${nameCell(0, conns.length ? caret(bk) : spacer, name, sub)}<td>${chip(b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board')}</td><td></td>${blank}</tr>`;
+        if (closed.has(bk)) return;
+        conns.forEach(c => {
+          const at = pluggedAt(s, b.id, c.id), ck = `c:${b.id}:${c.id}`;
+          const sub = at.length ? esc(c.link ? 'External · inside ' + c.inside : [c.mfr, c.mpn].filter(Boolean).join(' ') || NOPN)
+            : c.external ? 'External: plugged in from ' + esc(parentsOf(s.id).map(p => p.title).join(', ') || 'the systems placing this one') : 'Nothing plugged in';
+          rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn')}>${nameCell(1, at.length ? caret(ck) : spacer, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ' ' + esc(c.fn) : ''}`, sub)}<td>${chip(c.link ? 'External' : 'Connector')}</td><td></td>${blank}</tr>`;
+          if (!closed.has(ck)) at.forEach(x => { rows += cabRow(x.cable, 2); });
+        });
       });
-    });
-    const loose = s.cables.filter(cab => !Object.values(cab.ends).some(Boolean));
-    if (loose.length) { rows += `<tr class="sys-wr blk">${item(0, '<b>Not plugged in</b>')}<td colspan="6"></td></tr>`; loose.forEach(cab => cableRows(cab, null, 1, null)); }
-    return `<div class="page wide sys-wpage">` + listHead('List', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable end${nCab === 1 ? '' : 's'}<span class="sep">·</span>${nWire} wire${nWire === 1 ? '' : 's'}`, crumbsHtml(path)) +
-      `<div class="card table-wrap"><table class="table compact sys-wtable">${HEAD}<tbody>${rows || '<tr><td colspan="7" class="pc-muted">Nothing placed yet.</td></tr>'}</tbody></table></div>` +
-      `<p class="f-hint">Click an item to see it in the panel. Each cable is listed at every connector it plugs into, with its wires from that end. Pick a system or harness in the menu, or its name here, to list just it.</p></div>`;
+      const loose = s.cables.filter(cab => !Object.values(cab.ends).some(Boolean));
+      if (loose.length) {
+        rows += `<tr class="sys-wr blk">${nameCell(0, caret('loose'), '<b>Not plugged in</b>', `${loose.length} cable${loose.length === 1 ? '' : 's'}`)}<td></td><td></td>${blank}</tr>`;
+        if (!closed.has('loose')) loose.forEach(cab => { rows += cabRow(cab, 1); });
+      }
+    }
+    const nc = 3 + cols.length;
+    const head = `<thead><tr><th>Name</th><th>Type</th><th>Status</th>${cols.map(([k, l]) => `<th${k === 'ends' ? '' : ' class="num"'}>${l}</th>`).join('')}</tr></thead>`;
+    const menu = S.listColsOpen ? `<div class="sys-lmenu" role="menu"><div class="sys-lmenu-h">Columns</div>${LIST_COLS.map(([k, l]) => `<label class="sys-lopt"><input type="checkbox" data-slcol="${k}"${pr.cols[k] ? ' checked' : ''}><span>${l}</span></label>`).join('')}<p class="sys-lmenu-note">Name, Type, and Status always show.</p></div>` : '';
+    const tools = `<div class="sys-ltools"><div class="seg" role="tablist">${[['tree', 'Hierarchy', 'Blocks, their connectors, and the cables in each'], ['flat', 'Cables', 'Just the cables and harnesses, each once']].map(([m, l, tip]) => `<button class="${pr.mode === m ? 'on' : ''}" data-sact="list-mode" data-mode="${m}" title="${tip}">${l}</button>`).join('')}</div>` +
+      `<div class="sys-lcols"><button class="icon-btn${S.listColsOpen ? ' on' : ''}" data-sact="list-cols" title="Choose columns" aria-label="Choose columns" aria-expanded="${S.listColsOpen ? 'true' : 'false'}">${FUNNEL}</button>${menu}</div></div>`;
+    return `<div class="page wide sys-wpage">` + listHead('List', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable${nCab === 1 ? '' : 's'}`, crumbsHtml(path)) + tools +
+      `<div class="card table-wrap"><table class="table compact sys-wtable sys-ltable">${head}<tbody>${rows || `<tr><td colspan="${nc}" class="pc-muted">${pr.mode === 'flat' ? 'No cables yet.' : 'Nothing placed yet.'}</td></tr>`}</tbody></table></div>` +
+      `<p class="f-hint">Click a row to see it in the panel. ${pr.mode === 'flat' ? 'Each cable is listed once.' : 'A cable is listed under every connector it plugs into.'} The › beside a placed system or harness lists just it, a harness with its ends and wires.</p></div>`;
   }
   function harnessListHtml(f) {
     const h = A.harness(f.id), s = S.store[focusSys(f)];
@@ -2146,6 +2176,7 @@
     page.sysWired = true;
     page.addEventListener('click', e => {
       const t = e.target;
+      if (S.listColsOpen && !t.closest('.sys-lcols')) { S.listColsOpen = false; A.refresh(); }
       const a = t.closest('[data-sact]');
       if (a && !a.disabled) { act(a.dataset.sact, a); return; }
       if (t.closest('[data-sfocus]')) return;   // a pick (app.js)
@@ -2159,6 +2190,7 @@
     const mine = s => s.blocks.filter(b => !(S.sel && S.sel.block) || b.id === S.sel.block);
     page.addEventListener('change', e => {
       const t = e.target;
+      if (t.dataset.slcol) { const p = listPrefs(); p.cols[t.dataset.slcol] = t.checked; setListPrefs(p); A.refresh(); return; }
       if (t.hasAttribute('data-slabels')) { try { localStorage.setItem(NS + 'sysLabels', t.checked ? 'on' : 'off'); } catch (err) { /* storage blocked */ } A.refresh(); return; }
       if (t.dataset.sext) { const id = t.dataset.sext, on = t.checked; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { c.external = on; if (on && !c.link) c.used = true; } })); }); return; }
       if (t.dataset.sfit) { const id = t.dataset.sfit, on = t.checked; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { c.fitted = on; if (!on) c.used = false; } })); }); return; }
@@ -2237,6 +2269,9 @@
     const s = cur();
     switch (a) {
       case 'back': back(); break;
+      case 'list-mode': { const p = listPrefs(); p.mode = el.dataset.mode === 'flat' ? 'flat' : 'tree'; setListPrefs(p); A.refresh(); break; }
+      case 'list-cols': S.listColsOpen = !S.listColsOpen; A.refresh(); break;
+      case 'list-fold': { const k = el.dataset.key, c = S.listClosed || (S.listClosed = new Set()); if (c.has(k)) c.delete(k); else c.add(k); A.refresh(); break; }
       case 'help': try { localStorage.setItem(NS + 'sysHelp', helpOpen() ? 'closed' : 'open'); } catch (e) { /* storage blocked */ } A.refresh(); break;
       case 'rotate-cw': case 'rotate-ccw': {
         const id = arg || (S.sel && S.sel.kind === 'block' && S.sel.block);
