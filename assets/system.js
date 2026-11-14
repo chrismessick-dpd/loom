@@ -117,6 +117,7 @@
     // The mini view (Chris, 2026-11-13): the placed system's whole drawing, its boards and its harnesses,
     // shrunk to fit inside the block, and each tab where its connector sits in it (exiting the way it exits
     // there). The block keeps its size, and the spots aren't stored (b.mini and c.exit0 aren't enumerable).
+    if (ch) fitMini(b, ch);
     const mf = ch ? miniFrame(b, ch) : null;
     Object.defineProperty(b, 'mini', { value: mf, enumerable: false, writable: true, configurable: true });
     if (mf) {
@@ -801,18 +802,19 @@
       const pt = (o, a, b) => ({ x: o.x + d[0] * a + pv[0] * b, y: o.y + d[1] * a + pv[1] * b });
       const ex = { x: g.ex, y: g.ey }, reach = DW.trunk + DW.fan;
       const B = { x: ex.x + d[0] * reach + pv[0] * (D.c - D.axis) + off.dx * K, y: ex.y + d[1] * reach + pv[1] * (D.c - D.axis) + off.dy * K };
-      const boxes = [], leads = [], paths = [], juncs = [], pts = [ex];
+      const boxes = [], leads = [], paths = [], juncs = [], pts = [ex], bare = new Set();
       let u = -D.span / 2 + D.lane;
       tg.forEach(t => {
         t.N = pt(B, 0, u + t.Lp / 2); u += t.Lp + DW.gap;
         const a = t.N, rect = horiz ? { x: d[0] > 0 ? a.x : a.x - t.Ld, y: a.y - t.Lp / 2, w: t.Ld, h: t.Lp } : { x: a.x - t.Lp / 2, y: d[1] > 0 ? a.y : a.y - t.Ld, w: t.Lp, h: t.Ld };
-        pts.push({ x: rect.x, y: rect.y }, { x: rect.x + rect.w, y: rect.y + rect.h });
+        { const p0 = { x: rect.x, y: rect.y }, p1 = { x: rect.x + rect.w, y: rect.y + rect.h }; pts.push(p0, p1); bare.add(p0); bare.add(p1); }
         if (!t.leads) boxes.push(Object.assign({ label: t.label, full: t.full, cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, ghost, d, nw: t.nw }, rect));
         else {
           const e = pt(a, DW.lead, 0), lx = horiz ? e.x + d[0] * 10 : e.x, ly = horiz ? e.y + 5.5 : e.y + d[1] * 18 + (d[1] > 0 ? 5.5 : 0), w = U.textW(t.label, DW.font);
           t.lead = { label: t.label, full: t.full, lx, ly, anchor: horiz ? (d[0] > 0 ? 'start' : 'end') : 'middle', dots: [], ghost };
           leads.push(t.lead);
-          pts.push({ x: lx - (horiz ? (d[0] > 0 ? 0 : w) : w / 2), y: ly - 14 }, { x: lx + (horiz ? (d[0] > 0 ? w : 0) : w / 2), y: ly + 5 });
+          const q0 = { x: lx - (horiz ? (d[0] > 0 ? 0 : w) : w / 2), y: ly - 14 }, q1 = { x: lx + (horiz ? (d[0] > 0 ? w : 0) : w / 2), y: ly + 5 };
+          pts.push(q0, q1); bare.add(q0); bare.add(q1);
         }
       });
       // A wire's slot at its far end: the k-th of the wires into it.
@@ -864,10 +866,16 @@
       if (D.caption) {
         const maxLd = Math.max(0, ...tg.map(t => t.Ld)), top = pt(B, 0, -D.span / 2);
         cap = horiz ? { x: d[0] > 0 ? top.x : top.x - D.capW, y: top.y + 15, text: D.caption } : { x: top.x, y: B.y + d[1] * (maxLd + 22) + (d[1] > 0 ? 4 : 0), text: D.caption };
-        pts.push({ x: cap.x, y: cap.y - 14 }, { x: cap.x + D.capW, y: cap.y + 4 });
+        const c0 = { x: cap.x, y: cap.y - 14 }, c1 = { x: cap.x + D.capW, y: cap.y + 4 };
+        pts.push(c0, c1); bare.add(c0); bare.add(c1);
       }
-      const box = { x0: Math.min(...pts.map(q => q.x)), y0: Math.min(...pts.map(q => q.y)), x1: Math.max(...pts.map(q => q.x)), y1: Math.max(...pts.map(q => q.y)) };
-      out.set(cab.id, { paths, boxes, leads, juncs, cap, box, lane: [ex, { x: ex.x + d[0] * DW.trunk, y: ex.y + d[1] * DW.trunk }] });
+      const bounds = P => ({ x0: Math.min(...P.map(q => q.x)), y0: Math.min(...P.map(q => q.y)), x1: Math.max(...P.map(q => q.x)), y1: Math.max(...P.map(q => q.y)) });
+      const box = bounds(pts);
+      // What a mini view draws (Chris, 2026-11-13: empty space under it): no names or caption, and its far ends small.
+      const mpts = pts.filter(q => !bare.has(q));
+      boxes.forEach(x => { const g = miniBox(x); mpts.push({ x: g.x, y: g.y }, { x: g.x + g.w, y: g.y + g.h }); });
+      leads.forEach(l => l.dots.forEach(q => mpts.push({ x: q.x - MINI_DOT, y: q.y - MINI_DOT }, { x: q.x + MINI_DOT, y: q.y + MINI_DOT })));
+      out.set(cab.id, { paths, boxes, leads, juncs, cap, box, mbox: bounds(mpts), lane: [ex, { x: ex.x + d[0] * DW.trunk, y: ex.y + d[1] * DW.trunk }] });
     });
     devMemo.set(s.id, { key, out });
     return out;
@@ -916,11 +924,14 @@
     s += `L${f1(Q.x)} ${f1(Q.y)}`;
     return { d: s, pts: P };
   }
-  // What a system's drawing covers, mm: its blocks and its device harness drawings.
+  // What a system's drawing covers, mm, as a mini view draws it: its blocks and its device harness drawings (no
+  // names or captions, far ends small).
   function drawnExtent(s) {
     if (!s || !s.blocks.length) return null;
     let x0 = Math.min(...s.blocks.map(b => b.x)), y0 = Math.min(...s.blocks.map(b => b.y)), x1 = Math.max(...s.blocks.map(b => b.x + sizeOf(b).W)), y1 = Math.max(...s.blocks.map(b => b.y + sizeOf(b).H));
-    devLayout(s).forEach(D => { x0 = Math.min(x0, D.box.x0 / K); y0 = Math.min(y0, D.box.y0 / K); x1 = Math.max(x1, D.box.x1 / K); y1 = Math.max(y1, D.box.y1 / K); });
+    // The tabs the mini view draws, which can sit past their block's edge.
+    s.blocks.forEach(b => (b.conns || []).filter(c => fitted(c) && (c.used || pluggedAt(s, b.id, c.id).length)).forEach(c => { const g = tabGeom(b, c); x0 = Math.min(x0, g.x / K); y0 = Math.min(y0, g.y / K); x1 = Math.max(x1, (g.x + g.w) / K); y1 = Math.max(y1, (g.y + g.h) / K); }));
+    devLayout(s).forEach(D => { const B = D.mbox || D.box; x0 = Math.min(x0, B.x0 / K); y0 = Math.min(y0, B.y0 / K); x1 = Math.max(x1, B.x1 / K); y1 = Math.max(y1, B.y1 / K); });
     return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
   }
   // Where a placed system's drawing sits inside its block (block frame, mm): under the header, centered.
@@ -941,10 +952,24 @@
   // A far end's box as a mini view draws it: along the side its wires come into, only as long as their spread
   // (centered where they land); and no deeper than that (at most DW.box). A small square, not a bar as long as
   // a name the mini view doesn't print.
+  const MINI_DOT = 4;
   function miniBox(x) {
     const d = x.d || [1, 0], span = Math.max(20, (x.nw || 1) * DW.pitch + 14);
     if (d[0]) { const h = Math.min(x.h, span), w = Math.min(x.w, h, DW.box); return { x: d[0] > 0 ? x.x : x.x + x.w - w, y: x.y + (x.h - h) / 2, w, h }; }
     const w = Math.min(x.w, span), h = Math.min(x.h, w, DW.box); return { x: x.x + (x.w - w) / 2, y: d[1] > 0 ? x.y : x.y + x.h - h, w, h };
+  }
+  // A placed system's block is as tall as its mini view needs at the block's width (Chris, 2026-11-13: take out
+  // the empty space under the drawing): the header, the drawing scaled to the width, and a margin. Width and
+  // height are as the block shows on screen, so a block turned 90° or 270° fits its stored width.
+  function fitMini(b, ch) {
+    const E = drawnExtent(ch);
+    if (!E) return;
+    const r = rotOf(b), turned = r === 90 || r === 270, pad = 2, Ws = turned ? b.h : b.w;
+    const Ew = turned ? E.h : E.w, Eh = turned ? E.w : E.h, f = (Ws - 2 * pad) / Ew;
+    if (!(f > 0)) return;
+    let Hs = 46 / K + 1.5 + Eh * f + pad;
+    Hs = +Math.max(30, Hs).toFixed(2);
+    if (turned) b.w = Hs; else b.h = Hs;
   }
   // The SVG transform from a placed system's own drawing (canvas units) to the parent's canvas.
   function miniXf(b) {
@@ -972,6 +997,8 @@
         const g = miniBox(x);
         o += `<rect class="sys-mdbox" x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3"/>`;
       });
+      // Flying leads end in dots, as in the full drawing (Chris, 2026-11-13: without them the wires read as stray hairlines).
+      D.leads.forEach(l => l.dots.forEach(q => { o += `<circle class="sys-mdot" cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="${MINI_DOT}"${q.color ? ` style="fill:${q.color}"` : ''}/>`; }));
     });
     return o;
   }

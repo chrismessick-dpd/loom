@@ -1084,6 +1084,7 @@
       ok(sb.mini.E.w > w0 + 150, 'the frame fits the wider drawing');
       const hd = Math.min(46, sb.h * 4 / 2) / 4;
       ok(sb.mini.oy >= hd, 'and stays under the header');
+      ok(Math.abs(sb.mini.oy + sb.mini.E.h * sb.mini.f + 2 - sb.h) < 0.05, 'the block is as tall as the header and its drawing, no empty space under it');
       // Turned 270°, the header is on the block's own right side.
       sb.rot = 270; Y.freshMinis(top);
       const m = sb.mini, hd2 = Math.min(46, sb.w * 4 / 2) / 4;

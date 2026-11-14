@@ -1175,7 +1175,8 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-mt { font-family: var(--font, sans-serif); font-weight: 600; fill: var(--cv-ink-2); text-anchor: middle; dominant-baseline: central; opacity: 0.8; }
 .sys-mtab { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 0.7; }
 .sys-mc { fill: none; stroke-width: 1.1; opacity: 0.85; }
-.sys-mw { fill: none; stroke: var(--text-3); stroke-width: 0.7; }
+.sys-mw { fill: none; stroke: var(--text-3); stroke-width: 1; }
+.sys-mdot { fill: var(--text-3); stroke: var(--cv-conn-edge); stroke-width: 0.6; }
 .sys-mw.ghost { stroke-dasharray: 2 2; }
 .sys-mdbox { fill: var(--cv-paper); stroke: var(--cv-conn-edge); stroke-width: 0.7; }
 .sys-hname { font-family: var(--display, var(--font, sans-serif)); font-weight: 600; fill: var(--cv-ink-2); pointer-events: none; }
