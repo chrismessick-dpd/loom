@@ -1240,6 +1240,13 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-canvas .cv-end.sys-end:has(+ .cv-hitend:hover) { stroke: var(--cv-sel); stroke-width: 2.4; }
 @media (prefers-reduced-motion: reduce) { .sys-tab.can rect { animation: none; } }
 .sys-canvas .sys-w .sys-hit { stroke: transparent; stroke-width: 16; fill: none; cursor: pointer; }
+/* A cable plugged from a system above: out to a zigzag break with its name (2026-11-14). */
+.sys-canvas .sys-up { cursor: move; }
+.sys-canvas .sys-up .sys-hit { cursor: move; }
+.sys-canvas .sys-upzig { fill: none; stroke: var(--text); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.sys-canvas .sys-upgrab { fill: transparent; stroke: none; }
+.sys-canvas .sys-uptext { font: 600 13px var(--sans); fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.sys-canvas .sys-up:hover .sys-upzig { stroke: var(--accent); }
 .sys-canvas .sys-w.sel .sys-hit { cursor: move; }
 .sys-canvas .sys-w .w-edge { stroke-width: 8.5; }
 .sys-canvas .sys-w .w-base { stroke-width: 6; }

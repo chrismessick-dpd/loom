@@ -63,6 +63,11 @@ links to it so far. Before every commit:
     golden unchanged. Tried in the demo: Resolve on a harness and a system copy, Use and Undo, Delete, and
     a system's History. Not tried signed in.
 
+- **Cables from above, to zigzag breaks (2026-11-14, Chris: a PDD system showed none of the harnesses plugged
+  into it from above).** In a system's drawing, an external connector plugged from a system placing it runs out to
+  a zigzag break with each cable's name and number (`upStubs`, `upSvg`; `cablesAbove`, one line per harness). The
+  break drags anywhere (`c.upAt`, mm; a placed system's tab keeps it in `b.tabs`), a click selects the connector,
+  and Fit takes the breaks in. Not drawn in mini views (the parent draws the cable itself).
 - **The menu follows the main view (2026-11-14, Chris).** When what's shown changes, folded rows above its row
   unfold (`lastShown`, `activeIn` in `renderSidebar`; only then, so rows still fold by hand) and its row scrolls
   into view. `curPath` now uses the pick's own path when its system is the one drawn (List draws a picked system

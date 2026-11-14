@@ -162,9 +162,9 @@
     setConns(b, ext.map(e => {
       const t = b.tabs[e.id] || {}, a = spot[e.id];
       return { id: e.id, ref: e.ref, pins: e.pins, fn: t.fn != null ? t.fn : e.fn, fn0: e.fn, used: true, fitted: true, placed: 'link', link: true,
-        x: t.x != null ? t.x : a.x, y: t.y != null ? t.y : a.y, ax: a.x, ay: a.y, exit: t.exit || undefined, external: !!t.external, side: 'top',
+        x: t.x != null ? t.x : a.x, y: t.y != null ? t.y : a.y, ax: a.x, ay: a.y, exit: t.exit || undefined, external: !!t.external, upAt: t.upAt || undefined, side: 'top',
         mpn: e.mpn, mfr: e.mfr, desc: e.desc, tw: tabW(e.ref), leaf: e.leaf, inside: e.inside };
-    }).map(c => { if (!c.exit) delete c.exit; return c; }));
+    }).map(c => { if (!c.exit) delete c.exit; if (!c.upAt) delete c.upAt; return c; }));
   }
   function resolveAll() { Object.values(S.store).forEach(s => s.blocks.forEach(b => { if (b.kind === 'system') resolveBlock(b, [s.id]); })); }
   // After a change, what the parent set on its system blocks' tabs goes back into b.tabs.
@@ -179,6 +179,7 @@
         else if (Math.abs(c.x - c.ax) > 1e-6 || Math.abs(c.y - c.ay) > 1e-6) { o.x = c.x; o.y = c.y; }
         if (c.exit) o.exit = c.exit;
         if (c.external) o.external = true;
+        if (c.upAt) o.upAt = c.upAt;
         if (c.fn !== c.fn0) o.fn = c.fn;
         if (Object.keys(o).length) t[c.id] = o; else delete t[c.id];
       });
@@ -1154,6 +1155,62 @@
   }
   const labelsOn = () => { try { return localStorage.getItem(NS + 'sysLabels') !== 'off'; } catch (e) { return true; } };
   let labInfo = new Map();
+  // Cables into this system's external connectors from the systems placing it (Chris, 2026-11-14: a PDD system
+  // showed none of the harnesses plugged into it from above). Each runs out of its connector to a zigzag break,
+  // with the cable's name and number past it, one line per cable (two placing systems may plug the same harness,
+  // listed once). The break drags anywhere (c.upAt, mm from where it starts, kept with this system; a placed
+  // system's tab keeps it in b.tabs). Drawn only here, never in a mini view: the parent draws the cable itself.
+  const UP = { reach: 140, out: 24, zig: 14, font: 13, line: 17 };
+  function upStubs(s) {
+    const out = [];
+    s.blocks.forEach(b => (b.conns || []).forEach(c => {
+      if (!c.external || !fitted(c) || pluggedAt(s, b.id, c.id).length) return;
+      const seen = new Set(), cabs = cablesAbove(s, b.id + '/' + c.id, 0).filter(cab => {
+        const h = harnessOf(cab), k = h ? 'h:' + h.id : 'c:' + titleOf(cab, h) + '|' + pnOf(h, cab);
+        if (seen.has(k)) return false; seen.add(k); return true;
+      });
+      if (!cabs.length) return;
+      const g = tabGeom(b, c), off = c.upAt || { dx: 0, dy: 0 }, d = [g.dx, g.dy];
+      const A0 = { x: g.ex + d[0] * UP.out, y: g.ey + d[1] * UP.out };
+      const E = { x: g.ex + d[0] * UP.reach + off.dx * K, y: g.ey + d[1] * UP.reach + off.dy * K };
+      // Out of the connector, then at right angles to the break: across halfway (never back past the stub),
+      // then along to it.
+      let pts;
+      if (d[0]) { const m = (A0.x + E.x) / 2, xm = d[0] > 0 ? Math.max(A0.x, m) : Math.min(A0.x, m); pts = [{ x: g.ex, y: g.ey }, A0, { x: xm, y: A0.y }, { x: xm, y: E.y }, E]; }
+      else { const m = (A0.y + E.y) / 2, ym = d[1] > 0 ? Math.max(A0.y, m) : Math.min(A0.y, m); pts = [{ x: g.ex, y: g.ey }, A0, { x: A0.x, y: ym }, { x: E.x, y: ym }, E]; }
+      pts = pts.filter((q, i, l) => !i || Math.hypot(q.x - l[i - 1].x, q.y - l[i - 1].y) > 0.5);
+      // The way the cable arrives at the break.
+      let u = d;
+      for (let i = pts.length - 1; i > 0; i--) { const vx = pts[i].x - pts[i - 1].x, vy = pts[i].y - pts[i - 1].y, n = Math.hypot(vx, vy); if (n > 0.5) { u = [vx / n, vy / n]; break; } }
+      if (pts.length < 2) pts.push({ x: E.x + d[0], y: E.y + d[1] });
+      out.push({ b, c, g, E, u, pts, cabs });
+    }));
+    return out;
+  }
+  function upSvg(s) {
+    let o = '';
+    const f1 = v => v.toFixed(1);
+    upStubs(s).forEach(({ b, c, E, u, pts, cabs }) => {
+      const cab = cabs[0], h = harnessOf(cab), st = statusOf(cab, h);
+      const color = colorOf(cab) || (st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)');
+      const p = [-u[1], u[0]], z = UP.zig, d = 'M' + pts.map(q => f1(q.x) + ' ' + f1(q.y)).join('L');
+      // The break: a zigzag across the cable's end.
+      const zz = [[-1.2, 0], [-0.55, 0.45], [0.05, -0.45], [0.6, 0.45], [1.2, 0]].map(([a, k]) => ({ x: E.x + p[0] * a * z + u[0] * k * z, y: E.y + p[1] * a * z + u[1] * k * z }));
+      const lines = cabs.map(x => { const hx = harnessOf(x), pn = pnOf(hx, x); return `${statusOf(x, hx).glyph} ${titleOf(x, hx)}${pn ? ' · ' + pn : ''}`; });
+      const horiz = Math.abs(u[0]) > 0.5, gap = 14;
+      const lx = E.x + u[0] * gap, anchor = horiz ? (u[0] > 0 ? 'start' : 'end') : 'middle';
+      const ly0 = horiz ? E.y + 4.5 - (lines.length - 1) * UP.line / 2 : u[1] > 0 ? E.y + gap + UP.font : E.y - gap - (lines.length - 1) * UP.line;
+      const tw = Math.max(...lines.map(t => U.textW(t, UP.font))), bx = anchor === 'start' ? lx - 4 : anchor === 'end' ? lx - tw - 4 : lx - tw / 2 - 4;
+      const tip = esc(`${b.ref} ${c.ref}: plugged from ${parentsOf(s.id).map(x => x.title).join(', ')} · drag the break to move it`);
+      o += `<g class="w sys-w sys-up st-${st.key}" data-upgrab="${b.id}|${esc(c.id)}"><title>${tip}</title>` +
+        `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
+        `<path class="sys-upzig" d="M${zz.map(q => f1(q.x) + ' ' + f1(q.y)).join('L')}"/>` +
+        `<rect class="sys-upgrab" x="${f1(bx)}" y="${f1(ly0 - UP.font)}" width="${f1(tw + 8)}" height="${f1(lines.length * UP.line + 2)}" rx="5"/>` +
+        `<circle class="sys-upgrab" cx="${f1(E.x)}" cy="${f1(E.y)}" r="${z + 3}"/>` +
+        lines.map((t, i) => `<text class="sys-uptext" x="${f1(lx)}" y="${f1(ly0 + i * UP.line)}" style="text-anchor:${anchor}">${esc(t)}</text>`).join('') + '</g>';
+    });
+    return o;
+  }
   function svgHtml(s, Lo) {
     labInfo = new Map();
     const sel = S.sel;
@@ -1299,11 +1356,14 @@
           `<rect class="cv-run-bar" x="${mx - (v ? 2.5 : 9)}" y="${my - (v ? 9 : 2.5)}" width="${v ? 5 : 18}" height="${v ? 18 : 5}" rx="2.5"/></g>`;
       }));
     });
+    html += upSvg(s);
     return html + '</g><g class="sys-labels">' + labels + '</g><g class="sys-handles">' + handles + '</g><g id="sys-ghost"></g>';
   }
   function bounds(s) {
     if (!s.blocks.length) return { x: -80, y: -80, w: 800, h: 480 };
-    const E = drawnExtent(s), x0 = E.x, y0 = E.y, x1 = E.x + E.w, y1 = E.y + E.h;
+    const E = drawnExtent(s);
+    let x0 = E.x, y0 = E.y, x1 = E.x + E.w, y1 = E.y + E.h;
+    upStubs(s).forEach(u => { const pad = 40; x0 = Math.min(x0, (u.E.x - pad * 4) / K); y0 = Math.min(y0, (u.E.y - pad) / K); x1 = Math.max(x1, (u.E.x + pad * 4) / K); y1 = Math.max(y1, (u.E.y + pad) / K); });
     const m = 16;
     return { x: (x0 - m) * K, y: (y0 - m) * K, w: (x1 - x0 + 2 * m) * K, h: (y1 - y0 + 2 * m) * K };
   }
@@ -1988,6 +2048,8 @@
       const base = { x: e.clientX, y: e.clientY, p, t, moved: false, button: e.button, brk: e.shiftKey };
       try { svg.setPointerCapture(e.pointerId); } catch (err) { /* not an active pointer */ }
       if (e.button !== 0) { drag = Object.assign(base, { kind: 'pan', cam: Object.assign({}, S.cam), k: p.k }); return; }
+      const upEl = !S.pending && t.closest('[data-upgrab]');
+      if (upEl) { const [ub, uc] = upEl.dataset.upgrab.split('|'), c0 = conn(block(s, ub), uc); drag = Object.assign(base, { kind: 'up', ub, uc, a0: Object.assign({ dx: 0, dy: 0 }, c0 && c0.upAt) }); return; }
       const dvEl = !S.pending && t.closest('[data-devgrab]');
       if (dvEl) { const c0 = cable(s, dvEl.dataset.devgrab); drag = Object.assign(base, { kind: 'dev', cab: dvEl.dataset.devgrab, a0: Object.assign({ dx: 0, dy: 0 }, c0 && c0.devAt) }); return; }
       const ldEl = !S.pending && t.closest('[data-cldot]'), lbEl = !S.pending && !ldEl && t.closest('[data-clabel]');
@@ -2029,6 +2091,16 @@
       if (d.kind === 'marquee') { drawMarquee(svg, d, p); return; }
       if (d.kind === 'pan') { S.cam.x = d.cam.x - (e.clientX - d.x) * d.k; S.cam.y = d.cam.y - (e.clientY - d.y) * d.k; svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`); return; }
       if (d.kind === 'click') return;
+      if (d.kind === 'up') {
+        const c = conn(block(cur(), d.ub), d.uc);
+        if (!c) { drag = null; return; }
+        if (!d.snap) { S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; svg.classList.add('dragging'); }
+        const any = e.ctrlKey || e.metaKey, r = v => (any ? Math.round(v * 10) / 10 : snap(v));
+        c.upAt = { dx: r(d.a0.dx + (p.x - d.p.x) / K), dy: r(d.a0.dy + (p.y - d.p.y) / K) };
+        if (!c.upAt.dx && !c.upAt.dy) delete c.upAt;
+        redraw(svg);
+        return;
+      }
       if (d.kind === 'dev') {
         const cab = cable(cur(), d.cab);
         if (!cab) { drag = null; return; }
@@ -2133,6 +2205,11 @@
         if (gh) gh.innerHTML = '';
         if (sameTab(to, d.from)) { A.refresh(); return; }
         change(s => { const cab = cable(s, d.cab); cab.ends[d.node] = to; if (to) conn(block(s, to.block), to.conn).used = true; if (cab.routes) delete cab.routes[d.node]; S.sel = { kind: 'cable', id: cab.id }; });
+        return;
+      }
+      if (d.kind === 'up') {
+        if (d.moved && d.snap) { const s = cur(); keepTabs(s); s.updated = now(); if (A.login()) s.updatedBy = A.login(); persist(); A.refresh(); return; }
+        if (!d.moved) { S.sel = { kind: 'conn', block: d.ub, conn: d.uc }; S.pair = null; S.picking = null; A.refresh(); }
         return;
       }
       if (d.kind === 'dev') {
