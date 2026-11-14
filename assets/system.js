@@ -618,6 +618,11 @@
   // radius, and how far it runs out before its first corner (conn.js: half + 10, half + 20).
   const HALF = 4, RADIUS = HALF + 10, STUB_R = HALF + 20;
   const RT = () => LM.route, CN = () => LM.connect;
+  // A cable's drawn shape: the shared engine's right angles and RADIUS corners, without its easing (Chris,
+  // 2026-11-13: long curves at the top level). Easing smooths a wide harness bundle where its wires can't take
+  // a corner; a cable is one line, and a hairpin in its route (a lead-in out of a tab's bottom that turns
+  // straight back up) made the easing melt the whole cable into one long curve.
+  const drawCable = R0 => RT().shape(R0.A, R0.B, R0.v, R0.r, 0);
   // A tab on the canvas, and where a cable leaves it (Chris, 2026-11-11: out of any side, by default the
   // side of the board edge it's nearest): the exit point (ex, ey) in the middle of that side of the tab,
   // and its direction (dx, dy). A connector's panel can set the side (c.exit). tx and cy alias the exit.
@@ -1058,7 +1063,7 @@
     per.forEach(({ cab, h, ends, at }) => {
       const routes = [], dv = deviceEnds(h).length > 0;
       for (let i = 1; i < at.length && !dv; i++) {
-        const R0 = res.routes.get(cab.id + '|' + at[i].n.id), sh = CN().draw(R0);
+        const R0 = res.routes.get(cab.id + '|' + at[i].n.id), sh = drawCable(R0);
         routes.push(Object.assign({}, R0, { end: at[i].n.id, d: pathOf(sh.pts), mid: midOfPts(sh.pts), pts: sh.pts }));
       }
       out.set(cab.id, { cab, h, ends, at, routes, dev: deviceEnds(h).map(n => n.name || n.ref) });
@@ -1797,7 +1802,7 @@
     }).map(b => b.id);
     const cables = [];
     (lastLo || new Map()).forEach(({ cab, routes }) => {
-      const pts = routes.flatMap(rt => CN().draw(rt).pts);
+      const pts = routes.flatMap(rt => drawCable(rt).pts);
       if (!pts.length) return;
       const hit = touch ? pts.some((p, i) => inside(p) || (i && meets(pts[i - 1], p))) : pts.every(inside);
       if (hit) cables.push(cab.id);
