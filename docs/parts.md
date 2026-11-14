@@ -11,7 +11,7 @@ One file per part in Loom's private data repo, `loom_data/parts/<id>.json`:
 { "schema": 1, "id": "…", "part": {
   "id": "…", "kind": "device", "name": "…", "maker": "…", "mpn": "…", "mate": "", "notes": "…",
   "pins": [{ "id": "1", "label": "GND", "color": "BK", "gauge": "24" }],
-  "source": { "cablematic": "…" }, "updated": 0, "updatedBy": "…" } }
+  "source": { … }, "updated": 0, "updatedBy": "…" } }
 ```
 
 - **kind.** `device` has leads, so it's placed as a Flying leads end. `connector` has a connector on the device
@@ -25,8 +25,8 @@ One file per part in Loom's private data repo, `loom_data/parts/<id>.json`:
 
 The library is read only in Loom, read at each sync (after systems) and kept in this browser's localStorage
 (`parts`, by blob sha, so an unchanged part isn't read again). A token that can't open the data repo (a
-contractor) keeps what it had. There's no part editor in Loom yet. The Queue project's parts come from the client's
-far-end library through the queue-sync-in skill, which writes new and changed parts.
+contractor) keeps what it had. There's no part editor in Loom yet. A client project's parts are written by a
+private sync skill from the client's own part library.
 
 ## Placing a device
 

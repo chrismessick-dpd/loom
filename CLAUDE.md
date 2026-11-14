@@ -22,14 +22,14 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
-- **Part library, Device, and Flying leads (2026-11-14, Chris: a repo of parts, as Cablematic's far-end library, to
+- **Part library, Device, and Flying leads (2026-11-14, Chris: a repo of parts, like a far-end part library, to
   place a device as a harness's far end).** Parts live in `loom_data/parts/<id>.json` (Chris chose a folder in the data
   repo over a new repo), read only at each sync (`assets/parts.js`, `LM.parts.syncLib`). Add has *Flying leads* and
   *Device*. Device opens a searchable list and places a linked copy (Chris's choice over a live reference): pins, net
   names, and lead colors and gauges, plus `n.part` (id, name, stamp), *Is its device*, and for a connector part its
   mating housing. Wires run to a linked pin take its lead. Properties has Refresh from library (when the stamp moved),
   Match wires to leads, and Unlink. No part editor yet. See `docs/parts.md`. Tests 89 (6 new, and the sync test that
-  failed in the same millisecond fixed). The Queue parts come from Cablematic through queue-sync-in.
+  failed in the same millisecond fixed). A client project's parts are written by a private sync skill (see the suite's CLAUDE.md).
 - **Sync guards, Resolve, and systems history (2026-11-14, Chris: a real system showed a "(conflict copy)"
   though he's its only editor; bring Signoff EE's safeguards to Loom).**
   - **The cause.** Three copies of real systems were made in one sync from a
