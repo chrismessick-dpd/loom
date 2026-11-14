@@ -5,6 +5,8 @@
 // the drawing", apart from the things that change the build: pins, parts, colors, gauges, ends, lengths,
 // coverings, sets, and notes. Nothing is stored: the versions come from GitHub when the sheet opens
 // (fileHistory, cached by sha while the page is open). Restore puts an older version back as a new edit.
+// Systems have the same sheet (2026-11-14, Chris): systems/projects/<id>.json in the data repo, compared
+// block by block, connector by connector, and cable by cable (sysDiff).
 (function (LM) {
   'use strict';
   const SG = window.Signoff || {};
@@ -18,7 +20,7 @@
   // The harness's own keys that only lay it out, and ones that are bookkeeping.
   const TOP_LAYOUT = new Set(['routes', 'place', 'propY', 'grid', 'view', 'cam']);
   const TOP_LAYOUT_NAME = { routes: 'wire routes', place: 'parts dragged', propY: 'Real proportions heights', grid: 'the grid' };
-  const TOP_QUIET = new Set(['id', 'schema', 'updated', 'updatedBy', 'identAt', 'plPart', 'demoVersion']);
+  const TOP_QUIET = new Set(['id', 'schema', 'updated', 'updatedBy', 'identAt', 'plPart', 'demoVersion', 'syncBase', 'conflictOf']);
   const same = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
   const byId = list => { const m = new Map(); (list || []).forEach(x => { if (x && x.id) m.set(x.id, x); }); return m; };
   const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many || one + 's');
@@ -83,19 +85,101 @@
     return { items, summary: summary.length ? list3(summary) : 'no change to the harness' };
   }
 
-  // Rows for the history: one per version, newest first, by the harness's own stamp. versions: newest
-  // first, [{ harness, commit }]; the oldest given is only a base unless opts.complete (the file's first).
+  // Rows for the history: one per version, newest first, by the document's own stamp. versions: newest
+  // first, [{ harness, commit }] (or { doc, commit }); the oldest given is only a base unless
+  // opts.complete (the file's first). opts.diff: how to compare (sysDiff for a system).
   function rows(versions, opts) {
-    const out = [], v = versions || [];
+    const out = [], v = versions || [], cmp = (opts && opts.diff) || diff;
     for (let i = 0; i < v.length; i++) {
       const older = v[i + 1];
       if (!older && !(opts && opts.complete)) break;
-      const h = v[i].harness, prev = older ? older.harness : null;
-      if (prev && (h.updated || 0) === (prev.updated || 0) && (h.updatedBy || '') === (prev.updatedBy || '')) continue;   // a write that only changed the summary
-      const d = diff(prev, h);
+      const h = v[i].harness || v[i].doc, prev = older ? older.harness || older.doc : null;
+      if (prev && (h.updated || 0) === (prev.updated || 0) && (h.updatedBy || '') === (prev.updatedBy || '')) continue;   // a write that only changed the summary, or drawn sizes
+      const d = cmp(prev, h);
       out.push({ at: new Date(h.updated || 0).toISOString(), by: h.updatedBy || '', commit: v[i].commit || null, before: prev, after: h, items: d.items, summary: d.summary });
     }
     return out;
+  }
+
+
+  // ── Systems ──
+  // A block's keys that only move or size it on the drawing (a placed system's size and name follow its
+  // drawing, system.js fitMini), a connector's, and a cable's (its route, label, and device-end spots).
+  const SYS_BLOCK_LAYOUT = new Set(['x', 'y', 'rot', 'w', 'h']);
+  const SYS_CONN_LAYOUT = new Set(['x', 'y', 'ax', 'ay', 'exit', 'side', 'placed']);
+  const SYS_CAB_LAYOUT = new Set(['routes', 'labelAt', 'labelOff', 'devAt']);
+  const SYS_FIELDS = [['title', 'title'], ['project', 'project'], ['rev', 'rev'], ['deleted', 'deleted']];
+  const SYS_NAME = { ref: 'renamed', name: 'name', source: 'source board', shape: 'outline', fitted: 'populated', used: 'used', fn: 'function',
+    pins: 'pins', external: 'external', ends: 'replugged', lengthMm: 'length', harness: 'harness', kind: 'kind', color: 'color', mpn: 'part number', system: 'placed system' };
+  const blockName = b => [b.ref, b.kind === 'system' ? '' : b.name].filter(Boolean).join(' ') || 'a block';
+  const cabName = c => c.name || (c.kind === 'harness' ? 'a harness' : 'a cable');
+  // What changed between two versions of one system: { items, summary }, as diff does for a harness.
+  function sysDiff(a, b) {
+    if (!b) return { items: [], summary: '' };
+    if (!a) return { items: [{ part: 'system', name: b.title || 'System', change: 'added', detail: '' }],
+      summary: 'Made the system: ' + list3([plural((b.blocks || []).length, 'block'), plural((b.cables || []).length, 'cable')]) };
+    const items = [], moved = [];
+    SYS_FIELDS.forEach(([k, label]) => {
+      if (same(a[k], b[k])) return;
+      if (k === 'deleted') items.push({ part: 'system', name: b.title || 'System', change: b.deleted ? 'deleted' : 'brought back', detail: '' });
+      else items.push({ part: 'system', name: label, change: 'changed', detail: String(a[k] == null ? '' : a[k]) + ' → ' + String(b[k] == null ? '' : b[k]), before: a[k], after: b[k] });
+    });
+    const known = new Set(SYS_FIELDS.map(f => f[0]).concat(['blocks', 'cables', 'kind']));
+    [...new Set(Object.keys(a).concat(Object.keys(b)))].forEach(k => {
+      if (known.has(k) || TOP_QUIET.has(k) || same(a[k], b[k])) return;
+      if (k === 'grid' || k === 'cam' || k === 'view') moved.push(k === 'grid' ? 'the grid' : k);
+      else items.push({ part: 'system', name: k, change: 'changed', detail: '' });
+    });
+    const real = (x, y, lay, skip) => [...new Set(Object.keys(x).concat(Object.keys(y)))].filter(k => k !== 'id' && !lay.has(k) && !(skip && skip.has(k)) && !same(x[k], y[k]));
+    const anyLay = (x, y, lay) => [...lay].some(k => !same(x[k], y[k]));
+    const A = byId(a.blocks), B = byId(b.blocks);
+    B.forEach((x, id) => {
+      const y = A.get(id);
+      if (!y) { items.push({ part: 'block', name: blockName(x), change: 'added', detail: '' }); return; }
+      // A placed system's name and tab spots follow the system it places: only its tabs' own settings count.
+      const skip = new Set(['conns', 'tabs'].concat(x.kind === 'system' ? ['name'] : []));
+      const what = real(x, y, SYS_BLOCK_LAYOUT, skip).map(k => SYS_NAME[k] || k);
+      let lay = anyLay(x, y, SYS_BLOCK_LAYOUT);
+      // Connectors, by id.
+      const CA = byId(y.conns), CB = byId(x.conns);
+      CB.forEach((c, cid) => {
+        const d = CA.get(cid);
+        if (!d) { what.push((c.ref || 'a connector') + ' added'); return; }
+        const r = real(c, d, SYS_CONN_LAYOUT);
+        if (r.length) what.push((c.ref || 'a connector') + ': ' + [...new Set(r.map(k => SYS_NAME[k] || k))].join(', '));
+        else if (anyLay(c, d, SYS_CONN_LAYOUT)) lay = true;
+      });
+      CA.forEach((d, cid) => { if (!CB.has(cid)) what.push((d.ref || 'a connector') + ' removed'); });
+      // A placed system's tabs: their own settings (function, external) count; their spots and exits move.
+      const TA = y.tabs || {}, TB = x.tabs || {};
+      [...new Set(Object.keys(TA).concat(Object.keys(TB)))].forEach(t => {
+        const p = TA[t] || {}, q = TB[t] || {};
+        const r = real(q, p, new Set(['x', 'y', 'exit']));
+        if (r.length) what.push('tab ' + t.split('/').pop() + ': ' + [...new Set(r.map(k => SYS_NAME[k] || k))].join(', '));
+        else if (anyLay(q, p, new Set(['x', 'y', 'exit']))) lay = true;
+      });
+      if (what.length) items.push({ part: 'block', name: blockName(x), change: 'changed', detail: [...new Set(what)].join('; ') });
+      else if (lay) moved.push(blockName(x));
+    });
+    A.forEach((y, id) => { if (!B.has(id)) items.push({ part: 'block', name: blockName(y), change: 'removed', detail: '' }); });
+    const KA = byId(a.cables), KB = byId(b.cables);
+    KB.forEach((x, id) => {
+      const y = KA.get(id);
+      if (!y) { items.push({ part: 'cable', name: cabName(x), change: 'added', detail: '' }); return; }
+      const r = real(x, y, SYS_CAB_LAYOUT);
+      if (r.length) items.push({ part: 'cable', name: cabName(x), change: 'changed', detail: [...new Set(r.map(k => SYS_NAME[k] || k))].join(', '), fields: r.map(k => ({ key: k, before: y[k], after: x[k] })) });
+      else if (anyLay(x, y, SYS_CAB_LAYOUT)) moved.push(cabName(x));
+    });
+    KA.forEach((y, id) => { if (!KB.has(id)) items.push({ part: 'cable', name: cabName(y), change: 'removed', detail: '' }); });
+    if (moved.length) items.push({ part: 'layout', name: moved.length === 1 ? moved[0] : plural(moved.length, 'thing'), change: 'moved on the drawing', detail: moved.length > 1 ? list3(moved.slice(0, 6)) + (moved.length > 6 ? ', …' : '') : '' });
+    const count = {};
+    items.forEach(it => { const k = it.change === 'moved on the drawing' ? 'moved on the drawing' : it.part === 'system' ? (it.change === 'changed' ? it.name + ' changed' : 'system ' + it.change) : it.part + ' ' + it.change; count[k] = (count[k] || 0) + 1; });
+    const summary = Object.keys(count).map(k => {
+      const n = count[k], [part, ...rest] = k.split(' ');
+      if (k === 'moved on the drawing' || part === 'system' || !['block', 'cable'].includes(part)) return k;
+      return plural(n, part) + ' ' + rest.join(' ');
+    });
+    return { items, summary: summary.length ? list3(summary) : 'no change to the system' };
   }
 
   // ── The sheet ──
@@ -117,8 +201,10 @@
   }
   const initials = name => { const w = String(name || '?').replace(/^@/, '').split(/[\s._-]+/).filter(Boolean); return ((w[0] || '?').charAt(0) + (w.length > 1 ? w[w.length - 1].charAt(0) : (w[0] || '').charAt(1))).toUpperCase(); };
 
-  function open(h) {
+  // kind: 'harness' (the default) or 'system'.
+  function open(h, kind) {
     if (!h) return;
+    const SYS = kind === 'system', WORD = SYS ? 'system' : 'harness', cmp = SYS ? sysDiff : diff;
     const R = LM.store, M = SG.model, DEMO = R && R.DEMO;
     const st = { rows: [], versions: [], page: 0, more: !DEMO, loading: false, error: '', gap: 2 * 3600e3, open: {}, sel: null };
     close();
@@ -158,43 +244,45 @@
           <span class="hist-when">${esc(span + ' · ' + rel(b.end))}</span><span class="hist-counts">${esc(plural(b.rows.length, 'version'))}</span></button>
           ${isOpen ? `<ul class="hist-rows">${b.rows.map(r => { const k = st.rows.indexOf(r); return `<li><button class="hist-row${st.sel && st.sel.row === k ? ' sel' : ''}" data-h="row" data-r="${k}"><span class="hist-what">${esc(r.summary)}</span><time>${esc(clock(r.at))}</time></button></li>`; }).join('')}</ul>` : ''}</li>`;
       });
-      const foot = st.loading ? '<p class="note">Reading the harness’s history from GitHub…</p>' : st.error ? `<p class="note">${esc(st.error)}</p>`
+      const foot = st.loading ? `<p class="note">Reading the ${WORD}’s history from GitHub…</p>` : st.error ? `<p class="note">${esc(st.error)}</p>`
         : st.more ? '<button class="btn" data-h="older">Load older</button>'
-        : st.rows.length ? `<p class="note">${DEMO ? 'The demo isn’t on GitHub, so it has no history; a synced harness shows every version.' : 'That’s the whole history.'}</p>` : '';
-      box.innerHTML = `<div class="sheet-head"><h2>History · ${esc(h.title)}</h2><p>${esc(st.rows.length ? plural(st.rows.length, 'version') + ' by ' + list3([...new Set(st.rows.map(who))]) + '. Loom keeps the whole harness as one record, so each version is one change by one person.' : 'Who changed the harness, from its versions on GitHub.')}</p></div>
+        : st.rows.length ? `<p class="note">${DEMO ? `The demo isn’t on GitHub, so it has no history; a synced ${WORD} shows every version.` : 'That’s the whole history.'}</p>` : '';
+      box.innerHTML = `<div class="sheet-head"><h2>History · ${esc(h.title)}</h2><p>${esc(st.rows.length ? plural(st.rows.length, 'version') + ' by ' + list3([...new Set(st.rows.map(who))]) + `. Loom keeps the whole ${WORD} as one record, so each version is one change by one person.` : `Who changed the ${WORD}, from its versions on GitHub.`)}</p></div>
         <div class="hist-bar"><label class="hist-gap">Fold runs within <select data-h="gap">${[[30, '30 min'], [120, '2 h'], [1440, '1 day'], [0, 'Never']].map(([m, t]) => `<option value="${m * 6e4}"${st.gap === m * 6e4 ? ' selected' : ''}>${t}</option>`).join('')}</select></label></div>
         <div class="hist-grid"><div class="hist-col"><ol class="hist-tl">${html || (st.loading ? '' : '<li class="note">No versions yet.</li>')}</ol>${foot}</div><div class="hist-col hist-pane">${pane()}</div></div>
         <div class="sheet-foot"><button class="btn" data-h="close">Close</button></div>`;
     }
     function load() {
-      if (DEMO) { st.rows = rows([{ harness: h }], { complete: true }); st.rows.forEach(r => { r.commit = undefined; }); st.more = false; draw(); return; }
-      const c = R.config(), full = R.homeOf(h.id) || (c.owner + '/' + c.dataRepo), tok = R.token();
+      if (DEMO) { st.rows = rows([{ doc: h }], { complete: true, diff: cmp }); st.rows.forEach(r => { r.commit = undefined; }); st.more = false; draw(); return; }
+      const c = R.config(), full = (!SYS && R.homeOf(h.id)) || (c.owner + '/' + c.dataRepo), tok = R.token();
       st.full = full;
-      if (!tok) { st.more = false; st.error = 'Sign in to GitHub to see this harness’s history.'; draw(); return; }
+      if (!tok) { st.more = false; st.error = `Sign in to GitHub to see this ${WORD}’s history.`; draw(); return; }
       const store = new SG.GitHubStore({ owner: full.split('/')[0], repo: full.split('/')[1], branch: 'main', dataPath: '', token: tok });
       st.loading = true; st.error = ''; draw();
       cache[full] = cache[full] || {};
-      store.fileHistory('projects/' + h.id + '.json', { page: st.page + 1, perPage: 15, cache: cache[full] }).then(got => {
+      store.fileHistory((SYS ? 'systems/projects/' : 'projects/') + h.id + '.json', { page: st.page + 1, perPage: 15, cache: cache[full] }).then(got => {
         st.page++;
         got.versions.forEach(v => {
-          let doc = null; try { doc = v.text ? JSON.parse(v.text) : null; } catch (e) { /* not a harness file */ }
-          const hh = doc && R.unwrap(doc);
-          if (hh && hh.id === h.id) st.versions.push({ harness: hh, commit: v.commit });
+          let doc = null; try { doc = v.text ? JSON.parse(v.text) : null; } catch (e) { /* not a Loom file */ }
+          let hh = null;
+          if (SYS) { try { hh = doc && doc.system && doc.system.id === h.id ? LM.system.normalize(JSON.parse(JSON.stringify(doc.system))) : null; } catch (e) { hh = null; } }
+          else hh = doc && R.unwrap(doc);
+          if (hh && hh.id === h.id) st.versions.push({ doc: hh, commit: v.commit });
         });
         st.more = got.more;
-        // This browser's edit not synced yet: the harness here is newer than the newest version.
-        const newest = st.versions[0], mine = newest && (h.updated || 0) > (newest.harness.updated || 0)
-          ? rows([{ harness: h, commit: null }, newest]) : !newest ? rows([{ harness: h, commit: null }], { complete: true }) : [];
-        st.rows = mine.concat(rows(st.versions, { complete: !got.more }));
+        // This browser's edit not synced yet: the document here is newer than the newest version.
+        const newest = st.versions[0], mine = newest && (h.updated || 0) > (newest.doc.updated || 0)
+          ? rows([{ doc: h, commit: null }, newest], { diff: cmp }) : !newest ? rows([{ doc: h, commit: null }], { complete: true, diff: cmp }) : [];
+        st.rows = mine.concat(rows(st.versions, { complete: !got.more, diff: cmp }));
         st.loading = false; draw();
       }, err => { st.loading = false; st.error = 'Couldn’t read the history from GitHub: ' + (err.message || 'unknown error'); draw(); });
     }
     function restore(r) {
-      const cur = LM.app.H();
+      const cur = SYS ? LM.system.get(LM.system.current()) : LM.app.H();
       if (!cur || cur.id !== h.id) return;
-      if ((cur.updated || 0) !== (st.rows[0] && st.rows[0].after.updated || 0)) { alert('This harness changed since the history was read. Close and open History again.'); return; }
-      if (!confirm('Put the harness back as it was before this change (' + r.summary + ')?\n\nIt’s saved as a new edit by you and syncs like any other. Nothing in GitHub’s history is rewritten, and Undo takes it back.')) return;
-      LM.app.restore(r.before);
+      if ((cur.updated || 0) !== (st.rows[0] && st.rows[0].after.updated || 0)) { alert(`This ${WORD} changed since the history was read. Close and open History again.`); return; }
+      if (!confirm(`Put the ${WORD} back as it was before this change (` + r.summary + ')?\n\nIt’s saved as a new edit by you and syncs like any other. Nothing in GitHub’s history is rewritten, and Undo takes it back.')) return;
+      if (SYS) LM.system.restore(r.before); else LM.app.restore(r.before);
       close();
     }
     box.addEventListener('click', e => {
@@ -213,5 +301,5 @@
   function onKey(e) { if (e.key === 'Escape' && document.getElementById('lm-hist')) close(); }
   function close() { const w = document.getElementById('lm-hist'); if (w) w.remove(); document.removeEventListener('keydown', onKey); }
 
-  LM.history = { diff, rows, open, close, LAYOUT };
+  LM.history = { diff, sysDiff, rows, open, close, LAYOUT };
 })(window.LM = window.LM || {});

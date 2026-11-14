@@ -10,6 +10,7 @@
 .page.wide { max-width: 1440px; }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
 .lm-toast-error { background: var(--issue); }
+.toast .lm-toast-act { margin-left: 10px; padding: 0; border: none; background: none; color: #7fd8e2; font: inherit; font-weight: 600; cursor: pointer; }
 
 /* Sidebar (Fabcheck's package rows) */
 .pkg-sev { display: flex; gap: 4px; flex: none; font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -1290,3 +1291,14 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 
 /* History sheet (history.js): a version's list of changes. */
 #lm-hist .hist-items { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+/* Resolve a conflict copy (assets/resolve.js) */
+.rs-sheet { max-width: 620px; }
+.rs-sheet .rs-diff { padding: 0 24px; }
+.rs-sheet .rs-diff h3 { font-size: 13px; font-weight: 600; margin: 4px 0 6px; }
+.rs-sheet .hist-items { margin: 0 0 8px; padding-left: 18px; font-size: 13px; line-height: 1.6; max-height: 40vh; overflow: auto; }
+.rs-sheet .muted { color: var(--text-3); }
+.rs-opts { display: grid; gap: 10px; padding: 12px 24px 4px; }
+.rs-opt { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: center; font-size: 13px; color: var(--text-2); }
+.rs-opt .btn { justify-content: center; }
+@media (max-width: 600px) { .rs-opt { grid-template-columns: 1fr; gap: 4px; } }
+.btn.lm-resolve { border-color: var(--warn); }

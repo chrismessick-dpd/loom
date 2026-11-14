@@ -72,7 +72,28 @@
     if (sid) { LM.system.open(sid); S.cur = null; }
     // The systems' last synced copies (store.js, IndexedDB), for Discard changes: known once read.
     if (!DEMO && LM.store.loadSysBase) LM.store.loadSysBase().then(() => { if (LM.system.current()) renderToolbar(); });
+    if (LM.resolve) LM.resolve.init(resolveHooks);
   }
+  // Resolve a conflict copy (assets/resolve.js): the two stores, and writing what an action changed, then
+  // opening what it leaves open.
+  const resolveHooks = {
+    store: kind => (kind === 'system' ? LM.system.store() : S.store),
+    login: () => (R && R.login()) || '',
+    synced: (kind, id) => { const d = kind === 'system' ? LM.system.get(id) : S.store[id]; return !!(d && d.syncBase) || (kind === 'system' ? false : R.wasSynced(id)); },
+    toast: (m, t, a) => toast(m, t, a),
+    put(kind, changes, openId) {
+      const st = kind === 'system' ? LM.system.store() : S.store;
+      Object.keys(changes).forEach(id => { if (changes[id]) st[id] = changes[id]; else delete st[id]; });
+      const live = openId && st[openId] && !st[openId].deleted ? openId : null;
+      if (kind === 'system') {
+        LM.system.persist();
+        if (live) openSystem(live); else { LM.system.close(); S.cur = null; persist(); renderAll(); }
+      } else {
+        persist();
+        if (live) openHarness(live); else { S.cur = null; persist(); renderAll(); }
+      }
+    },
+  };
   // What a system (assets/system.js) needs from the harness side. It never edits a harness itself:
   // New harness here comes back through newHarnessFor.
   const sysHooks = {
@@ -141,29 +162,37 @@
     try {
       const curWas = S.cur && S.store[S.cur] ? R.hash(S.store[S.cur]) : '';
       const res = await R.sync(S.store, { thumb: { svg: LM.sheet.diagram, png: drawingPng } });
-      // Take what the repo has, except a harness edited while the sync ran: it stays, unsynced. If the
-      // sync also brought someone else's change to it, the next sync must merge the two, not push over.
-      const forget = [];
-      Object.keys(res.store).forEach(id => {
-        const mine = S.store[id];
-        if (mine && res.before[id] && R.hash(mine) !== res.before[id]) {
-          if (R.hash(res.store[id]) !== res.before[id]) forget.push(id);
+      // Take what the repo has, except a harness edited while the sync ran (its stamp moved): it stays,
+      // unsynced. When the sync took this copy as it was, the edit sits on what went up (its base moves
+      // there); when the sync brought someone else's change, the next sync must merge the two, not push
+      // over, so it keeps its old base and the next sync reads the file again.
+      const keepEdited = (store, got, bs, forget) => Object.keys(got).forEach(id => {
+        const mine = store[id];
+        if (mine && bs[id] != null && R.stampKey(mine) !== bs[id]) {
+          if (R.stampKey(got[id]) === bs[id]) mine[R.BASE] = got[id][R.BASE];
+          else forget.push(id);
           return;
         }
-        S.store[id] = res.store[id];
+        store[id] = got[id];
       });
+      const forget = [];
+      keepEdited(S.store, res.store, res.beforeStamp, forget);
       if (forget.length) R.forget(forget);
       // Systems (assets/system.js) sync with the data repo's systems/ folder, after the harnesses.
+      let sysCopies = 0;
       try {
         const ss = LM.system.store(), rs = await R.syncSystems(ss, sysHooks.harness);
         if (rs) {
-          Object.keys(rs.store).forEach(id => { if (!ss[id] || !rs.before[id] || R.hash(ss[id]) === rs.before[id]) ss[id] = rs.store[id]; });
-          rs.gone.forEach(id => { if (ss[id] && R.hash(ss[id]) === rs.before[id]) delete ss[id]; });
+          const sf = [];
+          keepEdited(ss, rs.store, rs.beforeStamp, sf);
+          if (sf.length) R.forgetSystems(sf);
+          rs.gone.forEach(id => { if (ss[id] && R.stampKey(ss[id]) === rs.beforeStamp[id]) delete ss[id]; });
           rs.conflicts.forEach(s => { ss[s.id] = s; });
+          sysCopies = rs.conflicts.length;
           LM.system.persist();
         }
       } catch (e) { toast("Couldn't sync systems: " + (e.message || e), 'error'); }
-      res.gone.forEach(id => { if (S.store[id] && R.hash(S.store[id]) === res.before[id]) delete S.store[id]; });
+      res.gone.forEach(id => { if (S.store[id] && R.stampKey(S.store[id]) === res.beforeStamp[id]) delete S.store[id]; });
       res.conflicts.forEach(h => { S.store[h.id] = h; });
       if (S.cur && (!S.store[S.cur] || S.store[S.cur].deleted)) S.cur = null;
       // A link from Signoff PL to a harness this browser didn't have yet opens once the sync brings it.
@@ -173,8 +202,9 @@
       if (!S.cur || !S.store[S.cur] || R.hash(S.store[S.cur]) !== curWas) { S.past = []; S.future = []; S.sel = null; S.pending = null; }
       persist();
       renderAll();
-      res.dropped.forEach(id => { if (S.store[id] && R.hash(S.store[id]) === res.before[id]) delete S.store[id]; });
-      if (res.conflicts.length) toast(`${res.conflicts.length} harness${res.conflicts.length > 1 ? 'es were' : ' was'} changed here and elsewhere. The newer one won; the other is kept as a "(conflict copy)".`, 'error');
+      res.dropped.forEach(id => { if (S.store[id] && R.stampKey(S.store[id]) === res.beforeStamp[id]) delete S.store[id]; });
+      const copies = res.conflicts.length + sysCopies;
+      if (copies) toast(`${copies === 1 ? 'One ' + (sysCopies ? 'system was' : 'harness was') : copies + ' harnesses or systems were'} changed both here and elsewhere since the last sync. The newer one won; the other is kept as a "(conflict copy)". Open it to resolve it.`, 'error');
       else if (res.errors.length) toast(res.errors[0].message + (res.errors.length > 1 ? ` (+${res.errors.length - 1} more)` : ''), 'error');
       else if (res.adopted.length) toast(`Name or part number taken from Signoff PL for ${res.adopted.length} harness${res.adopted.length > 1 ? 'es' : ''}.`);
       else if (!quiet) toast(res.pushed ? 'Synced.' : 'Up to date.');
@@ -224,12 +254,21 @@
   }
   function swapHistory(from, to) {
     if (!from.length) return;
-    to.push(JSON.stringify(H()));
-    S.store[S.cur] = JSON.parse(from.pop());
+    const was = H();
+    to.push(JSON.stringify(was));
+    S.store[S.cur] = keepBase(JSON.parse(from.pop()), was);
     S.pending = null;
     tidySel();
     persist();
     renderAll();
+  }
+  // A version put back (undo, redo, Discard, Restore, Resolve) keeps the sync base the copy here has now:
+  // an undo past a sync is an edit on what that sync left, never a return to the version before it.
+  function keepBase(doc, cur) {
+    if (!doc || !R || !R.BASE) return doc;
+    delete doc[R.BASE];
+    if (cur && cur[R.BASE]) doc[R.BASE] = cur[R.BASE];
+    return doc;
   }
   const undo = () => swapHistory(S.past, S.future);
   const redo = () => swapHistory(S.future, S.past);
@@ -538,7 +577,7 @@
     try { b = await R.discardCopy('harness', id); } catch (e) { toast("Couldn't read the last synced version from GitHub: " + e.message, 'error'); return; }
     if (!b || S.cur !== id) { if (!b) toast("There's no synced version of this harness to go back to.", 'error'); return; }
     snapshot();
-    S.store[S.cur] = b;
+    S.store[S.cur] = keepBase(b, H());
     S.sel = null; S.pending = null;
     persist();
     renderAll();
@@ -549,9 +588,11 @@
   function sysToolbar() {
     const id = LM.system.current(), s = id && LM.system.get(id), Y = LM.system;
     const discard = s && canSync() && R.sysUnsynced({ [id]: s }).length && R.canDiscard('system', id);
-    return `<button class="icon-btn" data-act="sys-undo" title="Undo (Ctrl+Z)" aria-label="Undo"${Y.canUndo() ? '' : ' disabled'}>${ICON.undo}</button>` +
+    return (s && LM.resolve && LM.resolve.isCopy(s) ? `<button class="btn lm-resolve" data-act="sys-resolve" title="Use this copy, delete it, or keep both">Resolve…</button>` : '') +
+      `<button class="icon-btn" data-act="sys-undo" title="Undo (Ctrl+Z)" aria-label="Undo"${Y.canUndo() ? '' : ' disabled'}>${ICON.undo}</button>` +
       `<button class="icon-btn" data-act="sys-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${Y.canRedo() ? '' : ' disabled'}>${ICON.redo}</button>` +
       (discard ? `<button class="btn" data-act="sys-discard" title="Put this system back as it was at the last sync (Ctrl+Z brings the changes back)">Discard changes</button>` : '') +
+      (s && LM.history ? `<button class="btn" data-act="sys-history" title="Who changed this system, from its versions on GitHub">History</button>` : '') +
       `<button class="btn btn-primary" data-act="sys-save" title="Download this system as a .loom.json file">${ICON.save}<span class="btn-label">Save file</span></button>`;
   }
   async function discardSystem() {
@@ -581,6 +622,7 @@
     const tabs = [['build', 'Build'], ['drawing', 'Drawing'], ['wires', 'Wires', h.wires.length], ['bom', 'BOM'], ['checks', 'Checks', e + w, e ? 'error' : w ? 'warn' : '']];
     seg.innerHTML = tabs.map(([v, l, n, dot]) => `<button class="${S.view === v ? 'on' : ''}" data-view="${v}">${l}${n ? ` <span class="count">${n}</span>` : ''}${dot ? `<span class="dot ${dot}"></span>` : ''}</button>`).join('');
     $('#toolbar-actions').innerHTML =
+      (LM.resolve && LM.resolve.isCopy(h) ? `<button class="btn lm-resolve" data-act="resolve" title="Use this copy, delete it, or keep both">Resolve…</button>` : '') +
       `<button class="icon-btn" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo"${S.past.length ? '' : ' disabled'}>${ICON.undo}</button>` +
       `<button class="icon-btn" data-act="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${S.future.length ? '' : ' disabled'}>${ICON.redo}</button>` +
       (canDiscard(h) ? `<button class="btn" data-act="discard" title="Put this harness back as it was at the last sync (Ctrl+Z brings the changes back)">Discard changes</button>` : '') +
@@ -2338,6 +2380,7 @@
       if (S.store[h.id]) h.id = U.uid('h');
       delete h.deleted;
       if (!DEMO) delete h.demoVersion;   // a saved demo harness opened outside the demo is an ordinary one
+      delete h.syncBase;   // this browser never synced the file's copy
       h.updated = Date.now();
       S.store[h.id] = h;
       openHarness(h.id);
@@ -2404,6 +2447,9 @@
       case 'sys-undo': LM.system.act('undo'); break;
       case 'sys-redo': LM.system.act('redo'); break;
       case 'sys-discard': discardSystem(); break;
+      case 'sys-resolve': { const sid = LM.system.current(); if (sid && LM.resolve) LM.resolve.open('system', LM.system.get(sid)); break; }
+      case 'sys-history': { const sid = LM.system.current(); if (sid && LM.history) LM.history.open(LM.system.get(sid), 'system'); break; }
+      case 'resolve': if (H() && LM.resolve) LM.resolve.open('harness', H()); break;
       case 'sys-save': LM.system.saveFile(); break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
@@ -2435,7 +2481,7 @@
       case 'match-wire': wireMatches(el.dataset.a, el.dataset.b); break;
       case 'delete': deleteSel(); break;
       case 'history': if (LM.history) LM.history.open(h); break;
-      case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); delete c.identAt; delete c.demoVersion; delete c.plPart; S.store[c.id] = c; openHarness(c.id); break; }
+      case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); delete c.identAt; delete c.demoVersion; delete c.plPart; delete c.syncBase; delete c.conflictOf; S.store[c.id] = c; openHarness(c.id); break; }
       case 'delete-harness': {
         // Once synced, a harness is kept as a tombstone, so the next sync deletes it everywhere (its file
         // stays in the repo, marked deleted, and its git history keeps every version).
@@ -2683,12 +2729,19 @@
   window.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
   window.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) { e.preventDefault(); openFile(f); } });
 
-  function toast(msg, tone) {
+  // action: { label, fn }, a button in the toast (Resolve's Undo), which stays longer.
+  function toast(msg, tone, action) {
     const t = document.createElement('div');
     t.className = 'toast' + (tone === 'error' ? ' lm-toast-error' : '');
     t.textContent = msg;
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'lm-toast-act'; b.textContent = action.label;
+      b.addEventListener('click', () => { t.remove(); action.fn(); });
+      t.appendChild(b);
+    }
     $('#toasts').appendChild(t);
-    setTimeout(() => t.remove(), tone === 'error' ? 7000 : 3200);
+    setTimeout(() => t.remove(), action ? 10000 : tone === 'error' ? 7000 : 3200);
   }
 
   // ── Tool updates (as in Signoff EE and Partcheck) ──
@@ -2797,7 +2850,8 @@
     const h = H();
     if (!h || !older || older.id !== h.id) return;
     snapshot();
-    const c = JSON.parse(JSON.stringify(older));
+    const c = keepBase(JSON.parse(JSON.stringify(older)), h);
+    delete c.conflictOf;
     c.updated = Date.now(); if (R && R.login()) c.updatedBy = R.login(); else delete c.updatedBy;
     S.store[h.id] = c;
     tidySel(); persist(); renderAll();

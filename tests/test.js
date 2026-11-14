@@ -213,28 +213,34 @@
   });
 
   // ── Merge ──
-  test('merge: a copy with no edits since the last sync takes the stored one', () => {
-    const a = harness('A'), b = JSON.parse(JSON.stringify(a));
-    b.title = 'A, edited elsewhere'; b.updated = a.updated + 1000;
-    const lost = [];
-    const merge = R.makeMerge(() => false, l => lost.push(l));
-    eq(merge(R.envelope(a), R.envelope(b)).harness.title, 'A, edited elsewhere');
+  test('merge: three-way by stamp against the version this copy was synced from', () => {
+    const base = harness('A'), key = R.stampKey(base);
+    const mine = JSON.parse(JSON.stringify(base)), theirs = JSON.parse(JSON.stringify(base));
+    theirs.title = 'Theirs'; theirs.updated = base.updated + 5000; theirs.updatedBy = 'bob';
+    const lost = [], merge = R.makeMerge((l, w) => lost.push([l, w]));
+    // Untouched here (its stamp is the base), even with bytes the drawing changed: GitHub's.
+    mine.place = { 'n:x': { x: 1, y: 2 } };
+    eq(merge(R.envelope(mine), R.envelope(theirs), { base: key }).harness.title, 'Theirs');
+    // Untouched there: ours, though GitHub's copy differs in bytes.
+    mine.title = 'Mine'; mine.updated = base.updated + 1000;
+    const keptTheirs = JSON.parse(JSON.stringify(base)); keptTheirs.place = { 'n:y': { x: 9, y: 9 } };
+    eq(merge(R.envelope(mine), R.envelope(keptTheirs), { base: key }).harness.title, 'Mine');
+    eq(lost.length, 0, 'no copy either way');
+    // One stamp on both sides: one version, drawn differently. GitHub's, no copy.
+    eq(merge(R.envelope(keptTheirs), R.envelope(base), { base: '' }).harness.place, base.place);
     eq(lost.length, 0);
+    // Changed on both: the newer wins and the other comes back to be kept as a copy.
+    eq(merge(R.envelope(mine), R.envelope(theirs), { base: key }).harness.title, 'Theirs');
+    eq(lost.length, 1);
+    const c = R.conflictCopy(R.unwrap(lost[0][0]), R.unwrap(lost[0][1]), 'h', 'Harness');
+    eq([c.title, c.conflictOf.id, c.conflictOf.title], ['Mine (conflict copy)', base.id, 'Theirs']);
+    ok(c.id !== base.id && !c.syncBase, 'a new document, never synced');
   });
-  test('merge: both edited, the newer wins and the other is kept', () => {
-    const a = harness('A'), b = JSON.parse(JSON.stringify(a));
-    a.title = 'Mine'; a.updated = Date.parse('2026-11-07T10:00:00Z');
-    b.title = 'Theirs'; b.updated = Date.parse('2026-11-07T11:00:00Z');
-    const lost = [];
-    const merge = R.makeMerge(() => true, l => lost.push(l));
-    eq(merge(R.envelope(a), R.envelope(b)).harness.title, 'Theirs');
-    eq(lost.map(d => d.harness.title), ['Mine']);
-  });
-  test('merge: both "edited" to the same harness is no conflict', () => {
+  test('merge: both edited to the same harness is no conflict', () => {
     const a = harness('A');
     const lost = [];
-    const merge = R.makeMerge(() => true, l => lost.push(l));
-    merge(R.envelope(a), JSON.parse(stable(R.envelope(a))));
+    const merge = R.makeMerge(l => lost.push(l));
+    merge(R.envelope(a), JSON.parse(stable(R.envelope(a))), { base: 'something else' });
     eq(lost.length, 0);
   });
 
@@ -334,7 +340,7 @@
     f.harness.title = 'Theirs'; f.harness.updated = Date.now() + 60000;
     hub.push(OWNER + '/loom_data', Object.assign(hub.files(OWNER + '/loom_data'), { ['projects/' + h.id + '.json']: stable(f) }));
     const mine = res.store[h.id];
-    mine.title = 'Mine'; mine.updated = Date.now();
+    mine.title = 'Mine'; mine.updated = Date.now() + 1000;
     res = await R.sync(res.store, opts(hub));
     eq(res.store[h.id].title, 'Theirs');
     eq(res.conflicts.map(c => c.title), ['Mine (conflict copy)']);
@@ -356,7 +362,7 @@
     const mine = JSON.parse(JSON.stringify(res.store[h.id]));
     res = await R.sync(res.store, opts(hub));
     eq(res.store[h.id].title, 'Bob');
-    mine.title = 'Mine, edited during that sync'; mine.updated = Date.now();
+    mine.title = 'Mine, edited during that sync'; mine.updated = Date.now() + 1000;
     R.forget([h.id]);   // what the app does when it keeps such an edit
     res = await R.sync(Object.assign({}, res.store, { [h.id]: mine }), opts(hub));
     eq(res.store[h.id].title, 'Mine, edited during that sync');
@@ -369,7 +375,7 @@
     eq(R.base(h.id), null, 'never synced: nothing to go back to');
     const res = await R.sync({ [h.id]: h }, opts(hub));
     const edited = res.store[h.id];
-    edited.title = 'Edited here'; edited.updated = Date.now();
+    edited.title = 'Edited here'; edited.updated = Date.now() + 1000;
     eq(R.unsynced({ [h.id]: edited }), [h.id]);
     const b = R.base(h.id);
     eq(b.title, 'Kept');
@@ -382,7 +388,7 @@
     const hub = setup();
     const h = harness('Doomed');
     let res = await R.sync({ [h.id]: h }, opts(hub));
-    res.store[h.id].deleted = true; res.store[h.id].updated = Date.now();
+    res.store[h.id].deleted = true; res.store[h.id].updated = Date.now() + 1000;
     res = await R.sync(res.store, opts(hub));
     const f = file(hub, h.id);
     eq([f.meta.deleted, f.summary.archived], [true, true]);
@@ -398,6 +404,77 @@
     res = await R.sync(res.store, opts(hub));
     eq(res.gone, [h.id]);
     ok(!res.store[h.id]);
+  });
+
+  // The guards (2026-11-14: a stale tab wrote false conflict copies of three systems).
+  const putFile = (hub, path, doc) => hub.push(OWNER + '/loom_data', Object.assign(hub.files(OWNER + '/loom_data'), { [path]: stable(doc) }));
+  test('sync: an unedited copy whose bytes changed (drawn, not edited) takes GitHub’s and writes nothing', async () => {
+    const hub = setup();
+    const h = harness('Drawn only');
+    let res = await R.sync({ [h.id]: h }, opts(hub));
+    ok(res.store[h.id].syncBase === R.stampKey(res.store[h.id]), 'each synced copy carries the stamp it came from');
+    ok(!('syncBase' in file(hub, h.id).harness), 'and never uploads it');
+    const local = res.store[h.id];
+    local.place = { 'n:zz': { x: 3, y: 4 } };   // a change no edit stamped
+    eq(R.unsynced({ [h.id]: local }), [], 'not an edit: no unsynced dot');
+    const head = hub.files(OWNER + '/loom_data')['projects/' + h.id + '.json'];
+    res = await R.sync(res.store, opts(hub));
+    eq(res.pushed, 0, 'nothing written');
+    eq(hub.files(OWNER + '/loom_data')['projects/' + h.id + '.json'], head);
+    // And against a newer file from elsewhere: GitHub's, no copy, nothing written.
+    const f = file(hub, h.id); f.harness.title = 'Edited elsewhere'; f.harness.updated += 9000; f.meta.name = 'Edited elsewhere';
+    putFile(hub, 'projects/' + h.id + '.json', f);
+    const stale = res.store[h.id]; stale.place = { 'n:zz': { x: 30, y: 40 } };
+    res = await R.sync(res.store, opts(hub));
+    eq([res.store[h.id].title, res.conflicts.length, res.pushed], ['Edited elsewhere', 0, 0]);
+  });
+  test('sync: a stale tab keeps its own base, so another tab’s newer sync never makes its old copy an edit', async () => {
+    const hub = setup();
+    const h = harness('Two tabs');
+    const first = await R.sync({ [h.id]: h }, opts(hub));
+    const tabB = JSON.parse(JSON.stringify(first.store));   // tab B, left open
+    // Tab A edits and syncs; its bookkeeping in localStorage is now newer than tab B's copy.
+    const a = JSON.parse(JSON.stringify(first.store)); a[h.id].title = 'Tab A'; a[h.id].updated = Date.now() + 1000;
+    await R.sync(a, opts(hub));
+    tabB[h.id].place = { 'n:q': { x: 1, y: 1 } };   // tab B only drew it
+    const res = await R.sync(tabB, opts(hub));
+    eq([res.store[h.id].title, res.conflicts.length, res.pushed], ['Tab A', 0, 0]);
+  });
+  test('sync: a copy from before syncBase, stamped before the last sync, counts as unedited', async () => {
+    const hub = setup();
+    const h = harness('Upgraded');
+    const res = await R.sync({ [h.id]: h }, opts(hub));
+    const old = res.store[h.id]; delete old.syncBase; old.place = { 'n:p': { x: 5, y: 5 } };
+    localStorage.removeItem(NSP + 'base');   // no kept copy to read a base from either
+    eq(R.edited('harness', old), false);
+    old.updated = Date.now() + 5000;
+    eq(R.edited('harness', old), true, 'stamped after it: an edit');
+  });
+  test('sync: a file deleted on GitHub drops a copy that was only drawn, never pushes it back', async () => {
+    const hub = setup();
+    const h = harness('Removed, drawn here');
+    let res = await R.sync({ [h.id]: h }, opts(hub));
+    res.store[h.id].place = { 'n:d': { x: 1, y: 1 } };
+    const files = hub.files(OWNER + '/loom_data');
+    delete files['projects/' + h.id + '.json'];
+    hub.push(OWNER + '/loom_data', files);
+    res = await R.sync(res.store, opts(hub));
+    eq(res.gone, [h.id]);
+    ok(!hub.files(OWNER + '/loom_data')['projects/' + h.id + '.json'], 'not written back');
+  });
+  test('sync: an edit made while a sync pushed it sits on what went up, so the next sync makes no copy', async () => {
+    const hub = setup();
+    const h = harness('During');
+    let res = await R.sync({ [h.id]: h }, opts(hub));
+    const mine = res.store[h.id]; mine.title = 'Edit 1'; mine.updated = Date.now() + 1000;
+    const snap = R.stampKey(mine);
+    res = await R.sync({ [h.id]: mine }, opts(hub));
+    // The app keeps a later edit (keepEdited in app.js): its base moves to what went up.
+    const later = JSON.parse(JSON.stringify(mine)); later.title = 'Edit 2'; later.updated = Date.now() + 2000;
+    eq(R.stampKey(res.store[h.id]), snap, 'the sync took this copy as it was');
+    later.syncBase = res.store[h.id].syncBase;
+    res = await R.sync({ [h.id]: later }, opts(hub));
+    eq([res.store[h.id].title, res.conflicts.length], ['Edit 2', 0]);
   });
 
   test('sync reads Signoff PL: projects, Loom Parts, and a newer name from PL', async () => {
@@ -438,7 +515,7 @@
     f.harness.title = 'Theirs'; f.harness.updated = Date.now() + 60000;
     hub.push(OWNER + '/loom_data', Object.assign(hub.files(OWNER + '/loom_data'), { ['projects/' + h.id + '.json']: stable(f) }));
     const mine = res.store[h.id];
-    mine.title = 'Mine'; mine.updated = Date.now();
+    mine.title = 'Mine'; mine.updated = Date.now() + 1000;
     res = await R.sync(res.store, opts(hub));
     eq(res.store[h.id].plPart.node, 'w1', 'the winner keeps the link');
     eq(res.conflicts.map(c => [c.title, c.plPart]), [['Mine (conflict copy)', undefined]], 'the copy drops it');
@@ -476,7 +553,7 @@
     ok(!hub.files(OWNER + '/loom_data')['projects/' + h.id + '.json'], 'the data repo does not get the shared harness back');
     ok(R.isShared(h.id) && !R.isShared(k.id), 'the store says which are shared');
     // An edit here goes to the shared repo.
-    res.store[h.id].title = 'Edited by alice'; res.store[h.id].updated = Date.now();
+    res.store[h.id].title = 'Edited by alice'; res.store[h.id].updated = Date.now() + 1000;
     res = await R.sync(res.store, opts(hub));
     eq(JSON.parse(hub.files(full)['projects/' + h.id + '.json']).meta.name, 'Edited by alice');
     ok(!hub.files(OWNER + '/loom_data')['projects/' + h.id + '.json'], '…and still not to loom_data');
@@ -512,7 +589,7 @@
     res = await R.sync(res.store, o);
     eq([thumb.drawn, res.pushed], [2, 0]);
     // A changed diagram is drawn again.
-    res.store[h.id].wires[0].color = 'RD'; res.store[h.id].updated = Date.now();
+    res.store[h.id].wires[0].color = 'RD'; res.store[h.id].updated = Date.now() + 1000;
     res = await R.sync(res.store, o);
     eq(thumb.drawn, 4);
     // Shared into its own repo: the drawing goes there too (PL only reads it next to the harness).
@@ -520,7 +597,7 @@
     res = await R.sync(res.store, o);
     ok(hub.files(full)[dir + 'index.json'], 'drawn into the shared repo');
     // No wires left: its drawing goes.
-    res.store[h.id].wires = []; res.store[h.id].updated = Date.now();
+    res.store[h.id].wires = []; res.store[h.id].updated = Date.now() + 1000;
     res = await R.sync(res.store, o);
     ok(!hub.files(full)[dir + 'index.json'] && !hub.files(full)[dir + 'diagram.png'] && !hub.files(full)[dir + 'diagram-dark.png'], 'removed with the last wire');
   });
@@ -823,7 +900,7 @@
     const res = await R.syncSystems({ [s.id]: s }, get, opts(hub));
     ok(R.hasSysBase(s.id), 'kept after the sync');
     const edited = JSON.parse(JSON.stringify(res.store[s.id]));
-    edited.title = 'Edited here'; edited.blocks[0].x += 40; edited.updated = Date.now();
+    edited.title = 'Edited here'; edited.blocks[0].x += 40; edited.updated = Date.now() + 1000;
     eq(R.sysUnsynced({ [s.id]: edited }), [s.id], 'the edit is unsynced');
     const b = await R.sysBase(s.id);
     eq(b.title, s.title, 'the copy is the synced one');
@@ -831,6 +908,82 @@
     await R.loadSysBase();
     ok(R.hasSysBase(s.id), 'known again after a reload');
   });
+  test('system sync: a stale copy whose blocks were resized by drawing makes no copy and writes nothing', async () => {
+    const hub = setup();
+    const { s, get } = sysFixture();
+    let rs = await R.syncSystems({ [s.id]: s }, get, opts(hub));
+    const path = 'systems/projects/' + s.id + '.json';
+    const stale = JSON.parse(JSON.stringify(rs.store[s.id]));
+    // Elsewhere: a real edit, newer.
+    const f = JSON.parse(hub.files(OWNER + '/loom_data')[path]);
+    f.system.title = 'Edited elsewhere'; f.system.updated += 60000; f.meta.name = 'Edited elsewhere';
+    putFile(hub, path, f);
+    const head = hub.files(OWNER + '/loom_data')[path];
+    // Here: only what drawing writes (fitMini's block sizes), no stamp.
+    stale.blocks[0].h += 12.5; stale.blocks[1].w += 3;
+    eq(R.sysUnsynced({ [s.id]: stale }), [], 'not an edit');
+    rs = await R.syncSystems({ [s.id]: stale }, get, opts(hub));
+    eq([rs.store[s.id].title, rs.conflicts.length, rs.pushed], ['Edited elsewhere', 0, 0]);
+    eq(hub.files(OWNER + '/loom_data')[path], head, 'the file is as it was');
+  });
+  test('system sync: edits on both sides keep one conflict copy that names its original', async () => {
+    const hub = setup();
+    const { s, get } = sysFixture();
+    let rs = await R.syncSystems({ [s.id]: s }, get, opts(hub));
+    const path = 'systems/projects/' + s.id + '.json';
+    const f = JSON.parse(hub.files(OWNER + '/loom_data')[path]);
+    f.system.title = 'Theirs'; f.system.updated = Date.now() + 60000; f.meta.name = 'Theirs';
+    putFile(hub, path, f);
+    const mine = rs.store[s.id]; mine.blocks[0].x += 40; mine.updated = Date.now() + 1000;
+    rs = await R.syncSystems({ [s.id]: mine }, get, opts(hub));
+    eq(rs.store[s.id].title, 'Theirs');
+    eq(rs.conflicts.map(c => [c.title, c.conflictOf.id]), [[s.title + ' (conflict copy)', s.id]]);
+  });
+  // ── Resolve a conflict copy (resolve.js) ──
+  test('resolve: a copy finds its original by conflictOf, or an older one by its title', () => {
+    const RS = LM.resolve, o = harness('Main harness'), other = harness('Other');
+    const c = R.conflictCopy(JSON.parse(JSON.stringify(o)), o, 'h', 'Harness');
+    const store = { [o.id]: o, [other.id]: other, [c.id]: c };
+    ok(RS.isCopy(c) && !RS.isCopy(o), 'only the copy is one');
+    eq(RS.originOf(c, store).id, o.id);
+    const old = JSON.parse(JSON.stringify(c)); delete old.conflictOf; old.id = 'hold';
+    store.hold = old;
+    eq(RS.originOf(old, store).id, o.id, 'an older copy, by title');
+    const twin = harness('Main harness'); store[twin.id] = twin;
+    eq(RS.originOf(old, store), null, 'two candidates: no guess');
+  });
+  test('resolve: Use this copy puts it in the original’s place, keeping the original’s id, base, and PL link', () => {
+    const RS = LM.resolve, o = harness('Main harness', { pn: 'P-1', plPart: { project: 'pl1', node: 'n1', at: 'T' } });
+    o.syncBase = R.stampKey(o);
+    const c = R.conflictCopy(JSON.parse(JSON.stringify(o)), o, 'h', 'Harness');
+    c.wires = []; c.place = { 'n:a': { x: 1, y: 1 } };
+    c.syncBase = 'x|y';   // a copy synced since it was made
+    const plan = RS.apply('use', c, o, { login: 'alice', now: o.updated + 5000, synced: id => id === c.id });
+    const n = plan.changes[o.id];
+    eq([n.id, n.title, n.syncBase, n.plPart.node, n.updatedBy, n.updated], [o.id, 'Main harness', o.syncBase, 'n1', 'alice', o.updated + 5000]);
+    ok(!n.conflictOf, 'no longer a copy');
+    eq(n.place, c.place, 'the copy’s content');
+    eq([plan.changes[c.id].deleted, plan.open], [true, o.id], 'the synced copy leaves a tombstone, and the original opens');
+    ok(R.edited('harness', n), 'an edit, to sync');
+    const d = RS.apply('delete', c, o, { synced: () => false });
+    eq([d.changes[c.id], d.open], [null, o.id], 'a copy never synced just goes');
+    const k = RS.apply('keep', c, o, {});
+    eq([k.changes[c.id].title, !!k.changes[c.id].conflictOf, k.open], ['Main harness (kept copy)', false, c.id]);
+  });
+  test('history: a system diff names blocks, connectors, and cables, and sizes from drawing only move', () => {
+    const { s, a, c } = sysFixture(), H = LM.history;
+    const b = JSON.parse(JSON.stringify(s));
+    b.blocks[0].w += 7; b.blocks[0].x += 10;
+    eq(H.sysDiff(s, b).summary, 'moved on the drawing');
+    b.blocks[0].conns[0].used = false; b.title = 'Renamed'; b.updated = s.updated + 1000;
+    const d = H.sysDiff(s, b);
+    ok(d.items.some(it => it.part === 'block' && /J1: used/.test(it.detail)), 'the connector change, named: ' + JSON.stringify(d.items));
+    ok(d.items.some(it => it.name === 'title' && it.change === 'changed'));
+    const rows = H.rows([{ doc: b }, { doc: s }], { complete: true, diff: H.sysDiff });
+    eq(rows.length, 2, 'one row per stamped version');
+    void a; void c;
+  });
+
   test('Discard changes reads the last synced version from GitHub when this browser kept none (harness and system)', async () => {
     const hub = setup();
     const h = harness('Kept nowhere', { pn: '2200999-001' });

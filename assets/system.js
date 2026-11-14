@@ -447,10 +447,19 @@
     persist(); A.refresh();
     return r;
   }
+  // A version put back (undo, redo, Discard, Restore) keeps the sync base this copy has now (store.js
+  // syncBase), so an undo past a sync reads as an edit on what that sync left.
+  function keepBase(doc, was) {
+    if (!doc) return doc;
+    delete doc.syncBase;
+    if (was && was.syncBase) doc.syncBase = was.syncBase;
+    return doc;
+  }
   function swap(from, to) {
     if (!from.length) return;
-    to.push(JSON.stringify(cur()));
-    S.store[S.cur] = JSON.parse(from.pop());
+    const was = cur();
+    to.push(JSON.stringify(was));
+    S.store[S.cur] = keepBase(JSON.parse(from.pop()), was);
     if (S.sel && !selValid()) S.sel = null;
     persist(); A.refresh();
   }
@@ -2506,9 +2515,24 @@
     const s = cur();
     if (!s || !base || base.id !== s.id) return false;
     S.past.push(JSON.stringify(s)); if (S.past.length > 120) S.past.shift(); S.future = [];
-    S.store[S.cur] = normalize(base);
+    S.store[S.cur] = keepBase(normalize(base), s);
     S.sel = null; S.pending = null; S.pair = null; S.picking = null;
     persist(); A.refresh();
+    return true;
+  }
+  // History's Restore (assets/history.js): an older version of the open system back as one change, by this
+  // person, now, so it syncs like any edit; Ctrl+Z takes it back.
+  function restore(older) {
+    const s = cur();
+    if (!s || !older || older.id !== s.id) return false;
+    S.past.push(JSON.stringify(s)); if (S.past.length > 120) S.past.shift(); S.future = [];
+    const c = keepBase(normalize(JSON.parse(JSON.stringify(older))), s);
+    delete c.conflictOf;
+    c.updated = now(); if (A.login()) c.updatedBy = A.login(); else delete c.updatedBy;
+    S.store[S.cur] = c;
+    S.sel = null; S.pending = null; S.pair = null; S.picking = null;
+    persist(); A.refresh();
+    A.toast('Restored the earlier version.');
     return true;
   }
   // Save file: the system as a .loom.json, which Open a file opens again (openDoc).
@@ -2520,7 +2544,7 @@
   function openDoc(doc) {
     const s = normalize(JSON.parse(JSON.stringify(doc)));
     if (S.store[s.id]) s.id = U.uid('s');
-    delete s.deleted;
+    delete s.deleted; delete s.syncBase;
     if (!DEMO) delete s.demoVersion;
     s.updated = now();
     S.store[s.id] = s;
@@ -2538,5 +2562,5 @@
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
     externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll,
     tab: () => S.tab, setTab, setFocus, overviewSel, focused: () => S.focus, root: () => S.root,
-    canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, saveFile, openDoc };
+    canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, restore, saveFile, openDoc };
 })(window.LM = window.LM || {});

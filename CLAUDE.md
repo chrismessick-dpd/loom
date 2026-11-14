@@ -22,6 +22,47 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Sync guards, Resolve, and systems history (2026-11-14, Chris: a real system showed a "(conflict copy)"
+  though he's its only editor; bring Signoff EE's safeguards to Loom).**
+  - **The cause.** Three copies of real systems were made in one sync from a
+    browser whose copies dated from before 04:10 UTC, made at 06:12 and pushed at its next sync (`loom_data`
+    `f5e6746`, 08:11). Since `3e8df4b` (2026-11-13) drawing a system writes derived sizes into it (`fitMini`
+    sets a placed system's block `w` or `h` in `resolveBlock`), so a stale tab's systems hashed "dirty" with no
+    edit. The merge then had no base: dirty here plus changed on GitHub (Chris's other syncs, and offline data
+    steps such as `750521c`) made a copy, newer wins. `099c984` (16:42) was an unedited browser rewriting a
+    copy with only those sizes, under the same stamp. One copy held nothing new; the other two each held one
+    small drag (a block nudged 1 to 3 mm, a device far end moved). Details: the suite's CLAUDE.md.
+  - **Edited means stamped** (`store.js` `edited`, `stampKey` = "updated|updatedBy"). Every edit stamps the
+    document (`change()` in `app.js` and `system.js`, drags, Restore); nothing drawn does. Each copy carries
+    the stamp it was last synced from, `syncBase`, on the document itself (stripped from the file, `bare`), so
+    a stale tab keeps its own base and never borrows a newer tab's from localStorage. With no `syncBase`
+    (copies from before): the kept base copy's stamp (`base`, or IndexedDB's for systems), else unchanged
+    bytes, else stamped before `lastSync` / `sysLastSync`. `unsynced`, `sysUnsynced`, `keepLocal`, and the
+    sidebar dots all use it.
+  - **No write without an edit:** both syncs pass the engine's `edited(id)`, so an unedited copy takes
+    GitHub's file and writes nothing. **Three-way:** `mergeOpts(id)` gives the base to `threeWay`: untouched
+    here → GitHub's; untouched there → ours; one stamp on both sides → GitHub's; both moved on → newer wins,
+    the other kept by `conflictCopy` with `conflictOf: { id, title, at }`.
+  - **The shared blob cache** is trusted only for a copy whose base is the version the cache recorded
+    (`stamps`, `sysStampsAt`, written with it; `trustCache`); otherwise that file is read again and merged.
+    A stale tab used to keep its old copy as "unchanged" forever.
+  - **During a sync** (`keepEdited` in `syncNow`): a copy edited meanwhile stays; if the sync took it as it
+    was, its base moves to what went up, else it keeps its old base and the next sync re-reads the file
+    (`forget`, `forgetSystems`). Undo, redo, Discard, Restore, and Resolve's Undo keep the document's current
+    `syncBase` (`keepBase`), so an undo past a sync is an edit.
+  - **Resolve** (`assets/resolve.js`, `LM.resolve`): a conflict copy (by `conflictOf`, or an older one by its
+    title) has *Resolve…* in the toolbar, a sheet saying what using it changes in the original (history.js
+    `diff` / `sysDiff`) with Use this copy (the original takes its content, keeping its id, base, and PL
+    link), Delete this copy, or Keep both ("… (kept copy)"). One step; the toast's Undo puts both back while
+    neither changed since. A synced copy deleted leaves a tombstone.
+  - **Systems history**: *History* in a system's toolbar, the harness sheet over `systems/projects/<id>.json`
+    (`LM.history.open(s, 'system')`, `sysDiff`: blocks, connectors, tabs, and cables by id; sizes, spots,
+    routes, labels, and `devAt` read as moved), and Restore (`LM.system.restore`).
+  - Tests 81 (new: the three-way merge, a drawn-only stale harness and system against a newer file, a stale
+    tab, the fallback, a deleted file, an edit during a push, both-sides system copy, Resolve, sysDiff);
+    golden unchanged. Tried in the demo: Resolve on a harness and a system copy, Use and Undo, Delete, and
+    a system's History. Not tried signed in.
+
 - **System List like PL's (2026-11-14, Chris: the List was busy).** A Hierarchy | Cables switch: blocks,
   connectors, and cables folding (the default), or just the cables, each once. Name over part number, Type chip,
   Status (the › right of the chip), and a funnel menu for From / To, Length (both off to start), and Wires (`listHtml`, `listPrefs`, `<ns>sysList`). Harness
@@ -401,10 +442,11 @@ links to it so far. Before every commit:
     updatedBy }, summary, harness }`. `harness` is the truth; `meta` and `summary` (`summarize`: `tool:
     'loom'`, `identAt`, `harness: { ends, splices, wires, cables, sets, wireMm, errors, warnings, boards }`,
     no checks) are rebuilt from it at every write, including when a merge picks the stored copy.
-  - **Merging** is whole-harness: a harness is a graph, so record-by-record merging could break it. A copy
-    with no edits since this browser's last sync (`loom.v1.synced`, a hash per harness) takes the stored
-    one; when both changed, the newer `updated` wins and the other is kept as a new harness, "(conflict
-    copy)". A harness edited while a sync runs keeps the edit (`before` hashes). Deleting a synced harness
+  - **Merging** is whole-harness: a harness is a graph, so record-by-record merging could break it. Since
+    2026-11-14 it's three-way by stamp against each copy's `syncBase`, and an unedited copy writes nothing
+    (see *Sync guards, Resolve, and systems history* at the top); when both changed, the newer `updated`
+    wins and the other is kept as a new harness, "(conflict copy)", which Resolve settles. A harness edited
+    while a sync runs keeps the edit (`beforeStamp`, `keepEdited`). Deleting a synced harness
     leaves a tombstone (`h.deleted`, `meta.deleted`; PL reads it as archived); a file deleted on GitHub
     drops an untouched local copy (`dropGone`).
   - **Sync** runs on opening, from the footer's Sync button, and on Ctrl+S (Save file is the toolbar
