@@ -1549,6 +1549,27 @@
     L.routes.forEach(r => { const n = CN().runAt(r, p); if (n && (!best || n.d < best.d)) best = n; });
     return best;
   }
+  // The ports a level run being dragged can line up with (Chris, 2026-11-13): an end that leaves from the
+  // top or bottom of its tab runs a lead-in out past its block's edge, and the level run next to it (the
+  // shape's first or last level value) dragged to the tab's height makes that end leave from the tab's
+  // side, toward where the route goes. Each: { end, y (the tab's middle), b, c, exit0 (as it was), side }.
+  function portLines(d) {
+    const R0 = d.run.route, L = lastLo && lastLo.get(d.cab.id), n = d.v0.length, out = [];
+    if (d.axis !== 'h' || !L) return out;
+    const one = (T, lead, x, k, end) => {
+      if (!x || k !== d.k || !lead || Math.abs(lead.x - T.x) > 0.5 || Math.abs(lead.y - T.y) < 0.5) return;
+      const b = block(cur(), x.b.id), c = b && conn(b, x.c.id);
+      if (!c) return;
+      const g = tabGeom(b, c), nx = end === 'A' ? d.v0[2] : d.v0[n - 3];
+      const side = nx >= g.cx ? 'right' : 'left';
+      // Where its first bend may come, clear of the block's side (a side exit's stub, terminals()).
+      const clear = side === 'right' ? (b.x + sizeOf(b).W) * K + STUB_U : b.x * K - STUB_U;
+      out.push({ end, y: g.mid, b, c, exit0: c.exit, side, clear });
+    };
+    one(R0.A, R0.A.from, L.at[0], 1, 'A');
+    one(R0.B, R0.B.to, L.at.find(x => x.n.id === R0.end), n - 2, 'B');
+    return out;
+  }
   // A cable's kept route record for one end (the harness's record: v, a, b, mode), set or cleared.
   function keepRoute(cab, end, rec) {
     const r = Object.assign({}, cab.routes);
@@ -1772,10 +1793,24 @@
           S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true;
           d.keep = { a: d.run.route.A.side, b: d.run.route.B.side, mode: d.cab.routes && d.cab.routes[d.end] && d.cab.routes[d.end].mode };
           Object.assign(d, st, { p0: toWorld(svg, { clientX: d.x, clientY: d.y }) });
+          d.ports = portLines(d);
+          d.lines = d.lines.concat(d.ports.map(q => q.y));
           svg.classList.add('dragging');
         }
         // Near straight, it snaps straight (within 5 grid steps, 5 mm; not with Ctrl).
-        keepRoute(d.cab, d.end, Object.assign({ v: CN().slide(d, d.p0, p, free || !stepU() ? null : snapU, free ? 0 : stepU() || K) }, d.keep));
+        let v = CN().slide(d, d.p0, p, free || !stepU() ? null : snapU, free ? 0 : stepU() || K);
+        // Level with the port of an end that leaves from its tab's top or bottom: that end leaves from the
+        // tab's side instead, straight out of the port, and its lead-in goes (Chris, 2026-11-13: the cable
+        // climbed out past the block's edge and came back down in a loop).
+        d.ports.forEach(q => { if (q.exit0) q.c.exit = q.exit0; else delete q.c.exit; });
+        const q = d.ports.find(o => Math.abs(v[d.k] - o.y) < 0.01);
+        if (q) {
+          q.c.exit = turnSide(q.side, 360 - rotOf(q.b));
+          v = q.end === 'A' ? v.slice(2) : v.slice(0, v.length - 2);
+          const i = q.end === 'A' ? 0 : v.length - 1, cl = snapU(q.clear);
+          if (q.side === 'right' ? v[i] < cl : v[i] > cl) v[i] = cl;
+        }
+        keepRoute(d.cab, d.end, Object.assign({ v }, d.keep));
         redraw(svg, { fast: true });
         return;
       }
@@ -1820,6 +1855,7 @@
         // Let go: tidied against the route as it now stands (its sides may have changed in the drag).
         const rec = d.cab.routes && d.cab.routes[d.end], L = lastLo && lastLo.get(d.cab.id), R1 = L && L.routes.find(x => x.end === d.end);
         if (rec && R1) keepRoute(d.cab, d.end, CN().release(R1, rec.v, rec));
+        keepTabs(cur());
         cur().updated = now(); persist(); A.refresh(); return;
       }
       if (d.button === 2 && !d.moved) {
