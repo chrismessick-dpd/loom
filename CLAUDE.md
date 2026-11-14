@@ -29,7 +29,9 @@ links to it so far. Before every commit:
   stored top picture inside (`boards.js` `picture`, read with the sign-in, never stored), a label with its ref and
   name, and the same in mini views (`shapeSvg`, `shapeXf`, `picOf` in `system.js`). Refresh from Signoff EE moves
   the block to keep its connectors in place, and keeps cable shapes when it can. Existing blocks change only when
-  refreshed. See `docs/system.md`, *Board geometry*. Tests 70.
+  refreshed. See `docs/system.md`, *Board geometry*. Tests 70. Then (Chris) all 82 IODB board blocks in 30
+  systems were refreshed offline with that code (`loom_data` `750521c`, proven to change only those blocks and
+  each system's `updated`, read back).
 - **History (2026-11-13, Chris: as Signoff EE's and PL's; `../signoff/docs/history.md`).** *History* in the
   harness's details panel, beside Duplicate, opens a sheet of the harness's versions from git (`assets/history.js`,
   `LM.history`; the engine's `fileHistory` and `historyBlocks`, vendored).
