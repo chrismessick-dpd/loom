@@ -161,6 +161,35 @@
     ok(L3.boxes.every(x => !x.item.path.routed), 'Real proportions keeps its straight boxes');
   });
 
+  // ── History (history.js) ──
+  test('history: a diff names what changed, and layout alone reads as moved on the drawing', () => {
+    const D = LM.history, a = harness('Sensor harness', { updated: Date.parse('2030-01-01T10:00:00Z'), updatedBy: 'alice' });
+    const b = JSON.parse(JSON.stringify(a)), [p1, p2] = b.nodes.filter(M.isConn);
+    p1.x += 40;
+    eq(D.diff(a, b).summary, 'moved on the drawing', 'a part only moved');
+    p2.pins = 6;
+    const w = M.addWire(b, { node: p1.id, pin: '1' }, { node: p2.id, pin: '1' }, { color: 'RD' });
+    b.title = 'Sensor harness B';
+    const d = D.diff(a, b);
+    ok(d.items.some(it => it.part === 'wire' && it.change === 'added' && /P1\.1 → P2\.1/.test(it.name)), 'the new wire, by its ends');
+    ok(d.items.some(it => it.part === 'part' && it.change === 'changed' && /pins/.test(it.detail) && /P2/.test(it.name)), 'P2’s pins changed');
+    ok(d.items.some(it => it.part === 'harness' && it.name === 'title'), 'the title changed');
+    ok(d.items.some(it => it.change === 'moved on the drawing'), 'and P1 moved');
+    const c = JSON.parse(JSON.stringify(b)); c.wires.find(x => x.id === w.id).color = 'BU';
+    eq(D.diff(b, c).items.map(it => it.part + ':' + it.change + ':' + it.detail), ['wire:changed:color'], 'a wire recolored');
+    const e = JSON.parse(JSON.stringify(c)); e.wires = []; M.normalize(e);
+    ok(D.diff(c, e).items.some(it => it.part === 'wire' && it.change === 'removed'), 'a wire removed');
+    eq(D.diff(null, a).items[0].change, 'added', 'no earlier version: the harness is new');
+  });
+  test('history: one row per version, by the harness’s own stamp, skipping writes that changed nothing', () => {
+    const D = LM.history, v1 = harness('Pump harness', { updated: Date.parse('2030-01-01T10:00:00Z'), updatedBy: 'alice' });
+    const v2 = Object.assign(JSON.parse(JSON.stringify(v1)), { title: 'Pump harness 2', updated: Date.parse('2030-01-01T11:00:00Z'), updatedBy: 'bob' });
+    const v2b = JSON.parse(JSON.stringify(v2));   // the same harness written again (a summary-only write)
+    const rows = D.rows([{ harness: v2b, commit: { sha: 'c3' } }, { harness: v2, commit: { sha: 'c2' } }, { harness: v1, commit: { sha: 'c1' } }]);
+    eq(rows.map(r => r.by + ':' + r.commit.sha + ':' + r.summary), ['bob:c2:title changed'], 'one row: bob’s rename, in the version that first had it');
+    eq(D.rows([{ harness: v1, commit: { sha: 'c1' } }], { complete: true })[0].summary.indexOf('Made the harness'), 0, 'the first version makes the harness');
+  });
+
   // ── The file ──
   test('envelope and unwrap round-trip a harness', () => {
     const h = harness('Sensor harness', { pn: 'DT-2100', rev: 'B', project: 'Smart Thermostat', updated: Date.parse('2026-11-07T10:00:00Z'), updatedBy: 'alice' });

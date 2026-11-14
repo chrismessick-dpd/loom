@@ -22,6 +22,23 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **History (2026-11-13, Chris: as Signoff EE's and PL's; `../signoff/docs/history.md`).** *History* in the
+  harness's details panel, beside Duplicate, opens a sheet of the harness's versions from git (`assets/history.js`,
+  `LM.history`; the engine's `fileHistory` and `historyBlocks`, vendored).
+  - **Rows.** Loom stamps the whole harness (`updated`, `updatedBy`: the login), so each version is one row by one
+    person. Versions whose stamp didn't change (summary-only writes) are skipped.
+  - **The diff** (`diff`) compares nodes, wires, segments, sets, and callouts by id: added, removed, or changed with
+    the fields named (pins, color, rewired, members, and so on), plus the harness's own fields.
+  - **Layout** reads as "moved on the drawing": `LAYOUT` per part, and `TOP_LAYOUT` on the harness (`routes`,
+    `place`, `propY`, `grid`). Bookkeeping keys (`TOP_QUIET`) say nothing.
+  - **Restore the version before this…** puts an older harness back as one undoable change by you
+    (`LM.app.restore`). It's refused if the harness changed since the sheet read it.
+  - **The demo** shows the harness as made.
+  - **Checked.** Tests 67. Read-only against the real `loom_data` (181 harnesses): versions read, and a re-route
+    reads as a layout move.
+  - **Not done:** systems' history (`systems/projects/<id>.json`, the same approach).
+  - `styles.css` has a `#lm-hist` override for the block head until `suite.css` is copied from EE's next commit.
+
 - **Device harnesses drawn, and mini views (2026-11-13, Chris).** In a system, a harness built onto its device
   is drawn as itself (its wires in color out to plain far-end boxes, or dots for flying leads, splices as
   junction dots, a caption with its name; far ends drag, `cab.devAt`), and a placed system's block shows that system's drawing small, with its tabs where its connectors

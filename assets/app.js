@@ -1890,7 +1890,7 @@
       ${fld('Wire allowance', inp('h.allowancePct', h.allowancePct, ' type="number" min="0" max="50" step="1"'), 'Percent added to every BOM length.')}
       ${fld('Notes', `<textarea class="input" rows="6" data-f="h.notes">${esc((h.notes || []).join('\n'))}</textarea>`, 'One note per line; the drawing numbers them.')}
       </div><div class="cat-label">Checks</div>${checkRows(h, c)}
-      <div class="rail-actions"><button class="btn" data-act="duplicate">Duplicate</button><button class="btn btn-danger" data-act="delete-harness">${ICON.trash}Delete harness</button></div></div>`;
+      <div class="rail-actions"><button class="btn" data-act="history" title="Who changed this harness, from its versions on GitHub">History</button><button class="btn" data-act="duplicate">Duplicate</button><button class="btn btn-danger" data-act="delete-harness">${ICON.trash}Delete harness</button></div></div>`;
   }
   function railConnector(h, A, n) {
     const fam = L.family(n.family);
@@ -2432,6 +2432,7 @@
       case 'bm-add': addBoardConnector(el.dataset.ref); break;
       case 'match-wire': wireMatches(el.dataset.a, el.dataset.b); break;
       case 'delete': deleteSel(); break;
+      case 'history': if (LM.history) LM.history.open(h); break;
       case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); delete c.identAt; delete c.demoVersion; delete c.plPart; S.store[c.id] = c; openHarness(c.id); break; }
       case 'delete-harness': {
         // Once synced, a harness is kept as a tombstone, so the next sync deletes it everywhere (its file
@@ -2788,7 +2789,19 @@
     changed: () => { renderSidebar(); if (canSync()) syncNow(true); }
   });
   // guide: what assets/guide.js needs to set the page up for each of its steps.
-  LM.app = { state: S, renderAll, H, demo: DEMO,
+  // History's Restore (assets/history.js): an older version of the open harness back as one change, by
+  // this person, now, so it syncs like any edit; Undo takes it back.
+  function restore(older) {
+    const h = H();
+    if (!h || !older || older.id !== h.id) return;
+    snapshot();
+    const c = JSON.parse(JSON.stringify(older));
+    c.updated = Date.now(); if (R && R.login()) c.updatedBy = R.login(); else delete c.updatedBy;
+    S.store[h.id] = c;
+    tidySel(); persist(); renderAll();
+    toast('Restored the earlier version');
+  }
+  LM.app = { state: S, renderAll, H, demo: DEMO, restore,
     guide: {
       // The demo harness, opened in Build (rebuilt if it was deleted).
       demo() { if (!S.store.hdemo1) S.store.hdemo1 = LM.demo.harness(); if (S.cur !== 'hdemo1') openHarness('hdemo1'); },
