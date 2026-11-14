@@ -15,9 +15,15 @@
 // `harness` is the truth; `meta` and `summary` are derived from it whenever the file is written.
 //
 // Merging. A harness is a graph (wires routed through segments, nested sets), so two copies can't be
-// merged record by record without breaking it. A copy with no edits since this browser's last sync
-// takes the stored one. When both changed, the newer wins and the other is kept as a new harness
-// named "(conflict copy)", so nothing is lost.
+// merged record by record without breaking it: it's whole-document and three-way, as Signoff EE's Scribe
+// merge (Chris, 2026-11-14, after a stale tab wrote false conflict copies of three systems). Every edit
+// stamps the document (updated, updatedBy), and each copy here carries the stamp of the version it was
+// last synced from (`syncBase`, on the document itself, so a stale tab keeps its own and never borrows
+// a newer tab's; never uploaded). Edited here means its stamp moved off that base, never that its bytes
+// differ (the system drawing writes derived block sizes as it draws). Then: not edited here → GitHub's
+// is taken and nothing is written; GitHub's still the base → ours; both moved on → the newer wins and the
+// other is kept as a new document named "(conflict copy)" with `conflictOf`, so nothing is lost and
+// Resolve (assets/resolve.js) can settle it in one step.
 //
 // Signoff PL. A harness joins a PL project the way an EE board does: its `project` (the client
 // project) puts it in that PL project's tray, and the PL Part made from it (source 'loom') is the link
@@ -46,8 +52,15 @@
     return Object.assign({}, DEFAULTS, { owner: s.owner || DEFAULTS.owner }, read('repos', {}));
   }
   const stable = v => SG.model.stableStringify(v);
+  // The sync bookkeeping a document carries here and never uploads: the stamp of the version it was last
+  // synced from (`syncBase`).
+  const BASE = 'syncBase';
+  const bare = d => { if (!d || typeof d !== 'object' || !(BASE in d)) return d; const c = Object.assign({}, d); delete c[BASE]; return c; };
+  // A document's stamp: who changed it last and when. Every edit sets it (app.js and system.js change(),
+  // drags, Restore); nothing drawn or derived does.
+  const stampKey = d => (Number(d && d.updated) || 0) + '|' + String((d && d.updatedBy) || '');
   // A short hash of a harness as stored, to tell whether it changed since the last sync.
-  const hash = h => fnv(stable(h));
+  const hash = h => fnv(stable(bare(h)));
   function fnv(s) {
     let x = 0x811c9dc5;
     for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 0x01000193) >>> 0; }
@@ -61,7 +74,7 @@
       schema: 1, id: h.id,
       meta: { name: h.title || 'Untitled harness', number: h.pn || '', revision: h.rev || '', project: h.project || '',
         deleted: !!h.deleted, updatedAt: iso(h.updated), updatedBy: h.updatedBy || '' },
-      harness: h,
+      harness: bare(h),
     };
   }
   function unwrap(doc) {

@@ -111,7 +111,9 @@ keeps listing the pick.
   underneath, a Type chip (Harness, Purchased, Generic), and its Status. The funnel button opens a Columns
   menu: From / To (its ends, "A1 J2 → A2 J1"), Length, and Wires; only Wires is on to start. The › that lists a
   harness or placed system on its own sits right of the Type chip, and no "List" eyebrow sits over the title. Mode and columns are kept
-  in this browser (`<ns>sysList`). Harness wires no longer show in the system list. For a harness (its ›):
+  in this browser (`<ns>sysList`). An external connector plugged from a system placing this one says "Connected to <name> · <P/N>"
+  at the name's size, adds that cable's kind chip (Harness) beside Connector, and shows its status (`cablesAbove`,
+  one row per harness); a connector with nothing plugged anywhere says "No harness connected". Harness wires no longer show in the system list. For a harness (its ›):
   its ends, where they plug in, and its from/to list, as before.
   A click on any row selects it and shows it in the panel: a block, connector, or cable gets its usual panel,
   editable as on the canvas; a harness's wire or end gets a read-only panel (`wirePanelHtml`, `endPanelHtml`;

@@ -76,6 +76,9 @@
   // input passed up through two levels warned that nothing plugged it).
   const pluggedAbove = (s, id, depth) => depth <= DEPTH && parentsOf(s.id).some(p => p.blocks.some(pb => pb.kind === 'system' && pb.system === s.id &&
     (pluggedAt(p, pb.id, id).length > 0 || (!!pb.tabs && !!pb.tabs[id] && !!pb.tabs[id].external && pluggedAbove(p, pb.id + '/' + id, depth + 1)))));
+  // The cables plugged into the external connector at path id from outside, at any depth (pluggedAbove's walk).
+  const cablesAbove = (s, id, depth) => depth > DEPTH ? [] : parentsOf(s.id).flatMap(p => p.blocks.filter(pb => pb.kind === 'system' && pb.system === s.id)
+    .flatMap(pb => pluggedAt(p, pb.id, id).map(x => x.cable).concat(pb.tabs && pb.tabs[id] && pb.tabs[id].external ? cablesAbove(p, pb.id + '/' + id, depth + 1) : [])));
   // A tab on a system block stands for a connector inside it: harness ends made from it, and the checks,
   // look through to that board's connector (c.leaf).
   const look = (b, c) => (c && c.leaf ? { b: { id: b.id, name: c.leaf.name, ref: c.leaf.block, source: c.leaf.source }, c: Object.assign({}, c, { ref: c.leaf.ref }) } : { b, c });
@@ -1603,9 +1606,21 @@
         if (closed.has(bk)) return;
         conns.forEach(c => {
           const at = pluggedAt(s, b.id, c.id), ck = `c:${b.id}:${c.id}`;
-          const sub = at.length ? esc(c.link ? 'External · inside ' + c.inside : [c.mfr, c.mpn].filter(Boolean).join(' ') || NOPN)
-            : c.external ? 'External: plugged in from ' + esc(parentsOf(s.id).map(p => p.title).join(', ') || 'the systems placing this one') : 'Nothing plugged in';
-          rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn')}>${nameCell(1, at.length ? caret(ck) : spacer, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ' ' + esc(c.fn) : ''}`, sub)}<td>${chip(c.link ? 'External' : 'Connector')}</td><td></td>${blank}</tr>`;
+          const what = esc(c.link ? 'External · inside ' + c.inside : [c.mfr, c.mpn].filter(Boolean).join(' ') || NOPN);
+          // An external connector plugged from a system placing this one (Chris, 2026-11-14): what's connected,
+          // at the name's size, its kind beside Connector, and its status; one row per harness (two placing
+          // systems may plug the same one).
+          const seen = new Set(), above = at.length || !c.external ? [] : cablesAbove(s, b.id + '/' + c.id, 0).filter(cab => {
+            const h = harnessOf(cab), k = h ? 'h:' + h.id : 'c:' + titleOf(cab, h) + '|' + pnOf(h, cab);
+            if (seen.has(k)) return false; seen.add(k); return true;
+          });
+          let sub = what, kinds = '', stat = '';
+          if (above.length) {
+            sub = `<span class="sys-lconn">Connected to ${above.map(cab => { const h = harnessOf(cab), pn = pnOf(h, cab); return esc(titleOf(cab, h)) + (pn ? ' · ' + esc(pn) : ''); }).join(', ')}</span>`;
+            kinds = [...new Set(above.map(cab => kindOf(cab)))].map(k => chip(CAB_CHIP[k] || k, 'k-' + k)).join('');
+            stat = above.map(cab => { const st = statusOf(cab, harnessOf(cab)); return `<span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}`; }).join('<br>');
+          } else if (!at.length) stat = '<span class="sys-none">No harness connected</span>';
+          rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn')}>${nameCell(1, at.length ? caret(ck) : spacer, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ' ' + esc(c.fn) : ''}`, sub)}<td class="sys-ltype">${chip(c.link ? 'External' : 'Connector')}${kinds}</td><td class="sys-lst">${stat}</td>${blank}</tr>`;
           if (!closed.has(ck)) at.forEach(x => { rows += cabRow(x.cable, 2); });
         });
       });
