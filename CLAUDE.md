@@ -37,7 +37,8 @@ links to it so far. Before every commit:
   - **Checked.** Tests 67. Read-only against the real `loom_data` (181 harnesses): versions read, and a re-route
     reads as a layout move.
   - **Not done:** systems' history (`systems/projects/<id>.json`, the same approach).
-  - `styles.css` has a `#lm-hist` override for the block head until `suite.css` is copied from EE's next commit.
+  - The sheet's look is the engine's History styles (`suite.css`, from EE `9b53dff`); `styles.css` adds only
+    `.hist-items`.
 
 - **Device harnesses drawn, and mini views (2026-11-13, Chris).** In a system, a harness built onto its device
   is drawn as itself (its wires in color out to plain far-end boxes, or dots for flying leads, splices as

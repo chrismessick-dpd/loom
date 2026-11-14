@@ -1239,8 +1239,5 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
   .app.side-collapsed .side-resize { display: none; }
 }
 
-/* History sheet (history.js): the name and its tags share the head's first line. The same rule is in the
-   engine's styles.css (EE) and replaces this once suite.css is copied from it again. */
-#lm-hist .hist-head { display: flex; flex-wrap: wrap; align-items: baseline; }
-#lm-hist .hist-when, #lm-hist .hist-counts { flex-basis: 100%; }
+/* History sheet (history.js): a version's list of changes. */
 #lm-hist .hist-items { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
