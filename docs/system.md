@@ -154,6 +154,15 @@ with the shared-net wires for two); the old harness stays when a harness is made
 New harness here and Plug in a harness… on a connector are unchanged. Right-click a cable for Walk around
 parts, Go behind parts, Reset route, and Remove.
 
+**Exits face their cable** (2026-11-13, Chris: with cables drawn at right angles, a tab leaving from the bottom
+whose cable heads up showed as a hairpin, out of the tab and straight back past it). A tab with no exit picked
+in its panel leaves from its block's nearest edge, or, as a placed system's tab, the way its connector leaves
+inside that system. When that side faces away from the cable's other ends (their middle), the tab leaves from
+the nearest edge that doesn't (`autoExits`, run by `layout`; `exitSide` reads it from a WeakMap, so it's never
+stored). An exit picked in the panel stays, and so does every exit of a cable shaped by hand, whose shape was made
+on them; *Reset route*, or dragging its lead-in sideways, frees it. The panel's *Cables leave from* says which
+(*Automatic (left, facing its cable)*).
+
 **Straight out of the port** (2026-11-13, Chris: dragging a cable toward a tab that leaves from its top or
 bottom made a loop, and the lead-ins inside a placed system's block couldn't be dragged). A top or bottom exit
 runs a lead-in from the tab to just past its block's edge before the route starts. Drag the level run next to

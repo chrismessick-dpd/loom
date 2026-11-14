@@ -22,6 +22,10 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Exits face their cable (2026-11-13, Chris: hairpins, a tab leaving away from its cable and doubling back).** A
+  tab with no exit picked leaves from the nearest edge that doesn't face away from its cable's other ends
+  (`autoExits` in `layout`, a WeakMap read by `exitSide`; never stored). Picked exits and hand-shaped cables keep
+  theirs. See `docs/system.md`, *Exits face their cable*. Tests 72.
 - **Boards drawn as themselves (2026-11-13, Chris: the real outline when the data is there, and a more realistic
   board; he chose Fabcheck's picture).** Reading a board's package now also reads its outline Gerber (`boards.js`
   `boardShape`, with Fabcheck's `util.js`, `gerber.js`, and `classify.js` vendored by `tools/sync_vendor.py`): the

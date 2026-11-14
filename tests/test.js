@@ -865,6 +865,29 @@
     ok(res.outline.x0 <= 5 - 4 + 0.01, 'the outline takes in the netlist-only connector');
   });
 
+  test('system: a tab whose nearest edge faces away from its cable leaves from the nearest edge that doesn’t', () => {
+    const Y = LM.system, s = Y.blank('Gizmo');
+    // A made-up 80 by 60 mm board with J1 near its bottom edge, 25 mm from its left edge, and a device straight above it.
+    const a = Y.addDrawn(s, 'board', { x: 0, y: 200 }); a.w = 80; a.h = 60;
+    const j1 = Y.mkConn(a, 'J1', 2, { x: 25, y: 60 - Y.TAB.h });
+    const d = Y.addDrawn(s, 'device', { x: 25, y: 0 });
+    s.cables.push({ id: 'k1', kind: 'link', name: 'Link', ends: { a: { block: a.id, conn: j1.id }, b: { block: d.id, conn: d.conns[0].id } } });
+    Y.layout(s);
+    eq(Y.exitSide(a, j1), 'left', 'not the bottom (away from the device), but the nearest edge that isn’t: left');
+    const lo = Y.layout(s), R = lo.get('k1').routes[0];
+    ok(!(R.A.from && Math.abs(R.A.from.x - R.A.x) < 0.5 && R.A.from.y > R.A.y), 'no lead-in dropping below the tab');
+    j1.exit = 'bottom';
+    Y.layout(s);
+    eq(Y.exitSide(a, j1), 'bottom', 'an exit picked in the panel stays');
+    delete j1.exit;
+    s.cables[0].routes = { b: { v: [-40, 100, 140] } };
+    Y.layout(s);
+    eq(Y.exitSide(a, j1), 'bottom', 'a cable shaped by hand keeps the exit it was shaped on');
+    delete s.cables[0].routes;
+    d.x = 25; d.y = 400;
+    Y.layout(s);
+    eq(Y.exitSide(a, j1), 'bottom', 'with the device below, the nearest edge faces it and stays');
+  });
   test('system: a board with an outline is its outline’s size, its edge kept in its own frame (y down)', () => {
     const Y = LM.system, s = Y.blank('Gizmo');
     // A made-up 60 by 40 mm board with a notch, from 10, 5 in its design's coordinates (y up), and one connector.

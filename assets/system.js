@@ -640,12 +640,48 @@
     const [x, y] = r === 90 ? [b.h - cy, cx] : r === 180 ? [b.w - cx, b.h - cy] : r === 270 ? [cy, b.w - cx] : [cx, cy];
     return { x: x - tw(c) / 2, y: y - TAB.h / 2 };
   }
-  function exitSide(b, c) {
-    const ex = c.exit || c.exit0;
-    if (ex && SIDES[ex]) return turnSide(ex, rotOf(b));
+  // How far a tab is from each side of its turned block (mm).
+  function edgeDists(b, c) {
     const t = tabSpot(b, c), { W, H } = sizeOf(b);
-    const d = { left: t.x, right: W - t.x - tw(c), top: t.y, bottom: H - t.y - TAB.h };
-    return Object.keys(d).sort((p, q) => d[p] - d[q])[0];
+    return { left: t.x, right: W - t.x - tw(c), top: t.y, bottom: H - t.y - TAB.h };
+  }
+  const nearestOf = (d, sides) => sides.sort((p, q) => d[p] - d[q])[0];
+  // A connector's exit: the one picked in its panel (c.exit); else the way it leaves inside a placed system
+  // (c.exit0), or the nearest board edge, either unless it faces away from where its cable goes (autoExit, set
+  // by layout).
+  function exitSide(b, c) {
+    if (c.exit && SIDES[c.exit]) return turnSide(c.exit, rotOf(b));
+    return autoExit.get(c) || plainExit(b, c);
+  }
+  const plainExit = (b, c) => (c.exit0 && SIDES[c.exit0] ? turnSide(c.exit0, rotOf(b)) : nearestOf(edgeDists(b, c), Object.keys(SIDES)));
+  // Exits that face their cable (Chris, 2026-11-13: a tab leaving from the bottom whose cable heads up made a
+  // hairpin, out of the tab and straight back past it). For each plugged tab with no exit picked, when its
+  // nearest edge (or, in a placed system, the way it leaves inside it) faces away from the cable's other ends
+  // (their middle), it leaves from the nearest edge that doesn't. A route shaped by hand keeps the exits it was shaped on. Kept outside the data (a WeakMap by
+  // connector), and worked out again whenever a system is laid out.
+  let autoExit = new WeakMap();
+  function autoExits(s) {
+    s.blocks.forEach(b => (b.conns || []).forEach(c => autoExit.delete(c)));
+    s.cables.forEach(cab => {
+      const h = harnessOf(cab);
+      if (deviceEnds(h).length) return;
+      const at = endsOf(cab, h).map(n => { const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn); return c ? { n, b, c } : null; }).filter(Boolean);
+      if (at.length < 2) return;
+      const mid = at.map(x => { const t = tabSpot(x.b, x.c); return { x: x.b.x + t.x + tw(x.c) / 2, y: x.b.y + t.y + TAB.h / 2 }; });
+      const shaped = n => !!(cab.routes && cab.routes[n]);
+      at.forEach((x, i) => {
+        if (x.c.exit || autoExit.has(x.c)) return;
+        if (i === 0 ? at.slice(1).some(o => shaped(o.n.id)) : shaped(x.n.id)) return;
+        const o = mid.filter((_, j) => j !== i), vx = o.reduce((a, q) => a + q.x, 0) / o.length - mid[i].x, vy = o.reduce((a, q) => a + q.y, 0) / o.length - mid[i].y;
+        const len = Math.hypot(vx, vy);
+        if (len < 1e-6) return;
+        const faces = side => (SIDES[side][0] * vx + SIDES[side][1] * vy) / len;
+        const d = edgeDists(x.b, x.c);
+        if (faces(plainExit(x.b, x.c)) >= -0.2) return;
+        const ok = Object.keys(SIDES).filter(side => faces(side) > -0.2);
+        if (ok.length) autoExit.set(x.c, nearestOf(d, ok));
+      });
+    });
   }
   function tabGeom(b, c) {
     const t = tabSpot(b, c), { W, H } = sizeOf(b);
@@ -695,6 +731,7 @@
   // One memo per system, so Overview and Detail switching back and forth don't re-route each other's.
   const memos = new Map();
   function layout(s, view) {
+    autoExits(s);
     const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted, c.tw || 0])]), s.cables.map(c => [c.id, c.kind, c.harness, c.ends, c.routes]), s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
     const memo = memos.get(s.id);
     if (memo && memo.key === key && memo.lo) return memo.lo;
@@ -1357,7 +1394,7 @@
       (at.length ? `<div class="sys-list">${at.map(x => { const h = harnessOf(x.cable), n = endsOf(x.cable, h).find(e => e.id === x.node), st = statusOf(x.cable, h); return `<button class="sys-row" data-ssel="cable:${x.cable.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(x.cable, h))}<small>${esc(n ? 'its end ' + n.ref : '')}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Nothing yet.</p>') +
       (pick ? pickHtml(s, b, c) : `<div class="sys-actions">${btn('new-harness', 'New harness here', '', 'btn-primary')}${btn('pick-harness', 'Plug in a harness…')}</div>`) +
       (S.pair && S.pair.block !== b.id || S.pair && S.pair.conn !== c.id ? '' : '') +
-      fld('Cables leave from', `<select class="input" data-sexit="${c.id}">${[['', 'The nearest board edge (' + exitSide(b, Object.assign({}, c, { exit: '' })) + ')'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']].map(([v, l]) => `<option value="${v}"${(c.exit ? turnSide(c.exit, rotOf(b)) : '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`) +
+      fld('Cables leave from', `<select class="input" data-sexit="${c.id}">${[['', 'Automatic (' + (c.exit ? plainExit(b, c) : exitSide(b, c)) + (autoExit.has(c) && !c.exit ? ', facing its cable' : c.exit0 ? ', as it leaves inside' : ', the nearest board edge') + ')'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']].map(([v, l]) => `<option value="${v}"${(c.exit ? turnSide(c.exit, rotOf(b)) : '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`) +
       pinoutHtml(b, c) +
       (b.source || linkTab ? '' : `<div class="sys-actions">${btn('delete-conn', 'Delete connector', '', 'btn-danger')}</div>`);
   }
@@ -2444,7 +2481,7 @@
   }
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
-    layout: (s, view) => layoutNow(s, view), cells: n => { CELLS = n; },
+    layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
     externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll,
     tab: () => S.tab, setTab, setFocus, overviewSel, focused: () => S.focus, root: () => S.root,
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, saveFile, openDoc };
