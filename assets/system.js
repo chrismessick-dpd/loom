@@ -762,7 +762,7 @@
         t.N = pt(B, 0, u + t.Lp / 2); u += t.Lp + DW.gap;
         const a = t.N, rect = horiz ? { x: d[0] > 0 ? a.x : a.x - t.Ld, y: a.y - t.Lp / 2, w: t.Ld, h: t.Lp } : { x: a.x - t.Lp / 2, y: d[1] > 0 ? a.y : a.y - t.Ld, w: t.Lp, h: t.Ld };
         pts.push({ x: rect.x, y: rect.y }, { x: rect.x + rect.w, y: rect.y + rect.h });
-        if (!t.leads) boxes.push(Object.assign({ label: t.label, full: t.full, cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, ghost }, rect));
+        if (!t.leads) boxes.push(Object.assign({ label: t.label, full: t.full, cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, ghost, d, nw: t.nw }, rect));
         else {
           const e = pt(a, DW.lead, 0), lx = horiz ? e.x + d[0] * 10 : e.x, ly = horiz ? e.y + 5.5 : e.y + d[1] * 18 + (d[1] > 0 ? 5.5 : 0), w = U.textW(t.label, DW.font);
           t.lead = { label: t.label, full: t.full, lx, ly, anchor: horiz ? (d[0] > 0 ? 'start' : 'end') : 'middle', dots: [], ghost };
@@ -882,10 +882,24 @@
   function miniFrame(b, ch) {
     const E = drawnExtent(ch);
     if (!E) return null;
-    const hd = Math.min(46, b.h * K / 2) / K, pad = 2, top = hd + 1.5, iw = b.w - 2 * pad, ih = b.h - top - pad;
+    // The header runs across the block's top as drawn, whichever way it's turned; in the block's own frame that
+    // is its top (0°), left (90°), bottom (180°), or right (270°) side (Chris, 2026-11-13: a turned block's
+    // drawing ran up through its header).
+    const r = rotOf(b), Hs = r === 90 || r === 270 ? b.w : b.h, hd = Math.min(46, Hs * K / 2) / K, pad = 2, head = hd + 1.5;
+    const m = { l: pad, t: pad, r: pad, b: pad };
+    m[r === 90 ? 'l' : r === 180 ? 'b' : r === 270 ? 'r' : 't'] = head;
+    const iw = b.w - m.l - m.r, ih = b.h - m.t - m.b;
     if (iw <= 1 || ih <= 1) return null;
     const f = Math.min(iw / E.w, ih / E.h);
-    return { E, f, ox: pad + (iw - E.w * f) / 2, oy: top + (ih - E.h * f) / 2 };
+    return { E, f, ox: m.l + (iw - E.w * f) / 2, oy: m.t + (ih - E.h * f) / 2 };
+  }
+  // A far end's box as a mini view draws it: along the side its wires come into, only as long as their spread
+  // (centered where they land); and no deeper than that (at most DW.box). A small square, not a bar as long as
+  // a name the mini view doesn't print.
+  function miniBox(x) {
+    const d = x.d || [1, 0], span = Math.max(20, (x.nw || 1) * DW.pitch + 14);
+    if (d[0]) { const h = Math.min(x.h, span), w = Math.min(x.w, h, DW.box); return { x: d[0] > 0 ? x.x : x.x + x.w - w, y: x.y + (x.h - h) / 2, w, h }; }
+    const w = Math.min(x.w, span), h = Math.min(x.h, w, DW.box); return { x: x.x + (x.w - w) / 2, y: d[1] > 0 ? x.y : x.y + x.h - h, w, h };
   }
   // The SVG transform from a placed system's own drawing (canvas units) to the parent's canvas.
   function miniXf(b) {
@@ -907,7 +921,12 @@
     layout(s).forEach(({ cab, h, routes }) => { const st = statusOf(cab, h), col = colorOf(cab) || (st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : 'var(--accent)'); routes.forEach(r => { o += `<path class="sys-mc" style="stroke:${col}" d="${r.d}"/>`; }); });
     devLayout(s).forEach(D => {
       D.paths.forEach(p => { o += `<path class="sys-mw${p.ghost ? ' ghost' : ''}"${p.color ? ` style="stroke:${p.color}"` : ''} d="${p.d}"/>`; });
-      D.boxes.forEach(x => { o += `<rect class="sys-mdbox" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="3"/>`; });
+      // Far ends drawn small (Chris, 2026-11-13: long rectangles): a box is as long as its name, which a mini view
+      // doesn't print, so it keeps the side its wires come into and is only as deep as it is wide, or less.
+      D.boxes.forEach(x => {
+        const g = miniBox(x);
+        o += `<rect class="sys-mdbox" x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3"/>`;
+      });
     });
     return o;
   }

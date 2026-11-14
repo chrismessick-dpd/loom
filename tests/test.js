@@ -1068,6 +1068,10 @@
       ok(sb.mini.E.w > w0 + 150, 'the frame fits the wider drawing');
       const hd = Math.min(46, sb.h * 4 / 2) / 4;
       ok(sb.mini.oy >= hd, 'and stays under the header');
+      // Turned 270°, the header is on the block's own right side.
+      sb.rot = 270; Y.freshMinis(top);
+      const m = sb.mini, hd2 = Math.min(46, sb.w * 4 / 2) / 4;
+      ok(m.ox + m.E.w * m.f <= sb.w - hd2 + 1e-6, 'a turned block keeps its drawing off the side its header is on');
     } finally { done(); }
   });
   test('nest: a placed system’s connectors sit where they are in its mini view, and follow it', () => {
