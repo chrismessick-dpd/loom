@@ -35,6 +35,9 @@
    level, with the row's own left padding at 2px). */
 #harness-list .lm-tree { padding-left: calc(5px + var(--d, 0) * 18px); }
 #harness-list .lm-tree > .proj { padding-left: 2px; }
+/* Everything under a project heading starts under its name, past its chevron (Chris, 2026-11-14). */
+#harness-list .side-group > :not(.side-group-head) { margin-left: 18px; }
+#harness-list .side-group > .proj { width: calc(100% - 18px); }
 /* The sidebar's system tree (systems of systems): each level indented, with its own fold. */
 .lm-tree { display: flex; align-items: center; padding-left: calc(var(--d, 0) * 12px); }
 .lm-tree > .proj { flex: 1; min-width: 0; }
