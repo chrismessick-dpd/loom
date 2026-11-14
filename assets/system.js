@@ -528,7 +528,16 @@
     return b ? { kind: 'block', block: b.id } : null;
   }
   // The path of the system drawn now, from root.
-  const curPath = () => (S.cur === S.root ? S.root : S.focus && drawnSys(S.focus) === S.cur ? drawnPath(S.focus) : S.root);
+  // The pick's own path when its system is the one drawn (List draws a system picked in the menu itself, not the
+  // one placing it; Chris, 2026-11-14: Open from there skipped a level, so the menu lost where it was), else
+  // where Detail draws it.
+  const curPath = () => {
+    if (S.cur === S.root) return S.root;
+    const f = S.focus;
+    if (f && focusSys(f) === S.cur) return f.path;
+    if (f && drawnSys(f) === S.cur) return drawnPath(f);
+    return S.root;
+  };
   // A single placed system or harness cable selected on the canvas becomes the focus when the tab changes,
   // so a pick on the diagram carries to Detail and Wires as a pick in the menu does.
   function focusFromSel() {

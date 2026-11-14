@@ -63,6 +63,11 @@ links to it so far. Before every commit:
     golden unchanged. Tried in the demo: Resolve on a harness and a system copy, Use and Undo, Delete, and
     a system's History. Not tried signed in.
 
+- **The menu follows the main view (2026-11-14, Chris).** When what's shown changes, folded rows above its row
+  unfold (`lastShown`, `activeIn` in `renderSidebar`; only then, so rows still fold by hand) and its row scrolls
+  into view. `curPath` now uses the pick's own path when its system is the one drawn (List draws a picked system
+  itself), so Open or Open in Loom from List no longer skips a level. Rows with no chevron keep its room, so
+  every icon under a project lines up.
 - **System List like PL's (2026-11-14, Chris: the List was busy).** A Hierarchy | Cables switch: blocks,
   connectors, and cables folding (the default), or just the cables, each once. Name over part number, Type chip,
   Status (the › right of the chip), and a funnel menu for From / To, Length (both off to start), and Wires (`listHtml`, `listPrefs`, `<ns>sysList`). Harness

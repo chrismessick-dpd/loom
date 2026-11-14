@@ -444,6 +444,7 @@
     // Signed out again: the short list, open, with no chevron.
     return { enable(yes) { if (yes === on) return; on = yes; btn.hidden = !yes; plain.hidden = yes; set(yes); } };
   }
+  let lastShown = null;   // what the main view showed at the last sidebar render (renderSidebar)
   function renderSidebar() {
     renderTools();
     // Systems of systems (Chris, 2026-11-12): the systems placed in no other system sit first in their
@@ -459,6 +460,19 @@
     const holdsOpen = n => n.id === root || n.id === LM.system.current() || n.harnesses.includes(S.cur) || (!!fc && (fc.path === n.path || fc.path.startsWith(n.path + '>'))) || n.kids.some(holdsOpen);
     const inOpen = path => !!root && path.split('>')[0] === root;
     const picked = (kind, id, path) => (fc ? fc.kind === kind && fc.id === id && fc.path === path : kind === 'system' && path === root);
+    // The menu follows what the main view shows (Chris, 2026-11-14): when that changes, any folded row above
+    // its row unfolds (only then, so a row can still be folded by hand) and its row scrolls into view.
+    const activeSys = n => (inOpen(n.path) ? picked('system', n.id, n.path) : n.id === root);
+    const activeIn = n => (inOpen(n.path) ? !!fc && fc.kind === 'harness' && fc.path === n.path && n.harnesses.includes(fc.id) : n.harnesses.includes(S.cur))
+      || n.kids.some(k => activeSys(k) || activeIn(k));
+    const shownKey = [root, LM.system.current(), S.cur, fc ? fc.kind + '|' + fc.id + '|' + fc.path : ''].join('#');
+    const followed = shownKey !== lastShown;
+    if (followed) {
+      lastShown = shownKey;
+      const t = Object.assign({}, fold.sysTree), walk = n => { if (activeIn(n) && n.path in t) delete t[n.path]; n.kids.forEach(walk); };
+      roots.forEach(walk);
+      if (Object.keys(t).length !== Object.keys(fold.sysTree || {}).length) { fold.sysTree = t; saveFold(); }
+    }
     const treeFold = fold.sysTree || {};
     const treeRow = (n, d) => {
       const has = n.kids.length + n.harnesses.length > 0, open = n.path in treeFold ? !!treeFold[n.path] : holdsOpen(n);
@@ -508,6 +522,7 @@
         (open ? groups.get(k).map(h => row(h)).join('') : '') + `</div>`;
     }).join('') : systems.concat(list).map(h => row(h)).join(''))
       : '<div class="side-empty">No harnesses yet.</div>');
+    if (followed) { const a = $('#harness-list .active'); if (a) a.scrollIntoView({ block: 'nearest' }); }
     // Fold or unfold every group: the button in the Harnesses heading, beside New.
     const foldBtn = $('[data-act="fold-groups"]');
     if (foldBtn) {
