@@ -1138,9 +1138,35 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 /* Systems of systems: a placed system's block has an inner frame; an external connector an arrow out of its exit. */
 .sys-block.system .sys-nest { fill: none; stroke: var(--cv-conn-edge); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; pointer-events: none; }
 .sys-tab.ext rect { stroke-width: 2.4; }
-/* A harness that ends at its own device: a stub out of its connector into a small device mark. */
-.sys-dev { fill: var(--cv-paper); stroke: var(--cv-conn-edge); stroke-width: 1.4; }
-.sys-w.sel .sys-dev, .sys-w.linked .sys-dev { stroke: var(--accent); }
+/* A harness that ends at its own device, drawn as itself (Chris, 2026-11-13): its wires in their colors out to
+   plain far-end boxes, or dots for flying leads. */
+.sys-dhit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: pointer; }
+.sys-dglow { fill: none; stroke: var(--cv-sel); stroke-width: 9; stroke-opacity: 0.4; display: none; pointer-events: none; filter: drop-shadow(0 0 4px var(--cv-glow)); }
+.sys-w.sel .sys-dglow, .sys-w.linked .sys-dglow { display: inline; }
+.sys-dedge { fill: none; stroke: var(--cv-conn-edge); stroke-width: 4.4; stroke-linecap: round; pointer-events: none; }
+.sys-dwire { fill: none; stroke: var(--text-3); stroke-width: 3; stroke-linecap: round; pointer-events: none; }
+.sys-dwire.ghost { stroke-dasharray: 7 5; }
+.sys-dstripe { fill: none; stroke-width: 3; stroke-dasharray: 5 7; pointer-events: none; }
+.sys-dend { cursor: move; }
+.sys-dbox { fill: var(--cv-paper); stroke: var(--cv-conn-edge); stroke-width: 1.6; }
+.sys-dbox.ghost { stroke-dasharray: 3 2.5; }
+.sys-w.sel .sys-dbox, .sys-w.linked .sys-dbox { stroke: var(--accent); stroke-width: 2.4; }
+.sys-dtext { font: 600 16px var(--font, sans-serif); fill: var(--cv-ink); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.sys-dtext.lead { dominant-baseline: auto; fill: var(--cv-ink-2); }
+.sys-ddot { fill: var(--text-3); stroke: var(--cv-conn-edge); stroke-width: 0.8; }
+/* A placed system's mini view (Chris, 2026-11-13): its drawing small inside its block, nothing to click. */
+.sys-mini { pointer-events: none; }
+.sys-mini * { vector-effect: non-scaling-stroke; }
+.sys-mb { fill: var(--cv-paper); fill-opacity: 0.55; stroke: var(--cv-conn-edge); stroke-width: 0.8; }
+.sys-mb.device { stroke-dasharray: 3 2; }
+.sys-mb.system { fill-opacity: 0.25; }
+.sys-mt { font-family: var(--font, sans-serif); font-weight: 600; fill: var(--cv-ink-2); text-anchor: middle; dominant-baseline: central; opacity: 0.8; }
+.sys-mtab { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 0.7; }
+.sys-mc { fill: none; stroke-width: 1.1; opacity: 0.85; }
+.sys-mw { fill: none; stroke: var(--text-3); stroke-width: 0.7; }
+.sys-mw.ghost { stroke-dasharray: 2 2; }
+.sys-mdbox { fill: var(--cv-paper); stroke: var(--cv-conn-edge); stroke-width: 0.7; }
+.sys-hname { font-family: var(--display, var(--font, sans-serif)); font-weight: 600; fill: var(--cv-ink-2); pointer-events: none; }
 .sys-extmark { fill: var(--accent); stroke: var(--cv-conn-edge); stroke-width: 0.8; pointer-events: none; }
 .sys-tab.plugged text { fill: #04252a; font-weight: 800; }
 .sys-tab.bottom rect { stroke-dasharray: 2.5 2; }

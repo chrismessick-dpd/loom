@@ -870,7 +870,7 @@
     try {
       eq(sb.kind, 'system'); eq(sb.ref, 'S1'); eq(sb.name, 'Pump module');
       eq(sb.conns.map(c => [c.id, c.ref, c.pins.length, c.fn]), [[a.id + '/' + j1.id, 'A1 J1', 2, 'Power in']], 'only the external connector, named by its block and ref');
-      ok(sb.conns[0].x < 0, 'it leaves its system to the left, so it sits on the left edge');
+      ok(sb.conns[0].x >= 0 && sb.conns[0].x < sb.w / 2 && sb.conns[0].exit0 === 'left', 'it sits where it is in the mini view, toward the left, and leaves to the left');
       ok(!/"conns"/.test(JSON.stringify(sb)), 'the stored block keeps no connectors');
       j1.ref = 'P1'; a.x = 300; j2.external = true; Y.resolve();
       eq(sb.conns.map(c => c.id).sort(), [a.id + '/' + j1.id, a.id + '/' + j2.id].sort(), 'a new external connector joins, the old id stays');
@@ -976,6 +976,44 @@
     ok(!Y.checks(s, get).some(x => /isn't plugged in/.test(x.text)), 'no open-end warning for the device');
   });
 
+  test('system: a harness built onto its device is drawn as itself, its far ends boxes or flying leads, and drags', () => {
+    const { Y, s, a, c, h } = sysFixture();
+    const [p1, p2] = h.nodes.filter(M.isConn);
+    p2.atDevice = true; p2.name = 'Fan motor';
+    const leads = M.addConnector(h, 640, 400, { family: 'flying', pins: 2, name: 'Thermistor' });
+    leads.atDevice = true;
+    M.addWire(h, { node: p1.id, pin: '1' }, { node: p2.id, pin: '1' }, { color: 'RD' });
+    M.addWire(h, { node: p1.id, pin: '2' }, { node: p2.id, pin: '2' }, { color: 'BK' });
+    M.addWire(h, { node: p1.id, pin: '3' }, { node: leads.id, pin: '1' }, { color: 'WH/BU' });
+    s.cables.push({ id: 'k1', kind: 'harness', harness: h.id, ends: { [p1.id]: { block: a.id, conn: c.id } }, lengthMm: null });
+    const get = id => (id === h.id ? h : null), D = Y.devLayout(s, get).get('k1');
+    ok(D, 'the cable has a drawing');
+    eq(D.paths.length, 3, 'a line per wire');
+    eq(D.paths.map(p => p.color), ['#d8281c', '#1d1d1f', '#f4f4f4'], 'in their colors, the motor’s wires first');
+    eq(D.paths[2].stripe, '#2563c9', 'a striped wire keeps its stripe');
+    eq(D.boxes.map(b => b.label), ['Fan motor'], 'the motor is a box with its name');
+    eq(D.leads.map(l => [l.label, l.dots.length]), [['Thermistor', 1]], 'flying leads end in a dot per wire');
+    ok(D.boxes[0].x > (a.x + a.w) * 4, 'out past the board, the way J1 leaves');
+    const x0 = D.boxes[0].x;
+    s.cables[0].devAt = { dx: 10, dy: -5 };
+    const D2 = Y.devLayout(s, get).get('k1');
+    eq([D2.boxes[0].x - x0, D2.boxes[0].y - D.boxes[0].y], [40, -20], 'dragged 10 mm right and 5 mm up');
+    ok(Y.drawnExtent(s).x + Y.drawnExtent(s).w > a.x + a.w + 10, 'the drawing counts in the system’s extent');
+    ok(!/"conns"|"mini"/.test(JSON.stringify(s.cables[0])), 'nothing derived is stored');
+  });
+  test('nest: a placed system’s connectors sit where they are in its mini view, and follow it', () => {
+    const { Y, pump, a, j1, j2, sb, done } = nestFixture();
+    try {
+      ok(sb.mini && sb.mini.f > 0, 'the block has a mini view');
+      const c0 = sb.conns[0], m = sb.mini, cx = m.ox + (a.x + j1.x + Y.TAB.w / 2 - m.E.x) * m.f;
+      ok(Math.abs(c0.x + c0.tw / 2 - cx) < 0.05, 'the tab is centered on its connector in the mini view');
+      ok(c0.y > 0 && c0.y < sb.h, 'inside the block');
+      const y0 = c0.y; j1.y += 30; Y.resolve();
+      ok(sb.conns[0].y > y0, 'moved down in the child, it moves down in the mini view');
+      ok(!/"mini"|"exit0"/.test(JSON.stringify(sb)), 'the stored block keeps no mini view');
+      void pump; void j2;
+    } finally { done(); }
+  });
   (async () => {
     let failed = 0;
     for (const t of tests) {
