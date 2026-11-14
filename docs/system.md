@@ -61,8 +61,14 @@ open system's own row clears it, and other systems and harnesses still open as b
 - **Overview** draws the open system (`S.root`) and selects the pick: the block placing it (which lights that
   block's cables), or a harness's cables there (several at once fade the rest as one does). A harness used only
   deeper selects the block it's inside (`overviewSel`). The camera moves to the block if it's out of view.
-- **Detail** draws the picked system itself, or the system holding a picked harness with its cables selected.
-  It's the real system, editable; each system drawn keeps its own undo and camera (`show`, `S.hist`).
+- **Detail** draws the system placing a picked system, with the pick's block selected, or the system holding a
+  picked harness with its cables selected. Only **Open <system>** draws a system itself (`f.open`; `drawnPath`,
+  `drawnSys`). It's the real system, editable; each system drawn keeps its own undo and camera (`show`, `S.hist`).
+
+A pick shows where it's placed (Chris, 2026-11-13): its block and that block's cables lit, and its panel open
+with **Open <system>**, never opened by itself. A pick placed in the open system goes to Overview, one deeper to
+Detail with its parent drawn (picking a system two levels down draws the one placing it, with it selected). List
+keeps listing the pick.
 - **List** (first called Wires; Chris renamed it) takes the canvas's place beside the panel. For a system:
   each block, its used or plugged connectors, the cables plugged into each, and a harness cable's wires from that
   end (pin, signal or the board's net, color, gauge in mm² first, far end and where it plugs, and length); for a

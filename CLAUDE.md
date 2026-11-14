@@ -22,6 +22,10 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **A menu pick shows where it's placed (2026-11-13, Chris).** A system or harness picked under the open
+  system draws the system placing it with it selected and its panel open (Open <system> opens it); Overview when
+  that's the open system, else Detail (`drawnPath`, `f.open` in `system.js`). See `docs/system.md`.
+
 - **System List (2026-11-12, Chris: the Wires tab renamed List; each item's type and part number beside it; a click
   shows it in the panel, with Open in Loom).** List sits beside the panel in the canvas's place; rows select
   (`data-ssel`, plus `wire:` and `end:` for a harness's own, `parseSel`), and a › lists a system or harness on its own.

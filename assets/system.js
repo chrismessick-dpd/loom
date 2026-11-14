@@ -431,6 +431,15 @@
   const pathIds = f => (f && f.path ? String(f.path).split('>') : []);
   // The system a focus is drawn in on Detail: a system itself, or the one holding a harness.
   const focusSys = f => { const ids = pathIds(f); return ids.length ? ids[ids.length - 1] : null; };
+  // What Detail draws for a focus (Chris, 2026-11-13): a system picked in the menu shows in the system placing
+  // it, selected, with its Open button in the panel; only Open (f.open) draws the system itself. A harness
+  // shows in the system holding it (its path).
+  const drawnPath = f => {
+    if (!f) return S.root;
+    if (f.kind === 'system' && !f.open) { const ids = pathIds(f); return ids.length > 1 ? ids.slice(0, -1).join('>') : S.root; }
+    return f.path;
+  };
+  const drawnSys = f => focusSys({ path: drawnPath(f) });
   const harnessCables = (s, hid) => s.cables.filter(c => kindOf(c) === 'harness' && c.harness === hid).map(c => c.id);
   // What Overview selects for a focus: in root, the block placing the first system on its path, or a
   // harness's own cables there. A harness only used deeper selects the block it's inside.
@@ -443,14 +452,14 @@
     return b ? { kind: 'block', block: b.id } : null;
   }
   // The path of the system drawn now, from root.
-  const curPath = () => (S.cur === S.root ? S.root : S.focus && focusSys(S.focus) === S.cur ? S.focus.path : S.root);
+  const curPath = () => (S.cur === S.root ? S.root : S.focus && drawnSys(S.focus) === S.cur ? drawnPath(S.focus) : S.root);
   // A single placed system or harness cable selected on the canvas becomes the focus when the tab changes,
   // so a pick on the diagram carries to Detail and Wires as a pick in the menu does.
   function focusFromSel() {
     const s = cur(), t = S.sel;
     // Not the selection a tab made for the focus itself (a harness inside a placed system selects its block).
     if (!s || !t || JSON.stringify(t) === S.autoSel) return;
-    if (t.kind === 'block') { const b = block(s, t.block); if (b && childOf(b)) S.focus = { kind: 'system', id: b.system, path: curPath() + '>' + b.system }; }
+    if (t.kind === 'block') { const b = block(s, t.block); if (b && childOf(b)) S.focus = { kind: 'system', id: b.system, path: curPath() + '>' + b.system, open: true }; }
     else if (t.kind === 'cable') { const c = cable(s, t.id); if (c && kindOf(c) === 'harness' && c.harness) S.focus = { kind: 'harness', id: c.harness, path: curPath() }; }
   }
   // Moves the camera so the selected block shows, at the same zoom, when it's out of view.
@@ -468,10 +477,12 @@
     const f = S.focus;
     if (S.tab === 'overview') { show(S.root); S.sel = overviewSel(cur(), f); reveal(cur(), S.sel); }
     else if (S.tab === 'detail') {
-      const id = f && S.store[focusSys(f)] ? focusSys(f) : S.root;
+      const id = f && S.store[drawnSys(f)] ? drawnSys(f) : S.root;
       show(id);
-      S.sel = f && f.kind === 'harness' ? selOf([], harnessCables(cur(), f.id)) : null;
-      if (!S.cam) S.cam = bounds(cur());
+      const s = cur(), b = f && f.kind === 'system' && !f.open ? s.blocks.find(x => x.kind === 'system' && x.system === f.id) : null;
+      S.sel = f && f.kind === 'harness' ? selOf([], harnessCables(s, f.id)) : b ? { kind: 'block', block: b.id } : null;
+      if (!S.cam) S.cam = bounds(s);
+      reveal(s, S.sel);
     } else if (S.tab === 'list') { show(listSys(f)); S.sel = null; }
     S.autoSel = JSON.stringify(S.sel);
   }
@@ -481,10 +492,12 @@
     S.tab = tab; applyTab(); persist(); A.refresh();
   }
   // A pick in the menu (app.js, a row under the open system): kind system or harness, its id, and its
-  // path (a harness's: the system holding it). The open system itself clears the focus.
+  // path (a harness's: the system holding it). The open system itself clears the focus. Off the List tab, the
+  // pick shows where it's placed: Overview when that's the open system, else Detail (Chris, 2026-11-13).
   function setFocus(kind, id, path) {
     if (!S.root || pathIds({ path })[0] !== S.root) return;
     S.focus = kind === 'system' && id === S.root ? null : { kind, id, path };
+    if (S.tab !== 'list') S.tab = drawnSys(S.focus) === S.root ? 'overview' : 'detail';
     applyTab(); A.refresh();
   }
   // The path from the open system to a system inside its tree: along the one drawn now first (its parents,
@@ -516,7 +529,7 @@
     const p = pathTo(id);
     if (!p) { A.openSystem(id); return; }
     if (id === S.root) { S.focus = null; S.tab = 'overview'; }
-    else { S.focus = { kind: 'system', id, path: p }; S.tab = 'detail'; }
+    else { S.focus = { kind: 'system', id, path: p, open: true }; S.tab = 'detail'; }
     applyTab(); A.refresh();
   }
   // Back (Chris, 2026-11-12): from any panel straight to the system's own.
@@ -1160,7 +1173,7 @@
     if (t.kind === 'wire') { A.openHarness(t.harness, { kind: 'wire', ids: [t.wire] }); return; }
     if (t.kind === 'end') { A.openHarness(t.harness, { kind: 'node', ids: [t.node] }); return; }
     if (t.kind === 'cable') { const h = harnessOf(cable(s, t.id)); if (h) { A.openHarness(h.id); return; } }
-    if (t.kind === 'block') { const b = block(s, t.block); if (b && childOf(b)) { S.focus = { kind: 'system', id: b.system, path: curPath() + '>' + b.system }; S.tab = 'detail'; applyTab(); A.refresh(); return; } }
+    if (t.kind === 'block') { const b = block(s, t.block); if (b && childOf(b)) { S.focus = { kind: 'system', id: b.system, path: curPath() + '>' + b.system, open: true }; S.tab = 'detail'; applyTab(); A.refresh(); return; } }
     S.tab = 'detail';
     if (!S.cam) S.cam = bounds(s);
     reveal(s, t.kind === 'conn' ? { kind: 'block', block: t.block } : t);
