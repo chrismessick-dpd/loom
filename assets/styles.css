@@ -1075,6 +1075,7 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-list { display: flex; flex-direction: column; gap: 2px; }
 .sys-row { display: flex; gap: 8px; align-items: flex-start; text-align: left; border: 1px solid transparent; background: none; color: var(--text); padding: 6px 8px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; }
 .sys-row:hover { background: var(--accent-soft); }
+.sys-pn { font-family: var(--mono, ui-monospace, monospace); font-size: 0.86em; font-weight: 500; color: var(--text-2); margin-left: 6px; white-space: nowrap; }
 .sys-row small { display: block; color: var(--text-3); font-size: 11.5px; }
 .sys-st { width: 16px; flex: none; text-align: center; font-weight: 700; }
 .sys-st.st-wired { color: var(--accent); }

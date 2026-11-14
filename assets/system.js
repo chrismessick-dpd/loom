@@ -1306,7 +1306,7 @@
       `<div class="sys-actions">${btn('add-board', 'Add a board from Signoff EE', '', 'btn-primary')}${btn('add-drawn', 'Draw a board')}${btn('add-device', 'Add a device')}${btn('add-system', 'Place a system')}</div>` +
       placedHtml(s) +
       `<h4 class="sys-h">Cables <span class="count">${s.cables.length}</span></h4>` +
-      (s.cables.length ? `<div class="sys-list">${s.cables.map(cab => { const h = harnessOf(cab), st = statusOf(cab, h); return `<button class="sys-row" data-ssel="cable:${cab.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(cab, h))}<small>${esc([pnOf(h, cab), endsOf(cab, h).map(n => endName(s, cab.ends[n.id]) || n.ref + ' not plugged').join(' · ')].filter(Boolean).join(' · '))}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Click a connector on a board, then another, to connect them.</p>') +
+      (s.cables.length ? `<div class="sys-list">${s.cables.map(cab => { const h = harnessOf(cab), st = statusOf(cab, h); return `<button class="sys-row" data-ssel="cable:${cab.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(cab, h))}${pnHtml(h, cab)}<small>${esc([endsOf(cab, h).map(n => endName(s, cab.ends[n.id]) || n.ref + ' not plugged').join(' · ')].filter(Boolean).join(' · '))}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Click a connector on a board, then another, to connect them.</p>') +
       `<h4 class="sys-h">Checks <span class="count">${c.length}</span></h4>` + checksHtml(c) +
       `<div class="sys-actions">${btn('delete-system', 'Delete system', '', 'btn-danger')}</div>`;
   }
@@ -1324,7 +1324,7 @@
     const words = [bs.length ? bs.length + (bs.length > 1 ? ' blocks' : ' block') : '', cs.length ? cs.length + (cs.length > 1 ? ' cables' : ' cable') : ''].filter(Boolean).join(', ');
     return `<div class="rail-head"><div class="eyebrow">Selected</div><div class="rail-title">${esc(words)}</div></div>` +
       (bs.length ? `<h4 class="sys-h">Blocks <span class="count">${bs.length}</span></h4><div class="sys-list">${bs.map(b => `<button class="sys-row" data-ssel="block:${b.id}"><span class="sys-st">▭</span><span>${esc(b.ref)} · ${esc(b.name)}</span></button>`).join('')}</div>` : '') +
-      (cs.length ? `<h4 class="sys-h">Cables <span class="count">${cs.length}</span></h4><div class="sys-list">${cs.map(cab => { const h = harnessOf(cab), st = statusOf(cab, h); return `<button class="sys-row" data-ssel="cable:${cab.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(cab, h))}</span></button>`; }).join('')}</div>` : '') +
+      (cs.length ? `<h4 class="sys-h">Cables <span class="count">${cs.length}</span></h4><div class="sys-list">${cs.map(cab => { const h = harnessOf(cab), st = statusOf(cab, h); return `<button class="sys-row" data-ssel="cable:${cab.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(cab, h))}${pnHtml(h, cab)}</span></button>`; }).join('')}</div>` : '') +
       `<p class="hint">Drag any selected block to move them all. Shift-drag a box to add more.</p>` +
       `<div class="sys-actions">${btn('delete-multi', 'Delete ' + words, '', 'btn-danger')}</div>`;
   }
@@ -1524,12 +1524,15 @@
     return `${b.kind === 'device' ? 'Device' : 'Board'} · generic · ${NOPN}`;
   }
   const connType = c => (c.link ? `External connector · inside ${c.inside}` : `Connector · ${[c.mfr, c.mpn].filter(Boolean).join(' ') || NOPN}`);
+  // The cable's number sits beside its name (pnHtml, Chris, 2026-11-14), so the type line leaves it out.
   function cableType(cab, h) {
-    const k = kindOf(cab);
-    if (k === 'harness') return `Loom harness · ${h ? h.title : 'missing'} · ${pnOf(h, cab) || NOPN}`;
-    if (k === 'bought') return `Purchased cable · ${cab.pn || NOPN}${cab.mpn ? ' · ' + [cab.mfr, cab.mpn].filter(Boolean).join(' ') : ''}`;
+    const k = kindOf(cab), pn = pnOf(h, cab);
+    if (k === 'harness') return `Loom harness · ${h ? h.title : 'missing'}${pn ? '' : ' · ' + NOPN}`;
+    if (k === 'bought') return `Purchased cable${pn ? '' : ' · ' + NOPN}${cab.mpn && cab.pn ? ' · ' + [cab.mfr, cab.mpn].filter(Boolean).join(' ') : ''}`;
     return `Generic connection · ${NOPN}`;
   }
+  // A cable's or harness's number, on the line with its name, when it has one.
+  const pnHtml = (h, cab) => { const pn = pnOf(h, cab); return pn ? ` <span class="sys-pn">${esc(pn)}</span>` : ''; };
   const endType = n => `${LM.library ? LM.library.kindName(n) : 'Connector'} · ${n.mpn || NOPN}`;
   // A small › beside a placed system or harness lists just it (the row itself selects).
   const drill = (kind, id, path, word) => `<button class="sys-drill"${focusAttr(kind, id, path)} title="List just this ${word}" aria-label="List just this ${word}">›</button>`;
@@ -1558,7 +1561,7 @@
       const h = harnessOf(cab), st = statusOf(cab, h), ends = endsOf(cab, h);
       const far = ends.filter(n => n.id !== here).map(n => endName(s, cab.ends[n.id]) || `${n.ref} not plugged`)
         .concat(deviceEnds(h).map(n => `${n.ref} at its device`));
-      const title = `<b class="sys-wname">${esc(titleOf(cab, h))}</b>` + (h ? drill('harness', h.id, path, 'harness') : '');
+      const title = `<b class="sys-wname">${esc(titleOf(cab, h))}</b>${pnHtml(h, cab)}` + (h ? drill('harness', h.id, path, 'harness') : '');
       nCab++;
       rows += `<tr${rowAttr('cable:' + cab.id, 'cab')}>${item(lvl, `<span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span> ${title} ${typeHtml(cableType(cab, h))}`)}<td></td><td></td><td></td><td></td><td>${esc(far.join(', ') || '—')}</td><td class="num">${cab.lengthMm ? U.fmtLen(cab.lengthMm) : ''}</td></tr>`;
       const n = h && here && M.node(h, here);
