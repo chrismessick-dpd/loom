@@ -22,6 +22,14 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Part library, Device, and Flying leads (2026-11-14, Chris: a repo of parts, as Cablematic's far-end library, to
+  place a device as a harness's far end).** Parts live in `loom_data/parts/<id>.json` (Chris chose a folder in the data
+  repo over a new repo), read only at each sync (`assets/parts.js`, `LM.parts.syncLib`). Add has *Flying leads* and
+  *Device*. Device opens a searchable list and places a linked copy (Chris's choice over a live reference): pins, net
+  names, and lead colors and gauges, plus `n.part` (id, name, stamp), *Is its device*, and for a connector part its
+  mating housing. Wires run to a linked pin take its lead. Properties has Refresh from library (when the stamp moved),
+  Match wires to leads, and Unlink. No part editor yet. See `docs/parts.md`. Tests 89 (6 new, and the sync test that
+  failed in the same millisecond fixed). The Queue parts come from Cablematic through queue-sync-in.
 - **Sync guards, Resolve, and systems history (2026-11-14, Chris: a real system showed a "(conflict copy)"
   though he's its only editor; bring Signoff EE's safeguards to Loom).**
   - **The cause.** Three copies of real systems were made in one sync from a
@@ -1062,6 +1070,7 @@ the CSP in `index.html` allows just those.
 | `assets/store.js` | Sync with `loom_data` and the read of Signoff PL (see *Storage and Signoff PL* above). |
 | `assets/vendor/` | Fabcheck's `ipc356.js` and `assembly.js`, and the Signoff engine's `model.js` and `github.js` (from EE). Don't edit; run `tools/sync_vendor.py`. |
 | `tests/` | `test.html` (open over http) and `fake-hub.js`. |
+| `assets/parts.js` | The part library: devices and device connectors with pinouts, read from `loom_data/parts/`; placing and refreshing linked ends (`docs/parts.md`). |
 | `assets/library.js` | Parametric connector families. Housing part numbers are suggested only where the series names them by pin count. |
 | `assets/shapes.js` | Face views, labeled with the side shown, with a pin-1 mark; custom faces from `n.custom`. |
 | `assets/configure.js` | The Configure window: ref, name, type, and a custom face from a 3D model or a sketch with assigned positions; Find a model. |

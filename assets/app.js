@@ -49,6 +49,8 @@
     splice: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 6h5l3 4M2.5 14h5l3-4h7"/><rect x="8.5" y="7.5" width="5" height="5" rx="1.4" fill="currentColor" stroke="none"/></svg>',
     breakout: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 10H10l6-5M10 10l6 5"/><circle cx="10" cy="10" r="2.2" fill="currentColor"/></svg>',
     trash: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.5h11M6.5 4.5V3h3v1.5M4 4.5l.7 9h6.6l.7-9"/></svg>',
+    flying: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 6.5c5 0 6 0 9.5 0M2.5 10h9.5M2.5 13.5h9.5"/><circle cx="14" cy="6.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="14" cy="10" r="1.6" fill="currentColor" stroke="none"/><circle cx="14" cy="13.5" r="1.6" fill="currentColor" stroke="none"/></svg>',
+    device: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><circle cx="7.5" cy="10" r="5"/><circle cx="7.5" cy="10" r="1.6"/><path d="M12.5 8h5M12.5 10h5M12.5 12h5"/></svg>',
     board: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="4" width="15" height="12" rx="2"/><rect x="5.5" y="7" width="5" height="4" rx="0.8"/><path d="M13 7.5h2M13 10h2M13 12.5h2"/></svg>',
     fit: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>',
     relayout: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="4.5" height="4" rx="1.2"/><rect x="9.5" y="9.5" width="4.5" height="4" rx="1.2"/><path d="M6.5 4.5h2.2c1.5 0 2.3.8 2.3 2.3v2.7"/></svg>',
@@ -196,6 +198,8 @@
           LM.system.persist();
         }
       } catch (e) { toast("Couldn't sync systems: " + (e.message || e), 'error'); }
+      // The part library (assets/parts.js), read only: a failure here never fails the sync.
+      try { await LM.parts.syncLib(); if (PM.open) renderPartModal(); } catch (e) { console.warn('Loom: part library not read', e); }
       res.gone.forEach(id => { if (S.store[id] && R.stampKey(S.store[id]) === res.beforeStamp[id]) delete S.store[id]; });
       res.conflicts.forEach(h => { S.store[h.id] = h; });
       if (S.cur && (!S.store[S.cur] || S.store[S.cur].deleted)) S.cur = null;
@@ -1509,7 +1513,11 @@
   function finishWire(end) {
     const from = S.pending;
     S.pending = null;
-    const w = change(h => M.addWire(h, from, end));
+    const w = change(h => {
+      // A wire on a pin of a part from the library takes that lead's color and gauge.
+      const l = LM.parts.leadOf(M.node(h, end.node), end.pin) || LM.parts.leadOf(M.node(h, from.node), from.pin);
+      return M.addWire(h, from, end, l ? Object.assign({}, l.color ? { color: l.color } : {}, l.gauge ? { gauge: l.gauge } : {}) : undefined);
+    });
     // The new wire draws itself in from end to end (canvas only; Reduce Motion skips it in CSS).
     if (w && !reduceMotion()) { S.fresh = w.id; clearTimeout(S.freshT); S.freshT = setTimeout(() => { S.fresh = null; }, 900); }
     $('#ghost') && ($('#ghost').innerHTML = '');
@@ -1572,9 +1580,9 @@
     }
     if (best) { h.place = h.place || {}; h.place['n:' + id] = { x: best.x, y: best.y, v: 3 }; }
   }
-  function addEnd(kind) {
+  function addEnd(kind, props) {
     change(h => {
-      const n = kind === 'connector' ? M.addConnector(h, 0, 0, { family: 'jst-ph', pins: 4 }) : M.addNode(h, kind, 0, 0);
+      const n = kind === 'connector' ? M.addConnector(h, 0, 0, props || { family: 'jst-ph', pins: 4 }) : M.addNode(h, kind, 0, 0);
       placeClear(h, n.id);
       S.sel = { kind: 'node', ids: new Set([n.id]) };
     });
@@ -1751,7 +1759,9 @@
       <button data-act="from-board" title="A board connector from Signoff EE, with its pins and nets">${ICON.board}<span>From a board</span></button>
       <button data-act="add-splice">${ICON.splice}<span>Splice</span></button>
       <button data-act="add-note" title="A note or part pinned to a wire, set, or connector">${ICON.note}<span>Note</span></button>
-      <button data-act="add-table" title="A table of text, placed anywhere on the drawing">${ICON.table}<span>Table</span></button></div>`;
+      <button data-act="add-table" title="A table of text, placed anywhere on the drawing">${ICON.table}<span>Table</span></button>
+      <button data-act="add-flying" title="Loose leads: an end with no connector">${ICON.flying}<span>Flying leads</span></button>
+      <button data-act="add-device" title="A device from the part library, with its pinout, lead colors, and gauges">${ICON.device}<span>Device</span></button></div>`;
     return o;
   }
 
@@ -1849,6 +1859,119 @@
       LM.boards.matches(a, b, usedPins(h)).forEach(m => { M.addWire(h, { node: a.id, pin: m.a }, { node: b.id, pin: m.b }, { signal: m.label }); made++; });
     });
     toast(made ? `Added ${made} wire${made > 1 ? 's' : ''} by matching nets. Check them against the boards before building.` : 'No free pins with matching nets.');
+  }
+
+  // ── Add › Device: a part from the part library (assets/parts.js, docs/parts.md) ──
+  // A searchable list of the library's parts; Add places one as a linked copy (LM.parts.apply). The list
+  // is what this browser read at its last sync; Read again reads parts/ now.
+  const PM = { open: false, q: '', busy: false, error: '' };
+  function openParts() {
+    Object.assign(PM, { open: true, error: '' });
+    renderPartModal();
+    const f = $('#part-modal-body [data-pm-q]');
+    if (f) f.focus();
+  }
+  function closeParts() { PM.open = false; renderPartModal(); }
+  async function readParts() {
+    if (DEMO || !R.signedIn()) { renderPartModal(); return; }
+    PM.busy = true; PM.error = ''; renderPartModal();
+    try { await LM.parts.syncLib(); } catch (e) { PM.error = e.message || String(e); }
+    PM.busy = false; renderPartModal();
+  }
+  function partRow(p) {
+    const nets = p.pins.map(q => q.label).filter(Boolean);
+    const sw = p.pins.filter(q => q.color).slice(0, 12).map(q => { const c = M.colorInfo(q.color); return `<span class="swatch xs" title="${esc(q.id + ' ' + (q.label || '') + ': ' + q.color)}" style="background:${c.base || 'transparent'}">${c.stripe ? `<i style="background:${c.stripe}"></i>` : ''}</span>`; }).join('');
+    const gauges = [...new Set(p.pins.map(q => q.gauge).filter(Boolean))];
+    const what = p.kind === 'device' ? `${p.pins.length} lead${p.pins.length === 1 ? '' : 's'}` : `${p.pins.length}-pin connector on the device`;
+    return `<div class="bm-conn pm-part"><div class="bm-c-head"><span class="lay-ico">${p.kind === 'device' ? ICON.device : ICON.conn}</span><span class="bm-desc"><b>${esc(p.name)}</b><br>${esc([p.maker, p.mpn].filter(Boolean).join(' · ') || 'No maker or part number')}${p.kind === 'connector' && p.mate ? ` · takes <span class="mono">${esc(p.mate)}</span>` : ''}</span>
+      <button class="btn btn-primary" data-act="pm-add" data-id="${esc(p.id)}">Add</button></div>
+      <div class="bm-pins">${p.pins.map(q => `<span class="bm-pin${q.label ? '' : ' unnamed'}"><b>${esc(q.id)}</b>${esc(q.label || '—')}</span>`).join('')}</div>
+      <div class="f-hint">${what}${sw ? ` · <span class="pm-sw">${sw}</span>` : ''}${gauges.length ? ` · ${esc(gauges.join(', '))} AWG` : ''}${p.notes ? ` · ${esc(p.notes)}` : ''}${nets.length ? '' : ' · no net names'}</div></div>`;
+  }
+  function renderPartModal() {
+    const back = $('#part-modal');
+    back.hidden = !PM.open;
+    if (!PM.open) return;
+    const all = LM.parts.all(), q = PM.q.trim().toLowerCase();
+    const hit = p => !q || [p.name, p.maker, p.mpn, p.mate, p.notes].concat(p.pins.map(x => x.label)).join(' ').toLowerCase().includes(q);
+    const list = all.filter(hit), last = LM.parts.lastRead();
+    const devices = list.filter(p => p.kind === 'device'), conns = list.filter(p => p.kind === 'connector');
+    const signedIn = !DEMO && R.signedIn();
+    const sub = DEMO ? 'Demo: made-up Acme Climate parts.'
+      : last && last.at ? `${all.length} part${all.length === 1 ? '' : 's'} in Loom’s part library, as read ${new Date(last.at).toLocaleString()}.`
+      : 'Loom’s part library is read from its data repo at each sync.';
+    let body;
+    if (PM.busy) body = '<div class="bm-busy"><span class="spinner"></span>Reading the part library…</div>';
+    else if (!all.length) {
+      const why = !DEMO && !R.signedIn() ? 'Sign in to GitHub (Settings, the gear at the bottom of the menu) to read Loom’s part library.'
+        : PM.error ? esc(PM.error) : 'The part library is empty, or this browser’s GitHub access can’t open Loom’s data repo.';
+      body = `<p>${why}</p>${signedIn ? '<div class="inline gap"><button class="btn" data-act="pm-retry">Read the library again</button></div>' : ''}`;
+    } else {
+      body = (devices.length ? `<div class="cat-label">Devices with leads</div>${devices.map(partRow).join('')}` : '') +
+        (conns.length ? `<div class="cat-label">Devices with a connector</div>${conns.map(partRow).join('')}` : '') +
+        (list.length ? '' : `<p class="f-hint">No part matches “${esc(PM.q)}”.</p>`);
+    }
+    const close = '<button class="icon-btn" data-act="pm-close" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>';
+    const again = signedIn && all.length ? '<button class="btn" data-act="pm-retry" title="Read parts/ from the data repo now">Read again</button>' : '';
+    const html = `<div class="lm-modal-head"><div><div class="eyebrow">Add a device</div><div class="rail-title">Part library</div><div class="f-hint">${sub}${PM.error && all.length ? ' ' + esc(PM.error) : ''}</div></div>${again}${close}</div>` +
+      (all.length ? `<div class="pm-search"><input class="input" data-pm-q placeholder="Search name, maker, part number, or net" value="${esc(PM.q)}"></div>` : '') +
+      `<div class="lm-modal-body">${body}</div>`;
+    const host = $('#part-modal-body'), was = host.querySelector('.lm-modal-body'), top = was ? was.scrollTop : 0;
+    const act = document.activeElement, focused = !!(act && act.matches && act.matches('[data-pm-q]')), caret = focused ? act.selectionStart : 0;
+    host.innerHTML = html;
+    const now = host.querySelector('.lm-modal-body');
+    if (now && top) now.scrollTop = top;
+    if (focused) { const f = host.querySelector('[data-pm-q]'); if (f) { f.focus(); f.setSelectionRange(caret, caret); } }
+  }
+  function addDevice(id) {
+    const p = LM.parts.get(id);
+    if (!p) return;
+    const n = change(h => {
+      const n = LM.parts.apply(M.addConnector(h, 0, 0, { family: 'flying', pins: 2 }), p);
+      placeClear(h, n.id);
+      S.sel = { kind: 'node', ids: new Set([n.id]) };
+      return n;
+    });
+    S.cam = null;
+    closeParts();
+    renderAll();
+    if (n) toast(`Added ${n.ref}: ${p.name}, ${p.pins.length} ${p.kind === 'device' ? 'leads' : 'pins'}. Wires run to its pins take the part’s lead colors and gauges.`);
+  }
+  // Properties for an end placed from the library: the part, whether the library has a newer version,
+  // and wires that differ from its leads.
+  function partBoxHtml(h, n) {
+    const P = LM.parts, p = P.get(n.part.id), newer = P.stale(n), what = newer ? P.changes(n, newer) : [];
+    const off = P.mismatches(h, n);
+    const state = !p ? (DEMO || P.lastRead() ? 'Not in the library as this browser last read it.' : 'The library hasn’t been read in this browser yet; it’s read at each sync.')
+      : newer ? `The library has a newer version${what.length ? ': ' + esc(what.join(', ')) : ', with nothing different for this end'}.` : 'Up to date with the library.';
+    const offTxt = off.length ? ` ${off.length} wire${off.length === 1 ? '' : 's'} differ${off.length === 1 ? 's' : ''} from its leads’ colors or gauges.` : '';
+    const acts = (newer ? '<button class="btn btn-primary" data-act="part-refresh">Refresh from library</button>' : '') +
+      (off.length ? '<button class="btn" data-act="part-leads" title="Set those wires to the part’s lead colors and gauges">Match wires to leads</button>' : '') +
+      '<button class="btn" data-act="part-unlink" title="Keep the pins and names, and drop the link to the library">Unlink</button>';
+    return `<div class="board-src part-src"><span class="lay-ico">${ICON.device}</span><div><b>${esc(n.part.name)}</b><div class="f-hint">From the part library. ${state}${offTxt}</div><div class="inline gap part-acts">${acts}</div></div></div>`;
+  }
+  const selNode = () => { const s = S.sel; return s && s.kind === 'node' && s.ids.size === 1 ? M.node(H(), [...s.ids][0]) : null; };
+  function refreshPart() {
+    const n0 = selNode(), p = n0 && LM.parts.stale(n0);
+    if (!p) return;
+    const what = LM.parts.changes(n0, p), ref = n0.ref;
+    change(h => { LM.parts.apply(M.node(h, n0.id), p); });
+    toast(`Refreshed ${ref} from the library${what.length ? ': ' + what.join(', ') : ''}.`);
+  }
+  function unlinkPart() {
+    const n0 = selNode();
+    if (!n0 || !n0.part) return;
+    const ref = n0.ref;
+    change(h => { const n = M.node(h, n0.id); delete n.part; delete n.leads; });
+    toast(`${ref} is no longer linked to the part library. Its pins and names stay.`);
+  }
+  function leadsToWires() {
+    const n0 = selNode();
+    if (!n0) return;
+    const ref = n0.ref;
+    let k = 0;
+    change(h => { LM.parts.mismatches(h, M.node(h, n0.id)).forEach(m => { Object.assign(m.wire, m.want); k++; }); });
+    toast(`${k} wire${k === 1 ? '' : 's'} set to ${ref}’s lead colors and gauges.`);
   }
 
   // ── Build: rail (inspector) ──
@@ -1962,7 +2085,7 @@
     const famSel = `<select class="input" data-f="n.family">${groups.filter(g => g !== 'Custom' || n.custom).map(g => `<optgroup label="${g}">${L.FAMILIES.filter(f => f.group === g).map(f => opt(f.id, f.style === 'custom' ? 'Custom: ' + L.kindName(Object.assign({}, n, { family: 'custom' })) : f.name, n.family)).join('')}</optgroup>`).join('')}</select>`;
     const pins = L.pinChoices(fam);
     const fromBoard = Array.isArray(n.pinNames) && n.pinNames.length;
-    const pinSel = fromBoard ? `<div class="input ro">${n.pinNames.length} from the board</div>`
+    const pinSel = fromBoard ? `<div class="input ro">${n.pinNames.length} from the ${n.part ? 'part' : 'board'}</div>`
       : fam.style === 'custom' ? `<button class="input ro cfg-ro" data-act="configure" title="Set in Configure">${n.pins} positions</button>`
       : `<select class="input" data-f="n.pins"${pins.length < 2 ? ' disabled' : ''}>${pins.map(p => opt(p, p + (fam.style === 'flying' ? ' leads' : ' pins'), n.pins)).join('')}</select>`;
     const others = h.nodes.filter(x => M.isConn(x) && x.id !== n.id);
@@ -1971,11 +2094,12 @@
     const sugg = matchRows(h, n);
     const boardBox = n.board ? `<div class="board-src"><span class="lay-ico">${ICON.board}</span><div><b>${esc(n.board.name)} ${esc(n.board.ref)}</b><div class="f-hint">${esc(n.board.source)}${n.board.mpn ? ' · board part ' + esc(n.board.mpn) : ''}. Pins and labels come from its netlist.</div></div></div>` : '';
     const suggBox = sugg.length ? `<div class="cat-label">Suggested wires</div><div class="rail-sec">${sugg.map(r => `<div class="sugg"><div><b>${r.pairs.length} pin${r.pairs.length > 1 ? 's' : ''} match ${esc(r.other.ref)}</b><div class="f-hint">${esc([...new Set(r.pairs.map(p => p.label))].slice(0, 6).join(', '))}${new Set(r.pairs.map(p => p.label)).size > 6 ? '…' : ''}</div></div><button class="btn" data-act="match-wire" data-a="${n.id}" data-b="${r.other.id}">Wire them</button></div>`).join('')}<p class="f-hint">Same net name on both ends, on pins with no wire yet. Check each against the boards.</p></div>` : '';
+    const partBox = n.part ? partBoxHtml(h, n) : '';
     // Where this end plugs in, in any system (assets/system.js).
     const plugs = LM.system.plugsOf(h.id, n.id);
     const plugBox = plugs.length ? `<div class="board-src sys-plugs"><span class="lay-ico">${ICON.system}</span><div>${plugs.map(p => `<div>Plugs into <button class="sys-link" data-open-sys="${p.system.id}">${esc(p.text)}</button></div>`).join('')}</div></div>` : '';
     return railHead('Connector', `<span class="mono-ref">${esc(n.ref)}</span> ${esc(n.name || L.kindName(n))}`, `<button class="btn cfg-open" data-act="configure" title="Name, type, and a custom face drawing">${ICON.sliders}Configure</button>`) +
-      `<div class="rail-list">${boardBox}${plugBox}${suggBox}<div class="face-tile" data-act="configure" title="Configure">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.fitViews(h, n, 0, 0, 330, 150).note)}</span></div>
+      `<div class="rail-list">${boardBox}${partBox}${plugBox}${suggBox}<div class="face-tile" data-act="configure" title="Configure">${LM.shapes.faceSvg(h, n, 330, 150)}<span class="face-note">${esc(LM.shapes.fitViews(h, n, 0, 0, 330, 150).note)}</span></div>
       <div class="rail-sec">
       ${LM.shapes.hasBack(n) ? fld('Views', segBtns('n.faceView', LM.shapes.views(n).length > 1 ? 'both' : LM.shapes.views(n)[0], [['front', 'Front'], ['back', 'Back'], ['both', 'Both']]), 'Front is the mating face, back the wire side. The drawing prints these.') : ''}
       <div class="row2 r-ref">${fld('Ref', inp('n.ref', n.ref))}${fld('Name', inp('n.name', n.name, ' placeholder="Main PCBA J1"'))}</div>
@@ -2485,6 +2609,14 @@
       case 'reset-route': { const keys = (el.dataset.keys || '').split(' ').filter(Boolean); change(x => { keys.forEach(k => { if (x.routes) delete x.routes[k]; }); }); break; }
       case 'auto-layout': change(x => { if (fold.prop) delete x.propY; else { x.place = {}; delete x.routes; x.wires.forEach(w => { delete w.labelAt; delete w.labelOff; }); x.sets.forEach(st => { delete st.badgeAt; delete st.badgeOff; }); } }); S.cam = null; renderCanvas(); break;
       case 'add-conn': addEnd('connector'); break;
+      case 'add-flying': addEnd('connector', { family: 'flying', pins: 2 }); break;
+      case 'add-device': openParts(); break;
+      case 'pm-close': closeParts(); break;
+      case 'pm-retry': readParts(); break;
+      case 'pm-add': addDevice(el.dataset.id); break;
+      case 'part-refresh': refreshPart(); break;
+      case 'part-unlink': unlinkPart(); break;
+      case 'part-leads': leadsToWires(); break;
       case 'add-splice': addEnd('splice'); break;
       case 'add-note': S.placing = 'note'; S.pending = null; S.view = 'build'; renderAll(); break;
       case 'add-table': S.placing = 'table'; S.pending = null; S.view = 'build'; renderAll(); break;
@@ -2581,8 +2713,10 @@
     renderAll();
   }
 
+  document.addEventListener('input', e => { if (e.target.matches && e.target.matches('[data-pm-q]')) { PM.q = e.target.value; renderPartModal(); } });
   document.addEventListener('click', e => {
     const t = e.target;
+    if (t.id === 'part-modal') { closeParts(); return; }
     const app = $('#app');
     if (app.classList.contains('nav-open') && !t.closest('[data-act="nav"]') && (!t.closest('#sidebar') || t.closest('[data-open], [data-open-sys], [data-sfocus], [data-act="new"], [data-act="new-system"], [data-act="home"], [data-act="open"], [data-act="guide"], a'))) {
       app.classList.remove('nav-open');
@@ -2656,6 +2790,7 @@
     if (ctxEl) { if (e.key === 'Escape') { e.preventDefault(); closeCtx(); return; } if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Tab') closeCtx(); }
     if (LM.configure.isOpen()) { LM.configure.onKey(e); return; }
     if (BM.open) { if (e.key === 'Escape') closeModal(); return; }
+    if (PM.open) { if (e.key === 'Escape') closeParts(); return; }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
     const mod = e.ctrlKey || e.metaKey;
     // Ctrl+S syncs, as in the other Signoff tools; with no sign-in (or in the demo) it saves a file.

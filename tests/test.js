@@ -446,6 +446,7 @@
     const res = await R.sync({ [h.id]: h }, opts(hub));
     const old = res.store[h.id]; delete old.syncBase; old.place = { 'n:p': { x: 5, y: 5 } };
     localStorage.removeItem(NSP + 'base');   // no kept copy to read a base from either
+    old.updated = Date.parse(JSON.parse(localStorage.getItem(NSP + 'lastSync')).at) - 1000;   // a fast fake sync can end in the same ms
     eq(R.edited('harness', old), false);
     old.updated = Date.now() + 5000;
     eq(R.edited('harness', old), true, 'stamped after it: an edit');
@@ -1323,6 +1324,70 @@
       ok(!/"mini"|"exit0"/.test(JSON.stringify(sb)), 'the stored block keeps no mini view');
       void pump; void j2;
     } finally { done(); }
+  });
+  // ── The part library (parts.js) ──
+  const P = LM.parts;
+  P.setNamespace(NSP);
+  const motor = (extra) => P.normalize(Object.assign({ id: 'pt-motor', kind: 'device', name: 'Gearmotor, 12 V', maker: 'Acme Motion', mpn: 'GM-12', mate: '', notes: '',
+    pins: [{ id: '1', label: 'M+', color: 'RD', gauge: '22' }, { id: '2', label: 'M-', color: 'BK', gauge: '22' }, { id: '3', label: 'ENC_A', color: 'YE', gauge: '' }],
+    updated: 1000, updatedBy: 'alice' }, extra || {}));
+  test('parts: a device part places flying leads with its pins, net names, leads, and a link', () => {
+    const h = harness('Parts'), n = P.apply(M.addConnector(h, 0, 0, { family: 'jst-ph', pins: 4 }), motor());
+    eq([n.family, n.pins, n.pinNames, n.pinLabels, n.atDevice], ['flying', 3, ['1', '2', '3'], { 1: 'M+', 2: 'M-', 3: 'ENC_A' }, true]);
+    eq(n.leads, { 1: { color: 'RD', gauge: '22' }, 2: { color: 'BK', gauge: '22' }, 3: { color: 'YE' } });
+    eq([n.name, n.mate, n.mpn, n.part], ['Gearmotor, 12 V', 'Acme Motion GM-12', '', { id: 'pt-motor', name: 'Gearmotor, 12 V', stamp: '1000|alice' }]);
+    eq(P.leadOf(n, '2'), { color: 'BK', gauge: '22' });
+    eq(P.leadOf(Object.assign({}, n, { part: undefined }), '2'), null, 'an unlinked end gives no lead');
+  });
+  test('parts: a connector part places the mating housing, marked as its device', () => {
+    const h = harness('Parts'), p = motor({ id: 'pt-mod', kind: 'connector', name: 'Sensor module', mpn: 'SM-4', mate: 'PHR-4', pins: [{ id: '1', label: 'VCC' }, { id: '2', label: 'GND' }, { id: '3' }, { id: '4' }] });
+    const n = P.apply(M.addConnector(h, 0, 0), p);
+    eq([n.family, n.pins, n.mpn, n.mate, n.atDevice, n.leads], ['jst-ph', 4, 'PHR-4', 'Acme Motion SM-4', true, undefined]);
+    eq([P.housingFamily('43025-0400'), P.housingFamily('39-01-2040'), P.housingFamily('JST GHR-03'), P.housingFamily('S7.556')], ['molex-microfit', 'molex-minifit', 'jst-gh', 'generic-rect']);
+  });
+  test('parts: a newer library part is offered, says what changes, and Refresh keeps the end’s own fields', () => {
+    clearNs();
+    const h = harness('Parts'), n = P.apply(M.addConnector(h, 0, 0), motor());
+    n.ref = 'M1';
+    localStorage.setItem(NSP + 'parts', JSON.stringify({ 'parts/pt-motor.json': { sha: 'a', part: motor() } }));
+    eq(P.stale(n), null, 'the same version is up to date');
+    const v2 = motor({ updated: 2000, pins: [{ id: '1', label: 'MOTOR+', color: 'RD', gauge: '20' }, { id: '2', label: 'M-', color: 'BK', gauge: '20' }, { id: '3', label: 'ENC_A', color: 'YE' }] });
+    localStorage.setItem(NSP + 'parts', JSON.stringify({ 'parts/pt-motor.json': { sha: 'b', part: v2 } }));
+    const p = P.stale(n);
+    ok(p && p.updated === 2000, 'the newer version is offered');
+    eq(P.changes(n, p), ['net names', 'lead colors or gauges']);
+    P.apply(n, p);
+    eq([n.ref, n.pinLabels['1'], n.leads['1'].gauge, n.part.stamp], ['M1', 'MOTOR+', '20', '2000|alice']);
+    eq(P.stale(n), null);
+    clearNs();
+  });
+  test('parts: wires that differ from a linked end’s leads are listed', () => {
+    const h = harness('Parts'), a = M.addConnector(h, 0, 0, { pins: 3 }), n = P.apply(M.addConnector(h, 300, 0), motor());
+    M.addWire(h, { node: a.id, pin: '1' }, { node: n.id, pin: '1' }, { color: 'RD', gauge: '22' });
+    const w2 = M.addWire(h, { node: a.id, pin: '2' }, { node: n.id, pin: '2' }, { color: 'WH', gauge: '24' });
+    const off = P.mismatches(h, n);
+    eq(off.map(m => [m.wire.id, m.pin, m.want]), [[w2.id, '2', { color: 'BK', gauge: '22' }]]);
+  });
+  test('parts: color names map to IEC codes, and unknown ones to nothing', () => {
+    eq(['White', 'grey', 'White/Black', 'red-white', 'Purple', 'Natural', ''].map(c => P.colorCode(c, M.COLORS)), ['WH', 'GY', 'WH/BK', 'RD/WH', 'VT', '', '']);
+  });
+  test('parts: the library is read from parts/ only, and unchanged files aren’t read again', async () => {
+    const hub = setup();
+    const doc = p => stable({ schema: 1, id: p.id, part: p });
+    hub.push(OWNER + '/loom_data', Object.assign(hub.files(OWNER + '/loom_data'), { 'parts/pt-motor.json': doc(motor()), 'parts/pt-fan.json': doc(motor({ id: 'pt-fan', name: 'Fan' })), 'parts/sub/x.json': doc(motor({ id: 'x' })), 'projects/nope.json': '{}' }));
+    try {
+      const r1 = await P.syncLib(opts(hub));
+      eq([r1.count, r1.changed], [2, 2]);
+      eq(P.all().map(p => p.name), ['Fan', 'Gearmotor, 12 V']);
+      const n0 = hub.calls.length;
+      const r2 = await P.syncLib(opts(hub));
+      eq(r2.changed, 0);
+      ok(!hub.calls.slice(n0).some(c => /\/git\/blobs\//.test(c)), 'no blob read when nothing changed');
+      const files = hub.files(OWNER + '/loom_data'); delete files['parts/pt-fan.json'];
+      hub.push(OWNER + '/loom_data', files);
+      await P.syncLib(opts(hub));
+      eq(P.all().map(p => p.id), ['pt-motor'], 'a part deleted from the repo leaves the library');
+    } finally { clearNs(); }
   });
   (async () => {
     let failed = 0;
