@@ -80,6 +80,9 @@
     return boardsCache;
   }
 
+  // A zip Fabcheck stored in parts (<zip>.001, .002, …): their paths in order, else null (one file).
+  const partsOf = z => (window.Signoff && Signoff.model && Signoff.model.zipParts ? Signoff.model.zipParts(z.path, z.parts) : null);
+
   // The package to read: the latest tagged revision (as Signoff EE picks it), else the latest stored run.
   async function pickPackage(b) {
     const revs = Object.keys(b.revisions).map(k => Object.assign({ id: k }, b.revisions[k]))
@@ -87,7 +90,7 @@
       .sort((x, y) => String(x.source.at || x.createdAt || '').localeCompare(String(y.source.at || y.createdAt || '')) || String(x.createdAt || '').localeCompare(String(y.createdAt || '')));
     const live = revs.filter(r => r.status !== 'withdrawn');
     const rev = live[live.length - 1] || revs[revs.length - 1];
-    if (rev) return { path: rev.source.zip.path, sha256: rev.source.zip.sha256, label: `Revision ${rev.label}${rev.status ? ' · ' + rev.status : ''}`, released: true };
+    if (rev) return { path: rev.source.zip.path, parts: partsOf(rev.source.zip), sha256: rev.source.zip.sha256, label: `Revision ${rev.label}${rev.status ? ' · ' + rev.status : ''}`, released: true };
     const runFiles = b.tree.filter(e => e.type === 'blob' && new RegExp(`(^|/)fabcheck/${b.id}/runs/[^/]+\\.json$`).test(e.path));
     const runs = [];
     for (const f of runFiles) {
@@ -97,7 +100,7 @@
     const r = runs[0];
     if (!r) return null;
     const when = /^\d{4}-\d\d-\d\d/.test(String(r.at)) ? String(r.at).slice(0, 10) : '';
-    return { path: r.package.zip.path, sha256: r.package.zip.sha256, label: `Latest stored Fabcheck run${when ? ', ' + when : ''} (no revision tagged)`, released: false };
+    return { path: r.package.zip.path, parts: partsOf(r.package.zip), sha256: r.package.zip.sha256, label: `Latest stored Fabcheck run${when ? ', ' + when : ''} (no revision tagged)`, released: false };
   }
 
   // ── Reading a package ──
@@ -114,9 +117,13 @@
       source = await pickPackage(b);
       if (!source) { const e = new Error(`${b.name} has no fab package stored yet. Send a Fabcheck run to Signoff first.`); e.code = 'nopkg'; throw e; }
       const p = source.path.replace(/^\/+/, '');
-      const e = b.tree.find(x => x.type === 'blob' && x.path === p);
-      if (!e) throw new Error(`${p} isn't in ${b.repo}.`);
-      bytes = await blob(b.repo, e.sha);
+      const parts = [];
+      for (const q of (source.parts || [source.path]).map(x => x.replace(/^\/+/, ''))) {
+        const e = b.tree.find(x => x.type === 'blob' && x.path === q);
+        if (!e) throw new Error(`${q} isn't in ${b.repo}.`);
+        parts.push(await blob(b.repo, e.sha));
+      }
+      bytes = parts.length === 1 ? parts[0] : new Uint8Array(await new Blob(parts).arrayBuffer());
       if (source.sha256 && (await sha256(bytes)) !== String(source.sha256).toLowerCase()) throw new Error(`${p} doesn't match its recorded SHA-256, so it wasn't used.`);
     }
     const got = Object.assign({ source }, await readZip(bytes));
