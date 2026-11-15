@@ -117,7 +117,8 @@ keeps listing the pick.
   editable as on the canvas; a harness's wire or end gets a read-only panel (`wirePanelHtml`, `endPanelHtml`;
   a system never edits a harness). **Open in Loom** under the panel's head opens a harness, wire, or end in the
   harness editor with it selected (`openHarness(id, sel)`), a placed system on System, and anything else on
-  System, selected. The › beside a placed system or harness lists just it; a breadcrumb leads back.
+  System, selected. The › beside a placed system or harness lists just it. The breadcrumb (root › … › the system, each a link) sits
+  in the toolbar right of the tabs on both tabs (Chris, 2026-11-14), with the pick in it as plain text last.
 
 A panel's **Open <system>** for a system inside its tree picks it and draws it on System (`openSub`, `pathTo`),
 and *Placed in* back to the open system clears the pick, drawing the top system whole; only a

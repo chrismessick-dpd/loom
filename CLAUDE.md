@@ -22,6 +22,9 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Breadcrumb in the toolbar (2026-11-14, Chris).** A system's path (root › … › the system, each a link) sits right
+  of the System and List tabs on both tabs (`#sys-crumbs`, `LM.system.crumbs`), no longer over List's title. List: the
+  system listed, or a harness after the system holding it; System: the system drawn, then the pick in it as plain text.
 - **Menu clicks keep the tab; wires land on their pins (2026-11-14, Chris).** With a system open, a row in
   another system's tree (`data-tpath`) opens that tree's top system on the same tab with the row picked, as a row
   in the open tree is; `LM.system.open` no longer resets the tab. A shield, cable, bundle, or twist reaching its

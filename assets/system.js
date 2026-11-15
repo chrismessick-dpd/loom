@@ -1574,11 +1574,27 @@
     return `<span class="sys-wsw" style="background:${bg}"></span>${esc(c.name)}`;
   }
   const focusAttr = (kind, id, path) => ` data-sfocus="${esc(kind + '|' + id + '|' + path)}"`;
-  // root › … › the system shown, each a link that focuses it.
+  // root › … › the system shown, each a link that focuses it; tail: what's picked in it, not a link.
   function crumbsHtml(path, tail) {
     const ids = String(path).split('>');
     const parts = ids.map((id, i) => { const x = S.store[id]; return x ? `<button class="sys-crumb"${focusAttr('system', id, ids.slice(0, i + 1).join('>'))}>${esc(x.title)}</button>` : ''; });
-    return `<div class="sys-crumbs">${parts.concat(tail ? [`<span>${esc(tail)}</span>`] : []).join('<span class="sep">›</span>')}</div>`;
+    return parts.concat(tail ? [`<span class="sys-crumb-tail">${esc(tail)}</span>`] : []).join('<span class="sep">›</span>');
+  }
+  // The breadcrumb in the toolbar, right of the tabs, on either tab (Chris, 2026-11-14: it sat over List's
+  // title). List: the system listed, or a harness after the system holding it. System: the system drawn, and
+  // the pick shown in it when that isn't the system itself.
+  function crumbs() {
+    if (!S.root || !S.cur) return '';
+    const f = S.focus;
+    if (S.tab === 'list') {
+      if (!f) return crumbsHtml(S.root);
+      const h = f.kind === 'harness' ? A.harness(f.id) : null;
+      return crumbsHtml(f.path, f.kind === 'harness' ? (h ? h.title : 'Missing harness') : '');
+    }
+    let tail = '';
+    if (f && f.kind === 'harness') { const h = A.harness(f.id); tail = h ? h.title : ''; }
+    else if (f && f.kind === 'system' && f.id !== S.cur && S.store[f.id]) tail = S.store[f.id].title;
+    return crumbsHtml(curPath(), tail);
   }
   function listHead(eyebrow, title, sub, crumbs, actions) {
     return `<div class="page-head lm-head"><div class="page-head-text">${crumbs}${eyebrow ? `<div class="eyebrow">${eyebrow}</div>` : ''}<h1 class="page-title">${esc(title)}</h1>${sub ? `<div class="page-sub">${sub}</div>` : ''}</div>${actions ? `<div class="lm-actions">${actions}</div>` : ''}</div>`;
@@ -1702,20 +1718,20 @@
     const menu = S.listColsOpen ? `<div class="sys-lmenu" role="menu"><div class="sys-lmenu-h">Columns</div>${LIST_COLS.map(([k, l]) => `<label class="sys-lopt"><input type="checkbox" data-slcol="${k}"${pr.cols[k] ? ' checked' : ''}><span>${l}</span></label>`).join('')}<p class="sys-lmenu-note">Name, Type, and Status always show.</p></div>` : '';
     const tools = `<div class="sys-ltools"><div class="seg" role="tablist">${[['tree', 'Hierarchy', 'Blocks, their connectors, and the cables in each'], ['flat', 'Cables', 'Just the cables and harnesses, each once']].map(([m, l, tip]) => `<button class="${pr.mode === m ? 'on' : ''}" data-sact="list-mode" data-mode="${m}" title="${tip}">${l}</button>`).join('')}</div>` +
       `<div class="sys-lcols"><button class="icon-btn${S.listColsOpen ? ' on' : ''}" data-sact="list-cols" title="Choose columns" aria-label="Choose columns" aria-expanded="${S.listColsOpen ? 'true' : 'false'}">${FUNNEL}</button>${menu}</div></div>`;
-    return `<div class="page wide sys-wpage">` + listHead('', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable${nCab === 1 ? '' : 's'}`, crumbsHtml(path)) + tools +
+    return `<div class="page wide sys-wpage">` + listHead('', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable${nCab === 1 ? '' : 's'}`, '') + tools +
       `<div class="card table-wrap"><table class="table compact sys-wtable sys-ltable">${head}<tbody>${rows || `<tr><td colspan="${nc}" class="pc-muted">${pr.mode === 'flat' ? 'No cables yet.' : 'Nothing placed yet.'}</td></tr>`}</tbody></table></div>` +
       `<p class="f-hint">Click a row to see it in the panel. ${pr.mode === 'flat' ? 'Each cable is listed once.' : 'A cable is listed under every connector it plugs into.'} The › beside a placed system or harness lists just it, a harness with its ends and wires.</p></div>`;
   }
   function harnessListHtml(f) {
     const h = A.harness(f.id), s = S.store[focusSys(f)];
-    if (!h) return `<div class="page wide sys-wpage">${listHead('', 'Missing harness', '', crumbsHtml(f.path))}</div>`;
+    if (!h) return `<div class="page wide sys-wpage">${listHead('', 'Missing harness', '', '')}</div>`;
     const A0 = an(h), cabs = s ? s.cables.filter(c => kindOf(c) === 'harness' && c.harness === h.id) : [];
     const ends = h.nodes.filter(M.isConn).map(n => {
       const where = n.atDevice ? 'Its device' : cabs.map(c => endName(s, c.ends[n.id])).filter(Boolean).join(', ') || 'Not plugged in here';
       return `<tr${rowAttr(`end:${h.id}:${n.id}`, 'end')}>${item(0, `<span class="mono">${esc(n.ref)}</span> ${esc(n.name || '')} ${typeHtml(endType(n))}`)}<td>${M.pinList(n).length} pins</td><td colspan="5">${esc(where)}</td></tr>`;
     }).join('');
     const wires = M.fromTo(h, A0).map(r => `<tr${rowAttr(`wire:${h.id}:${r.wire.id}:`, 'wire')}>${item(0, `<span class="mono">${esc(r.name)}</span>`)}<td class="mono">${esc(r.from)}</td><td class="mono">${esc(r.to)}</td><td>${esc(r.signal)}</td><td>${swatchHtml(r.wire.color)}</td><td>${esc(gaugeMetric(r.gauge)) || '<span class="sys-none">—</span>'}</td><td class="num">${U.fmtLen(r.length)}</td></tr>`).join('');
-    return `<div class="page wide sys-wpage">` + listHead('', h.title, `Loom harness<span class="sep">·</span>${esc(h.pn || NOPN)}<span class="sep">·</span>${h.nodes.filter(M.isConn).length} ends<span class="sep">·</span>${h.wires.length} wire${h.wires.length === 1 ? '' : 's'}`, crumbsHtml(f.path, h.title),
+    return `<div class="page wide sys-wpage">` + listHead('', h.title, `Loom harness<span class="sep">·</span>${esc(h.pn || NOPN)}<span class="sep">·</span>${h.nodes.filter(M.isConn).length} ends<span class="sep">·</span>${h.wires.length} wire${h.wires.length === 1 ? '' : 's'}`, '',
       `<button class="btn btn-primary" data-sact="open-harness-id" data-harness="${esc(h.id)}">Open in Loom</button>`) +
       `<h4 class="sys-h">Ends</h4><div class="card table-wrap"><table class="table compact sys-wtable"><thead><tr><th>End</th><th>Pins</th><th colspan="5">Plugs into, in ${esc(s ? s.title : 'this system')}</th></tr></thead><tbody>${ends || '<tr><td colspan="7" class="pc-muted">No ends.</td></tr>'}</tbody></table></div>` +
       `<h4 class="sys-h">Wires</h4><div class="card table-wrap"><table class="table compact sys-wtable"><thead><tr><th>Wire</th><th>From</th><th>To</th><th>Signal</th><th>Color</th><th>Gauge</th><th class="num">Length</th></tr></thead><tbody>${wires || '<tr><td colspan="7" class="pc-muted">No wires yet.</td></tr>'}</tbody></table></div></div>`;
@@ -2636,6 +2652,6 @@
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
     externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll,
-    tab: () => S.tab, setTab, setFocus, focused: () => S.focus, root: () => S.root,
+    tab: () => S.tab, setTab, setFocus, crumbs, focused: () => S.focus, root: () => S.root,
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, restore, saveFile, openDoc };
 })(window.LM = window.LM || {});

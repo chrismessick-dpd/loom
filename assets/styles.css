@@ -1062,6 +1062,12 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-crumbs .sep { opacity: 0.6; }
 .sys-crumb { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
 .sys-crumb:hover { text-decoration: underline; }
+/* In the toolbar, right of the System and List tabs (2026-11-14): one line, cut off at the right when long. */
+.lm-bar-crumbs { flex-wrap: nowrap; margin: 0 0 0 14px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.lm-bar-crumbs[hidden] { display: none; }
+.lm-bar-crumbs > * { flex: none; }
+.sys-crumb-tail { color: var(--text-2); }
+.toolbar-center { align-items: center; }
 .sys-wtable .sys-wi { padding-left: calc(12px + var(--lvl, 0) * 20px); min-width: 220px; }
 .sys-wtable tr.blk td { background: var(--bg-sunk); border-top: 1px solid var(--hair); }
 .sys-wtable tr.conn td { font-weight: 600; }

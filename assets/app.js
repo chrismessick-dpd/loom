@@ -628,7 +628,9 @@
   }
   function renderToolbar() {
     const h = H();
-    const seg = $('#view-seg');
+    const seg = $('#view-seg'), crumbs = $('#sys-crumbs');
+    const bar = LM.system.current() ? LM.system.crumbs() : '';
+    crumbs.innerHTML = bar; crumbs.hidden = !bar;
     // A system's tabs (Chris, 2026-11-12: as the harness's, over the canvas): System and List (Chris,
     // 2026-11-14: Overview was redundant; Detail, renamed System, draws the open system at the top).
     // Not data-view, which is the harness's own.
