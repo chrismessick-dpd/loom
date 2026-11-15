@@ -78,7 +78,9 @@ harnesses between them, with board-to-board harnesses in the parent; in the side
   (`SYS_BLOCK`; Chris, 2026-11-14, replacing `fitMini`'s fitted heights), with the drawing fitted inside it, counting
   only what the mini view draws (`mbox`, and tabs past a block's edge); its name (its one block's, else the system's
   title) sits large and upright over the drawing at 132 units (`NAME_FS`, large boards' old size), shrinking to half to
-  fit, then cut with an ellipsis (`fitName`, `blockLabel`, `.sys-bname`), with only the ref in the header; a frame gone stale (harnesses loading later, Cable labels) is redone before a draw
+  fit, then cut with an ellipsis (`fitName`, `blockLabel`, `.sys-bname`), with only the ref in the header; its tabs sit outside its edge, each with a
+  curved lead in to its connector in the drawing, and drag round the perimeter (`b.tabs[id].edge`, `edgeSpread`,
+  `leadPath`); a frame gone stale (harnesses loading later, Cable labels) is redone before a draw
   (`freshMinis`).
 - **Turn the system** (Chris, 2026-11-13): ⟳ beside Fit turns the whole system 90° clockwise (Shift-click:
   counterclockwise) as one undoable edit: every block turns as R turns it and swings round the middle of all the

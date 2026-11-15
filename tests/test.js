@@ -1158,7 +1158,7 @@
     try {
       eq(sb.kind, 'system'); eq(sb.ref, 'S1'); eq(sb.name, 'Pump module');
       eq(sb.conns.map(c => [c.id, c.ref, c.pins.length, c.fn]), [[a.id + '/' + j1.id, 'A1 J1', 2, 'Power in']], 'only the external connector, named by its block and ref');
-      ok(sb.conns[0].x >= 0 && sb.conns[0].x < sb.w / 2 && sb.conns[0].exit0 === 'left', 'it sits where it is in the mini view, toward the left, and leaves to the left');
+      ok(sb.conns[0].x < 0 && sb.conns[0].exit0 === 'left', 'it sits on the left edge, the way it leaves inside, and leaves to the left');
       ok(!/"conns"/.test(JSON.stringify(sb)), 'the stored block keeps no connectors');
       j1.ref = 'P1'; a.x = 300; j2.external = true; Y.resolve();
       eq(sb.conns.map(c => c.id).sort(), [a.id + '/' + j1.id, a.id + '/' + j2.id].sort(), 'a new external connector joins, the old id stays');
@@ -1346,16 +1346,23 @@
     const long = 'Humidifier Control Board (L), with a very long name indeed', l = Y.fitName(long, room);
     ok(l.fs === F / 2 && l.text.endsWith('…') && l.text.length < long.length, 'past half size it is cut with an ellipsis');
   });
-  test('nest: a placed system’s connectors sit where they are in its mini view, and follow it', () => {
+  test('nest: a placed system’s connectors sit on its block’s edge, level with where they are in its mini view, and follow it', () => {
     const { Y, pump, a, j1, j2, sb, done } = nestFixture();
     try {
       ok(sb.mini && sb.mini.f > 0, 'the block has a mini view');
-      const c0 = sb.conns[0], m = sb.mini, cx = m.ox + (a.x + j1.x + Y.TAB.w / 2 - m.E.x) * m.f;
-      ok(Math.abs(c0.x + c0.tw / 2 - cx) < 0.05, 'the tab is centered on its connector in the mini view');
-      ok(c0.y > 0 && c0.y < sb.h, 'inside the block');
+      const c0 = sb.conns[0], m = sb.mini, cx = m.ox + (a.x + j1.x + Y.TAB.w / 2 - m.E.x) * m.f, cy = m.oy + (a.y + j1.y + Y.TAB.h / 2 - m.E.y) * m.f;
+      ok(Math.abs(c0.inner.x - cx) < 0.05 && Math.abs(c0.inner.y - cy) < 0.05, 'its lead runs in to the connector in the mini view');
+      eq(c0.x, -c0.tw, 'the tab sits just outside the left edge, the way it leaves inside');
+      ok(Math.abs(c0.y + Y.TAB.h / 2 - cy) < 0.05, 'level with the connector');
       const y0 = c0.y; j1.y += 30; Y.resolve();
-      ok(sb.conns[0].y > y0, 'moved down in the child, it moves down in the mini view');
-      ok(!/"mini"|"exit0"/.test(JSON.stringify(sb)), 'the stored block keeps no mini view');
+      ok(sb.conns[0].y > y0, 'moved down in the child, it moves down the edge');
+      // Dragged round to the top edge, it stays there, kept with the parent's block.
+      sb.tabs[c0.id] = { edge: { side: 'top', t: 0.5 } }; Y.resolve();
+      const c1 = sb.conns[0];
+      eq([c1.y, Math.round(c1.x + c1.tw / 2), c1.exit0], [-Y.TAB.h, 75, 'top'], 'on the top edge, in the middle, leaving up');
+      j1.y += 10; Y.resolve();
+      eq(Math.round(sb.conns[0].x + sb.conns[0].tw / 2), 75, 'and stays put when the child changes');
+      ok(!/"mini"|"exit0"|"inner"/.test(JSON.stringify(sb)), 'the stored block keeps no mini view');
       void pump; void j2;
     } finally { done(); }
   });

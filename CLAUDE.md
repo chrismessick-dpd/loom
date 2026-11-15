@@ -22,6 +22,13 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Tabs on the block's edge (2026-11-14, Chris).** A placed system's tabs sit just outside its block's edge, each
+  with a thin curved lead in to where its connector really sits in the mini view (`c.inner`, `leadPath`, `.sys-lead`).
+  Unmoved, a tab goes to the edge its connector faces inside, level with it; tabs on one side spread so none overlap
+  (`edgeSpread`). A drag on a tab slides it round the perimeter, corners included (`edgeAt`, drag kind `edge`), kept in
+  the parent's `b.tabs[id].edge` (`{ side, t }`, the side in the block's own frame, t its middle along it); the cables
+  into it re-route, and one undo puts it back. A click still starts a cable. Edge tabs leave from their edge (no
+  `autoExits`). Old hand-placed `x`/`y` spots in `b.tabs` are dropped. Tests 92.
 - **One block size, upright names (2026-11-14, Chris: blocks fitted to their drawings came out all sizes).** Every
   placed system's block is 150 × 150 mm (`SYS_BLOCK` in `resolveBlock`; `fitMini` is gone, and the panel's Width and
   Height are gone for them), its mini view fitted inside. Its name, its one block's, else the system's title, is

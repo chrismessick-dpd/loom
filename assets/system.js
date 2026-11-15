@@ -124,12 +124,28 @@
     const mf = ch ? miniFrame(b, ch) : null;
     Object.defineProperty(b, 'mini', { value: mf, enumerable: false, writable: true, configurable: true });
     if (mf) {
-      setConns(b, ext.map(e => {
-        const t = b.tabs[e.id] || {}, w = tabW(e.ref), x = +(mf.ox + (e.cx - mf.E.x) * mf.f - w / 2).toFixed(2), y = +(mf.oy + (e.cy - mf.E.y) * mf.f - TAB.h / 2).toFixed(2);
+      // Each tab on the block's edge (Chris, 2026-11-14), with a curved lead in to where its connector really
+      // sits in the mini view (c.inner). Unmoved, a tab goes to the edge its connector faces inside, level with it;
+      // dragged, it keeps its place round the edge (b.tabs[id].edge: { side, t }, the side in the block's own frame
+      // and t its middle, 0 to 1 along it from the top or left). Tabs on one side are spread so none overlap.
+      const list = ext.map(e => {
+        const t = b.tabs[e.id] || {}, w = tabW(e.ref), ix = mf.ox + (e.cx - mf.E.x) * mf.f, iy = mf.oy + (e.cy - mf.E.y) * mf.f;
+        const hand = t.edge && SIDES[t.edge.side] ? { side: t.edge.side, t: Math.max(0, Math.min(1, +t.edge.t || 0)) } : null;
+        const side = hand ? hand.side : SIDES[e.side] ? e.side : 'right';
+        const u = hand ? hand.t : side === 'left' || side === 'right' ? iy / b.h : ix / b.w;
+        return { e, t, w, ix, iy, hand, side, u: Math.max(0, Math.min(1, u)) };
+      });
+      const pos = edgeSpread(b, list);
+      setConns(b, list.map(q => {
+        const { e, t, w, side } = q, at = pos.get(q);
+        const x = +(side === 'left' ? -w : side === 'right' ? b.w : at - w / 2).toFixed(2), y = +(side === 'top' ? -TAB.h : side === 'bottom' ? b.h : at - TAB.h / 2).toFixed(2);
         const c = { id: e.id, ref: e.ref, pins: e.pins, fn: t.fn != null ? t.fn : e.fn, fn0: e.fn, used: true, fitted: true, placed: 'link', link: true,
-          x, y, ax: x, ay: y, exit: t.exit || undefined, external: !!t.external, side: 'top', mpn: e.mpn, mfr: e.mfr, desc: e.desc, tw: w, leaf: e.leaf, inside: e.inside };
+          x, y, ax: x, ay: y, exit: t.exit || undefined, external: !!t.external, upAt: t.upAt || undefined, side: 'top', mpn: e.mpn, mfr: e.mfr, desc: e.desc, tw: w, leaf: e.leaf, inside: e.inside };
         if (!c.exit) delete c.exit;
-        Object.defineProperty(c, 'exit0', { value: e.side, enumerable: false, writable: true, configurable: true });
+        if (!c.upAt) delete c.upAt;
+        if (q.hand) c.edge = q.hand;
+        Object.defineProperty(c, 'exit0', { value: side, enumerable: false, writable: true, configurable: true });
+        Object.defineProperty(c, 'inner', { value: { x: q.ix, y: q.iy, side: e.side, at, edge: side }, enumerable: false, writable: true, configurable: true });
         return c;
       }));
       return;
@@ -166,6 +182,51 @@
         mpn: e.mpn, mfr: e.mfr, desc: e.desc, tw: tabW(e.ref), leaf: e.leaf, inside: e.inside };
     }).map(c => { if (!c.exit) delete c.exit; if (!c.upAt) delete c.upAt; return c; }));
   }
+  // Where each edge tab's middle sits along its side (mm from the side's top or left): at its spot, then pushed
+  // apart so none overlap, and kept on the side.
+  function edgeSpread(b, list) {
+    const out = new Map();
+    ['left', 'right', 'top', 'bottom'].forEach(side => {
+      const on = list.filter(q => q.side === side), vert = side === 'left' || side === 'right', len = vert ? b.h : b.w;
+      if (!on.length) return;
+      on.sort((p, q) => p.u - q.u);
+      const size = q => (vert ? TAB.h : q.w) + 2, half = q => size(q) / 2;
+      const at = on.map(q => Math.max(half(q), Math.min(len - half(q), q.u * len)));
+      for (let i = 1; i < at.length; i++) at[i] = Math.max(at[i], at[i - 1] + half(on[i - 1]) + half(on[i]));
+      const n = at.length - 1;
+      at[n] = Math.min(at[n], len - half(on[n]));
+      for (let i = n - 1; i >= 0; i--) at[i] = Math.min(at[i], at[i + 1] - half(on[i + 1]) - half(on[i]));
+      on.forEach((q, i) => out.set(q, at[i]));
+    });
+    return out;
+  }
+  // A point in a block's own frame (mm) to the turned block's (as tabSpot), and back.
+  function turnPt(b, x, y) {
+    const r = rotOf(b);
+    return r === 90 ? { x: b.h - y, y: x } : r === 180 ? { x: b.w - x, y: b.h - y } : r === 270 ? { x: y, y: b.w - x } : { x, y };
+  }
+  function ownPt(b, x, y) {
+    const r = rotOf(b);
+    return r === 90 ? { x: y, y: b.h - x } : r === 180 ? { x: b.w - x, y: b.h - y } : r === 270 ? { x: b.w - y, y: x } : { x, y };
+  }
+  // The nearest place round a block's edge to a canvas point: { side, t } in its own frame.
+  function edgeAt(b, p) {
+    const q = ownPt(b, p.x / K - b.x, p.y / K - b.y), x = Math.max(0, Math.min(b.w, q.x)), y = Math.max(0, Math.min(b.h, q.y));
+    const d = { left: Math.abs(q.x), right: Math.abs(b.w - q.x), top: Math.abs(q.y), bottom: Math.abs(b.h - q.y) };
+    const side = Object.keys(d).sort((m, n) => d[m] - d[n])[0], vert = side === 'left' || side === 'right';
+    return { side, t: Math.round((vert ? y / b.h : x / b.w) * 1000) / 1000 };
+  }
+  // The curved lead from an edge tab in to its connector in the mini view (canvas units).
+  function leadPath(b, c) {
+    const n = c.inner;
+    if (!n) return '';
+    const own = n.edge, E = own === 'left' ? { x: 0, y: n.at } : own === 'right' ? { x: b.w, y: n.at } : own === 'top' ? { x: n.at, y: 0 } : { x: n.at, y: b.h };
+    const P = { x: n.x, y: n.y }, d = Math.max(4, Math.hypot(E.x - P.x, E.y - P.y) * 0.45);
+    const inward = SIDES[own].map(v => -v), out = SIDES[n.side] || [-inward[0], -inward[1]];
+    const c1 = { x: E.x + inward[0] * d, y: E.y + inward[1] * d }, c2 = { x: P.x + out[0] * d, y: P.y + out[1] * d };
+    const w = q => { const r = turnPt(b, q.x, q.y); return ((b.x + r.x) * K).toFixed(1) + ' ' + ((b.y + r.y) * K).toFixed(1); };
+    return { d: `M${w(E)}C${w(c1)} ${w(c2)} ${w(P)}`, end: turnPt(b, P.x, P.y) };
+  }
   function resolveAll() { Object.values(S.store).forEach(s => s.blocks.forEach(b => { if (b.kind === 'system') resolveBlock(b, [s.id]); })); }
   // After a change, what the parent set on its system blocks' tabs goes back into b.tabs.
   function keepTabs(s) {
@@ -175,7 +236,7 @@
       b.conns.forEach(c => {
         const o = {}, was = t[c.id] || {};
         // A mini view places the tabs itself; a spot the parent set by hand before stays stored as it was.
-        if (b.mini) { if (was.x != null) { o.x = was.x; o.y = was.y; } }
+        if (b.mini) { if (c.edge) o.edge = c.edge; }
         else if (Math.abs(c.x - c.ax) > 1e-6 || Math.abs(c.y - c.ay) > 1e-6) { o.x = c.x; o.y = c.y; }
         if (c.exit) o.exit = c.exit;
         if (c.external) o.external = true;
@@ -700,7 +761,7 @@
       const mid = at.map(x => { const t = tabSpot(x.b, x.c); return { x: x.b.x + t.x + tw(x.c) / 2, y: x.b.y + t.y + TAB.h / 2 }; });
       const shaped = n => !!(cab.routes && cab.routes[n]);
       at.forEach((x, i) => {
-        if (x.c.exit || autoExit.has(x.c)) return;
+        if (x.c.exit || autoExit.has(x.c) || x.c.inner) return;
         if (i === 0 ? at.slice(1).some(o => shaped(o.n.id)) : shaped(x.n.id)) return;
         const o = mid.filter((_, j) => j !== i), vx = o.reduce((a, q) => a + q.x, 0) / o.length - mid[i].x, vy = o.reduce((a, q) => a + q.y, 0) / o.length - mid[i].y;
         const len = Math.hypot(vx, vy);
@@ -1276,7 +1337,8 @@
             // Its name large and upright over the drawing, whatever the block's turn (Chris, 2026-11-14): the
             // board's when it holds just one; the ref alone stays in the header.
             const L = fitName(blockLabel(b), W - 24);
-            return `<g class="sys-mini" transform="${miniXf(b)}">${miniSvg(childOf(b), 1, true)}</g>` +
+            const leads = b.conns.map(c => { const L = leadPath(b, c); return L ? `<path class="sys-lead" d="${L.d}"/><circle class="sys-lead-dot" cx="${((b.x + L.end.x) * K).toFixed(1)}" cy="${((b.y + L.end.y) * K).toFixed(1)}" r="3"/>` : ''; }).join('');
+            return `<g class="sys-mini" transform="${miniXf(b)}">${miniSvg(childOf(b), 1, true)}</g>` + leads +
               (L.text ? `<text class="sys-bname" x="${X + W / 2}" y="${Y + hd + (Hh - hd) / 2}" style="font-size:${L.fs.toFixed(1)}px"><title>${esc(blockLabel(b))}</title>${esc(L.text)}</text>` : '');
           }
           const fs = Math.max(7, Math.min(44, (W - 20) / Math.max(1, U.textW(name, 1)), (Hh - hd) * 0.42));
@@ -2110,6 +2172,11 @@
         // without moving still selects it.
         const near = runNear(cb.dataset.cable, p);
         drag = Object.assign(base, { kind: 'run', cab: cable(s, cb.dataset.cable), run: near, end: near.route.end, click: cb.dataset.cable });
+      } else if (bl && !S.pending && t.closest('[data-conn]') && (() => { const b0 = block(s, bl.dataset.block); return b0 && b0.kind === 'system' && b0.mini; })()) {
+        // A tab on a placed system's block slides round the block's edge (Chris, 2026-11-14); a click still
+        // starts a cable.
+        const tb = t.closest('[data-conn]');
+        drag = Object.assign(base, { kind: 'edge', b: block(s, bl.dataset.block), cid: tb.dataset.conn, tab: tb });
       } else if (bl && !S.pending) {
         const b = block(s, bl.dataset.block);
         // A block in a selection of several takes the selection with it: its blocks, and the shapes of
@@ -2138,6 +2205,18 @@
         c.upAt = { dx: r(d.a0.dx + (p.x - d.p.x) / K), dy: r(d.a0.dy + (p.y - d.p.y) / K) };
         if (!c.upAt.dx && !c.upAt.dy) delete c.upAt;
         redraw(svg);
+        return;
+      }
+      if (d.kind === 'edge') {
+        if (!d.snap) { pushPast(); d.snap = true; svg.classList.add('dragging'); }
+        const b = d.b, at = edgeAt(b, p);
+        b.tabs = b.tabs || {};
+        const was = b.tabs[d.cid] || {};
+        b.tabs[d.cid] = Object.assign({}, was, { edge: at });
+        resolveBlock(b, [cur().id]);
+        // The cables into it re-route from where it now leaves.
+        cur().cables.forEach(cab => Object.keys(cab.ends).forEach(k => { const en = cab.ends[k]; if (en && en.block === b.id && en.conn === d.cid && cab.routes) delete cab.routes[k]; }));
+        redraw(svg, { fast: true });
         return;
       }
       if (d.kind === 'dev') {
@@ -2249,6 +2328,11 @@
       if (d.kind === 'up') {
         if (d.moved && d.snap) { const s = cur(); keepTabs(s); s.updated = now(); if (A.login()) s.updatedBy = A.login(); persist(); A.refresh(); return; }
         if (!d.moved) { S.sel = { kind: 'conn', block: d.ub, conn: d.uc }; S.pair = null; S.picking = null; A.refresh(); }
+        return;
+      }
+      if (d.kind === 'edge') {
+        if (d.moved && d.snap) { const s = cur(); keepTabs(s); s.updated = now(); if (A.login()) s.updatedBy = A.login(); persist(); A.refresh(); return; }
+        if (!d.moved) { if (d.brk) { toggleSel('block', d.b.id); A.refresh(); } else clickTab(tabRef(d.tab)); }
         return;
       }
       if (d.kind === 'dev') {
