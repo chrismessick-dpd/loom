@@ -115,12 +115,12 @@
     const ch = childOf(b), ext = ch ? externals(ch, trail) : [], bd = extentOf(ch) || { x: 0, y: 0, w: 1, h: 1 };
     if (ch) b.name = ch.title;
     b.tabs = b.tabs && typeof b.tabs === 'object' ? b.tabs : {};
-    if (!(b.w >= 5)) b.w = 100;
-    if (!(b.h >= 5)) b.h = Math.round(Math.max(40, Math.min(160, 100 * bd.h / bd.w)));
+    // Every placed system is one fixed size (Chris, 2026-11-14: blocks fitted to their drawings came out all
+    // sizes, which read oddly), square, so a turn doesn't change it.
+    b.w = SYS_BLOCK; b.h = SYS_BLOCK;
     // The mini view (Chris, 2026-11-13): the placed system's whole drawing, its boards and its harnesses,
     // shrunk to fit inside the block, and each tab where its connector sits in it (exiting the way it exits
-    // there). The block keeps its size, and the spots aren't stored (b.mini and c.exit0 aren't enumerable).
-    if (ch) fitMini(b, ch);
+    // there). The spots aren't stored (b.mini and c.exit0 aren't enumerable).
     const mf = ch ? miniFrame(b, ch) : null;
     Object.defineProperty(b, 'mini', { value: mf, enumerable: false, writable: true, configurable: true });
     if (mf) {
@@ -657,6 +657,9 @@
   // Turned blocks (Chris, 2026-11-12: 90 degree steps): b.rot is 0, 90, 180, or 270, clockwise. The block's
   // size (b.w, b.h), its connectors' spots (c.x, c.y), and a connector's chosen exit (c.exit) stay in the
   // block's own frame; b.x and b.y are the turned block's top left. Tabs and text stay upright.
+  // A placed system's block (mm), and the size of its name (canvas units): as a large board's name showed
+  // when their blocks were fitted to their drawings (Chris, 2026-11-14).
+  const SYS_BLOCK = 150, NAME_FS = 132;
   const rotOf = b => ((Math.round((+b.rot || 0) / 90) * 90) % 360 + 360) % 360;
   const sizeOf = b => (rotOf(b) % 180 ? { W: b.h, H: b.w } : { W: b.w, H: b.h });
   const TURN = { left: 'top', top: 'right', right: 'bottom', bottom: 'left' };
@@ -1061,18 +1064,23 @@
     if (d[0]) { const h = Math.min(x.h, span), w = Math.min(x.w, h, DW.box); return { x: d[0] > 0 ? x.x : x.x + x.w - w, y: x.y + (x.h - h) / 2, w, h }; }
     const w = Math.min(x.w, span), h = Math.min(x.h, w, DW.box); return { x: x.x + (x.w - w) / 2, y: d[1] > 0 ? x.y : x.y + x.h - h, w, h };
   }
-  // A placed system's block is as tall as its mini view needs at the block's width (Chris, 2026-11-13: take out
-  // the empty space under the drawing): the header, the drawing scaled to the width, and a margin. Width and
-  // height are as the block shows on screen, so a block turned 90° or 270° fits its stored width.
-  function fitMini(b, ch) {
-    const E = drawnExtent(ch);
-    if (!E) return;
-    const r = rotOf(b), turned = r === 90 || r === 270, pad = 2, Ws = turned ? b.h : b.w;
-    const Ew = turned ? E.h : E.w, Eh = turned ? E.w : E.h, f = (Ws - 2 * pad) / Ew;
-    if (!(f > 0)) return;
-    let Hs = 46 / K + 1.5 + Eh * f + pad;
-    Hs = +Math.max(30, Hs).toFixed(2);
-    if (turned) b.w = Hs; else b.h = Hs;
+  // A placed system's name on its block: the one block it holds (a board system shows its board),
+  // else the system's title.
+  function blockLabel(b) {
+    const ch = childOf(b);
+    if (!ch) return 'Missing system';
+    const only = ch.blocks.length === 1 ? ch.blocks[0] : null;
+    return String((only && only.name) || ch.title || '');
+  }
+  // One line across the block (canvas units): NAME_FS, smaller down to half of it to fit the whole name, then
+  // cut with an ellipsis.
+  function fitName(name, room) {
+    if (!name) return { text: '', fs: NAME_FS };
+    const w1 = Math.max(1e-6, U.textW(name, 1)), fs = Math.max(NAME_FS / 2, Math.min(NAME_FS, room / w1));
+    if (U.textW(name, fs) <= room) return { text: name, fs };
+    let n = name.length;
+    while (n > 1 && U.textW(name.slice(0, n).trimEnd() + '…', fs) > room) n--;
+    return { text: name.slice(0, n).trimEnd() + '…', fs };
   }
   // The SVG transform from a placed system's own drawing (canvas units) to the parent's canvas.
   function miniXf(b) {
@@ -1082,13 +1090,13 @@
   }
   // A system drawn small, for a mini view: its blocks and used connectors, its cables, and its device harness
   // drawings, nothing to click. Strokes keep their width on screen however small it's drawn.
-  function miniSvg(s, depth) {
+  function miniSvg(s, depth, bare) {
     let o = '';
     s.blocks.forEach(b => {
       const X = b.x * K, Y = b.y * K, { W, H } = sizeOf(b);
       o += shaped(b) ? shapeSvg(b, picOf(b), 'sys-mshape') : `<rect class="sys-mb ${b.kind}" x="${X}" y="${Y}" width="${W * K}" height="${H * K}" rx="6"/>`;
       if (b.kind === 'system' && b.mini && childOf(b) && depth < 3) o += `<g transform="${miniXf(b)}">${miniSvg(childOf(b), depth + 1)}</g>`;
-      else if (b.name) { const fs = Math.max(4, Math.min(W * K * 0.9 / Math.max(1, U.textW(b.name, 1)), H * K * 0.3)); o += `<text class="sys-mt" x="${X + W * K / 2}" y="${Y + H * K / 2}" style="font-size:${fs.toFixed(1)}px">${esc(b.name)}</text>`; }
+      else if (b.name && !bare) { const fs = Math.max(4, Math.min(W * K * 0.9 / Math.max(1, U.textW(b.name, 1)), H * K * 0.3)); o += `<text class="sys-mt" x="${X + W * K / 2}" y="${Y + H * K / 2}" style="font-size:${fs.toFixed(1)}px">${esc(b.name)}</text>`; }
       (b.conns || []).filter(c => fitted(c) && (c.used || pluggedAt(s, b.id, c.id).length)).forEach(c => { const g = tabGeom(b, c); o += `<rect class="sys-mtab" x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}"/>`; });
     });
     layout(s).forEach(({ cab, h, routes }) => { const st = statusOf(cab, h), col = colorOf(cab) || (st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : 'var(--accent)'); routes.forEach(r => { o += `<path class="sys-mc" style="stroke:${col}" d="${r.d}"/>`; }); });
@@ -1265,10 +1273,11 @@
           const name = String(b.kind === 'system' && !childOf(b) ? 'Missing system' : b.name || '');
           if (b.kind === 'system' && b.mini && childOf(b)) {
             // The placed system drawn small (Chris, 2026-11-13), and its name beside the ref in the header.
-            const fr = Math.max(14, Math.min(30, hd - 12)), x0 = X + 10 + U.textW(b.ref, fr) + 8, room = X + W - 8 - x0;
-            const fn = Math.max(5, Math.min(fr * 0.7, room / Math.max(1, U.textW(name, 1))));
-            return `<g class="sys-mini" transform="${miniXf(b)}">${miniSvg(childOf(b), 1)}</g>` +
-              (room > 10 ? `<text class="sys-hname" x="${x0}" y="${Y + Math.min(36, hd - 6)}" style="font-size:${fn.toFixed(1)}px">${esc(name)}</text>` : '');
+            // Its name large and upright over the drawing, whatever the block's turn (Chris, 2026-11-14): the
+            // board's when it holds just one; the ref alone stays in the header.
+            const L = fitName(blockLabel(b), W - 24);
+            return `<g class="sys-mini" transform="${miniXf(b)}">${miniSvg(childOf(b), 1, true)}</g>` +
+              (L.text ? `<text class="sys-bname" x="${X + W / 2}" y="${Y + hd + (Hh - hd) / 2}" style="font-size:${L.fs.toFixed(1)}px"><title>${esc(blockLabel(b))}</title>${esc(L.text)}</text>` : '');
           }
           const fs = Math.max(7, Math.min(44, (W - 20) / Math.max(1, U.textW(name, 1)), (Hh - hd) * 0.42));
           return name ? `<text class="sys-center" x="${X + W / 2}" y="${Y + hd + (Hh - hd) / 2}" style="font-size:${fs.toFixed(1)}px">${esc(name)}</text>` : '';
@@ -1444,7 +1453,7 @@
       fld('Ref', inp('b.ref', b.ref)) +
       (ch ? `<p class="hint">Placed by link: edits to ${esc(ch.title)} show here and wherever else it’s placed.</p><div class="sys-actions">${btn('open-system', 'Open ' + esc(ch.title), ` data-sys="${ch.id}"`, 'btn-primary')}</div>`
         : '<p class="hint">The system it placed isn’t here any more.</p>') +
-      `<div class="field-row">${fld('Width, mm', inp('b.w', b.w, ' type="number" min="5"'))}${fld('Height, mm', inp('b.h', b.h, ' type="number" min="5"'))}</div>` +
+      `<p class="hint">${SYS_BLOCK} × ${SYS_BLOCK} mm, as every placed system.</p>` +
       `<h4 class="sys-h">Connectors <span class="count">${b.conns.length} external</span></h4>` +
       (b.conns.length ? `<div class="sys-list">${b.conns.map(c => `<button class="sys-row" data-ssel="conn:${b.id}:${c.id}"><span class="sys-st">${pluggedAt(s, b.id, c.id).length ? '\u25cf' : '\u25cb'}</span><span>${esc(c.ref)}<small>${esc([c.fn, c.pins.length + ' pins'].filter(Boolean).join(' · '))}</small></span></button>`).join('')}</div>`
         : `<p class="hint">None yet: open ${esc(ch ? ch.title : 'it')} and tick Make external on the connectors it shares.</p>`) +
@@ -2679,7 +2688,7 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll,
+    externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
     tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,
     canUndo: () => !locked() && S.past.length > 0, canRedo: () => !locked() && S.future.length > 0, discardTo, restore, saveFile, openDoc,
     // compare.js: a stored version made ready to draw (its placed systems' tabs resolved), the selection

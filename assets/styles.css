@@ -1230,6 +1230,7 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-lab-bg { fill: var(--cv-paper); fill-opacity: 0.85; stroke: var(--cv-conn-edge); stroke-width: 0.8; pointer-events: none; }
 .sys-mshape .sys-board { fill-opacity: 0.55; }
 .sys-mshape .sys-board-edge { stroke-width: 0.8; }
+.sys-bname { font-family: var(--font, sans-serif); font-weight: 600; fill: var(--cv-ink); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: var(--cv-paper); stroke-width: 10px; stroke-linejoin: round; stroke-opacity: 0.85; pointer-events: none; }
 .sys-mt { font-family: var(--font, sans-serif); font-weight: 600; fill: var(--cv-ink-2); text-anchor: middle; dominant-baseline: central; opacity: 0.8; }
 .sys-mtab { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 0.7; }
 .sys-mc { fill: none; stroke-width: 1.1; opacity: 0.85; }

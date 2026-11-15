@@ -22,6 +22,13 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **One block size, upright names (2026-11-14, Chris: blocks fitted to their drawings came out all sizes).** Every
+  placed system's block is 150 × 150 mm (`SYS_BLOCK` in `resolveBlock`; `fitMini` is gone, and the panel's Width and
+  Height are gone for them), its mini view fitted inside. Its name, its one block's, else the system's title, is
+  drawn large and upright over the drawing at the size large boards' names had (`NAME_FS`, 132 units), smaller down to half to fit
+  across the block, then cut with an ellipsis (`fitName`); the header keeps only the ref. Mini views no longer print
+  their blocks' names at the top level. EE boards, drawn boards, and devices keep their own sizes and names. Stored
+  `b.w`/`b.h` of placed systems change only when that system is next edited and synced. Tests 93.
 - **Version tags and Version comparison (2026-11-14, Chris: "view at version", across the suite, starting in Loom;
   his choices: tags stored in the data file, the tagged side read-only plus Restore, called "version tags" so they
   don't clash with EE's revision tags).** `assets/compare.js` (`LM.compare`).

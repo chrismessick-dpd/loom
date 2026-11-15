@@ -1329,12 +1329,22 @@
       ok(sb.mini.E.w > w0 + 150, 'the frame fits the wider drawing');
       const hd = Math.min(46, sb.h * 4 / 2) / 4;
       ok(sb.mini.oy >= hd, 'and stays under the header');
-      ok(Math.abs(sb.mini.oy + sb.mini.E.h * sb.mini.f + 2 - sb.h) < 0.05, 'the block is as tall as the header and its drawing, no empty space under it');
+      eq([sb.w, sb.h], [150, 150], 'every placed system is the one fixed size, whatever its drawing');
+      ok(sb.mini.ox >= 2 - 1e-6 && sb.mini.ox + sb.mini.E.w * sb.mini.f <= sb.w - 2 + 1e-6 && sb.mini.oy + sb.mini.E.h * sb.mini.f <= sb.h - 2 + 1e-6, 'and its drawing fits inside it');
       // Turned 270°, the header is on the block's own right side.
       sb.rot = 270; Y.freshMinis(top);
       const m = sb.mini, hd2 = Math.min(46, sb.w * 4 / 2) / 4;
       ok(m.ox + m.E.w * m.f <= sb.w - hd2 + 1e-6, 'a turned block keeps its drawing off the side its header is on');
     } finally { done(); }
+  });
+  test('system: a block’s name keeps its size, shrinks to half to fit, then ends in an ellipsis', () => {
+    const Y = LM.system, F = Y.NAME_FS, room = 560;
+    const short = Y.fitName('Fan', room);
+    eq([short.text, short.fs], ['Fan', F], 'a short name at full size');
+    const mid = 'Blower (L)', m = Y.fitName(mid, room);
+    ok(m.text === mid && m.fs < F && m.fs >= F / 2, 'a longer one smaller, whole');
+    const long = 'Humidifier Control Board (L), with a very long name indeed', l = Y.fitName(long, room);
+    ok(l.fs === F / 2 && l.text.endsWith('…') && l.text.length < long.length, 'past half size it is cut with an ellipsis');
   });
   test('nest: a placed system’s connectors sit where they are in its mini view, and follow it', () => {
     const { Y, pump, a, j1, j2, sb, done } = nestFixture();
