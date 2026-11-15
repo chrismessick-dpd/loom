@@ -36,6 +36,9 @@ links to it so far. Before every commit:
   the name and number; a block matches by itself only on a name or number with nothing included; `inside(b)` lights
   a placed system holding a match. Kept per open system in this browser (`sysFilter`). What doesn't match fades
   (`fout`), a lit block gets a dashed ring (`sys-fring`), and List rows fade or get an accent edge (`fhit`).
+  Then (Chris, 2026-11-15) no Any: a tag's Include or Exclude clears when clicked again; one box (`#sys-fpat`)
+  makes pattern badges (`f.pats`, Enter or Add, Include or Exclude, × removes), each over names and part numbers,
+  any included pattern and no excluded one; the old name and number boxes read as included patterns.
   Formboard has the same filter (Chris, 2026-11-15): one `.sys-fwrap` per view, `filterUi()` drawing whichever shows;
   `filterFlat(rootId)` matches flattened blocks and cables, unmatched blocks tint gray, unmatched cable lines fade, and
   lit blocks get a dashed ring in `drawOverlay`.

@@ -1344,24 +1344,26 @@
     return out;
   }
   // ── The view's filter (Chris, 2026-11-15) ──
-  // One per open system, kept in this browser: each tag ignored, included, or excluded; a name and a part number,
-  // each with * and ? (without one, it matches anywhere in the text), without case. A cable matches when it has
-  // an included tag (if any are included), no excluded tag, and the name and number given. A block has no tags,
-  // so it matches by itself only on a name or number with nothing included; a placed system also lights when
-  // something inside it matches.
+  // One per open system, kept in this browser: tags and patterns, each Include or Exclude. A pattern is typed in
+  // the one box and becomes a badge; it matches a name or a part number, with * and ? (without one, anywhere in
+  // the text), without case. A cable lights when it has an included tag (if any are included) and no excluded
+  // one, and matches an included pattern (if any) and no excluded one. A block has no tags, so it lights by itself
+  // only on an included pattern with no tag included; a placed system also lights when something inside it does.
   const FKEY = NS + 'sysFilter';
   function filters() {
     if (!S.filters) { try { S.filters = JSON.parse(localStorage.getItem(FKEY) || '{}') || {}; } catch (e) { S.filters = {}; } }
     return S.filters;
   }
   function filterOf(root) {
-    const f = filters()[root || S.root] || {};
-    return { tags: Object.assign({}, f.tags || {}), name: f.name || '', pn: f.pn || '' };
+    const f = filters()[root || S.root] || {}, pats = Object.assign({}, f.pats || {});
+    // The first version's name and number boxes, as included patterns.
+    [f.name, f.pn].forEach(x => { if (x && String(x).trim()) pats[String(x).trim()] = 'in'; });
+    return { tags: Object.assign({}, f.tags || {}), pats };
   }
-  const filterOn = f => !!(f.name.trim() || f.pn.trim() || Object.values(f.tags).some(Boolean));
+  const filterOn = f => Object.values(f.tags).some(Boolean) || Object.values(f.pats).some(Boolean);
   function setFilter(f, root) {
     const all = filters(), k = root || S.root;
-    if (filterOn(f)) all[k] = { tags: f.tags, name: f.name, pn: f.pn }; else delete all[k];
+    if (filterOn(f)) all[k] = { tags: f.tags, pats: f.pats }; else delete all[k];
     try { localStorage.setItem(FKEY, JSON.stringify(all)); } catch (e) { /* storage blocked */ }
   }
   function glob(p) {
@@ -1374,20 +1376,22 @@
   function filterMatch(s, f) {
     f = f || filterOf();
     if (!filterOn(f)) return null;
-    const nm = glob(f.name), pn = glob(f.pn), names = Object.keys(f.tags);
-    const inc = names.filter(k => f.tags[k] === 'in'), exc = names.filter(k => f.tags[k] === 'out');
-    const ok = (re, xs) => !re || xs.some(x => x && re.test(x));
+    const by = (o, v) => Object.keys(o).filter(k => o[k] === v);
+    const inc = by(f.tags, 'in'), exc = by(f.tags, 'out');
+    const pin = by(f.pats, 'in').map(glob).filter(Boolean), pout = by(f.pats, 'out').map(glob).filter(Boolean);
+    const hit = (re, xs) => xs.some(x => x && re.test(x));
+    const pats = xs => (!pin.length || pin.some(re => hit(re, xs))) && !pout.some(re => hit(re, xs));
     const cable = cab => {
       const h = harnessOf(cab), tg = cab.tags || [];
       if (inc.length && !inc.some(k => LM.tags.has(tg, k))) return false;
       if (exc.some(k => LM.tags.has(tg, k))) return false;
-      return ok(nm, [titleOf(cab, h), cab.name, h && h.title]) && ok(pn, [pnOf(h, cab), cab.mpn]);
+      return pats([titleOf(cab, h), cab.name, h && h.title, pnOf(h, cab), cab.mpn]);
     };
-    const direct = !!(nm || pn) && !inc.length;
+    const direct = pin.length > 0 && !inc.length;
     const block = b => {
       if (!direct) return false;
       const ch = childOf(b), name = ch ? ch.title : b.name || '';
-      return ok(nm, [name, b.ref + ' ' + name, b.ref, b.source && b.source.name]) && ok(pn, [b.pn, ch && ch.pn]);
+      return pats([name, b.ref + ' ' + name, b.ref, b.source && b.source.name, b.pn, ch && ch.pn]);
     };
     const memo = new Map();
     const holds = (x, trail) => {
@@ -1410,16 +1414,29 @@
       block: x => { const m = mOf(x.system), b = m && S.store[x.system].blocks.find(y => y.id === x.id); return !!b && (m.block(b) || m.inside(b)); },
     };
   }
+  // A pattern typed in the box: added as Include (Enter or Add), or its badge's state changed or removed.
+  function addPattern(text) {
+    const p = String(text || '').trim();
+    if (!p) return false;
+    const f = filterOf();
+    if (!f.pats[p]) f.pats[p] = 'in';
+    setFilter(f);
+    return true;
+  }
   const fring = (X, Y, W, H) => `<rect class="sys-fring" x="${X - 6}" y="${Y - 6}" width="${W + 12}" height="${H + 12}" rx="12"/>`;
   const FUNNEL_I = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 3h12l-4.6 5.4V13l-2.8-1.4V8.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
   // The button and its menu, at the top right of the System, List, and Formboard views (whichever shows); the
-  // menu is drawn only when it opens or a tag changes, so typing in its boxes keeps focus.
+  // menu is drawn only when it opens or something in it changes.
   const fwrap = () => [...document.querySelectorAll('.sys-fwrap')].find(w => w.offsetParent !== null) || null;
+  // Include and Exclude for a tag or a pattern. A tag's lit one clears it when clicked again; a pattern's badge has
+  // a × to remove it instead.
+  const fseg = (act, attr, v, tip, toggle) => `<span class="seg sys-fseg">${[['in', 'Include', 'Show only what has this'], ['out', 'Exclude', 'Fade what has this']].map(([x, l, t]) =>
+    `<button class="${v === x ? 'on' : ''}" data-sact="${act}" ${attr} data-v="${toggle && v === x ? '' : x}" aria-pressed="${v === x}" title="${toggle && v === x ? 'Click again to stop filtering by this ' + tip : t}">${l}</button>`).join('')}</span>`;
   function filterUi(menuToo) {
     const w = fwrap();
     if (!w) return;
     const f = filterOf(), on = filterOn(f), s = cur();
-    const n = on ? Object.values(f.tags).filter(Boolean).length + (f.name.trim() ? 1 : 0) + (f.pn.trim() ? 1 : 0) : 0;
+    const n = Object.values(f.tags).filter(Boolean).length + Object.values(f.pats).filter(Boolean).length;
     let b = w.querySelector('.sys-fbtn');
     if (!b) { w.innerHTML = '<button class="icon-btn glass sys-fbtn" data-sact="filter" aria-haspopup="true" aria-label="Filter"></button><div class="sys-fmenu" role="dialog" aria-label="Filter" hidden></div>'; b = w.querySelector('.sys-fbtn'); }
     b.classList.toggle('on', on || !!S.filterOpen);
@@ -1432,17 +1449,20 @@
     if (menuToo || !m.firstChild) {
       const tags = LM.tags.all().slice().sort((a, b2) => a.localeCompare(b2, undefined, { sensitivity: 'base' }));
       const stOf = k => { const hit = Object.keys(f.tags).find(x => LM.tags.key(x) === LM.tags.key(k)); return hit ? f.tags[hit] : ''; };
+      const pats = Object.keys(f.pats);
       m.innerHTML = `<div class="sys-fhead"><b>Filter</b>${on ? '<button class="sys-fclear" data-sact="filter-clear">Clear</button>' : ''}</div>` +
         `<div class="sys-fsec">Tags</div>` +
-        (tags.length ? `<div class="sys-ftags">${tags.map(k => { const v = stOf(k); return `<div class="sys-ftag"><span class="tag-badge sm" style="--tag:${esc(LM.tags.color(k))}"><span class="tag-dot"></span>${esc(k)}</span>` +
-          `<span class="seg sys-fseg">${[['', 'Any', 'Ignore this tag'], ['in', 'Include', 'Show cables with this tag'], ['out', 'Exclude', 'Hide cables with this tag']].map(([x, l, tip]) => `<button class="${v === x ? 'on' : ''}" data-sact="filter-tag" data-tag="${esc(k)}" data-v="${x}" title="${tip}">${l}</button>`).join('')}</span></div>`; }).join('')}</div>`
+        (tags.length ? `<div class="sys-ftags">${tags.map(k => `<div class="sys-ftag"><span class="tag-badge sm" style="--tag:${esc(LM.tags.color(k))}"><span class="tag-dot"></span>${esc(k)}</span>` +
+          fseg('filter-tag', `data-tag="${esc(k)}"`, stOf(k), 'tag', true) + '</div>').join('')}</div>`
           : '<p class="hint">No tags in Loom yet. Add them in a cable’s panel.</p>') +
-        `<label class="sys-fsec" for="sys-fname">Name</label><input class="input" id="sys-fname" data-sfilt="name" placeholder="Any name; * and ? are wildcards" autocomplete="off" spellcheck="false" value="${esc(f.name)}">` +
-        `<label class="sys-fsec" for="sys-fpn">Part number</label><input class="input" id="sys-fpn" data-sfilt="pn" placeholder="Any part number, like RA-003*" autocomplete="off" spellcheck="false" value="${esc(f.pn)}">` +
+        `<label class="sys-fsec" for="sys-fpat">Name or part number</label>` +
+        `<div class="sys-fadd"><input class="input" id="sys-fpat" placeholder="Like PDD* or RA-003??, then Enter" autocomplete="off" spellcheck="false"><button class="btn" data-sact="filter-add">Add</button></div>` +
+        (pats.length ? `<div class="sys-ftags">${pats.map(p => `<div class="sys-ftag"><span class="sys-fpat"><span class="mono">${esc(p)}</span><button class="tag-x" data-sact="filter-pat" data-pat="${esc(p)}" data-v="" title="Remove ${esc(p)}" aria-label="Remove ${esc(p)}">×</button></span>` +
+          fseg('filter-pat', `data-pat="${esc(p)}"`, f.pats[p], 'pattern', false) + '</div>').join('')}</div>` : '') +
         `<p class="sys-fnote" id="sys-fnote"></p>`;
     }
     const note = m.querySelector('#sys-fnote'), fm = s && filterMatch(s, f);
-    if (note) note.textContent = !fm ? 'Matching cables and blocks stay lit; the rest fade.'
+    if (note) note.textContent = !fm ? 'A pattern matches names and part numbers; * is any run of characters, ? one character. Matching cables and blocks stay lit; the rest fade.'
       : (() => { const c = s.cables.filter(fm.cable).length, k = s.blocks.filter(x => fm.block(x) || fm.inside(x)).length; return `${c} cable${c === 1 ? '' : 's'} and ${k} block${k === 1 ? '' : 's'} lit here.`; })();
   }
   function upSvg(s, fm) {
@@ -2663,14 +2683,9 @@
     // The blocks a panel's connector field edits: the selected block's (two placements of one system share
     // their tabs' ids), else every block.
     const mine = s => s.blocks.filter(b => !(S.sel && S.sel.block) || b.id === S.sel.block);
-    // The filter's name and part number boxes redraw the view as you type; the menu stays as it is.
-    page.addEventListener('input', e => {
-      const t = e.target, k = t.dataset && t.dataset.sfilt;
-      if (!k) return;
-      const f = filterOf(); f[k] = t.value; setFilter(f);
-      A.refresh();
-    });
     page.addEventListener('keydown', e => {
+      // Enter in the filter's box adds what's typed as a pattern badge.
+      if (e.key === 'Enter' && e.target.id === 'sys-fpat') { e.preventDefault(); if (addPattern(e.target.value)) { filterUi(true); A.refresh(); setTimeout(() => { const i = fwrap() && fwrap().querySelector('#sys-fpat'); if (i) i.focus(); }, 0); } return; }
       if (e.key === 'Escape' && S.filterOpen && e.target.closest && e.target.closest('.sys-fwrap')) { S.filterOpen = false; filterUi(); const b = fwrap() && fwrap().querySelector('.sys-fbtn'); if (b) b.focus(); e.stopPropagation(); }
     });
     page.addEventListener('change', e => {
@@ -2756,7 +2771,9 @@
       case 'list-mode': { const p = listPrefs(); p.mode = el.dataset.mode === 'flat' ? 'flat' : 'tree'; setListPrefs(p); A.refresh(); break; }
       case 'filter': S.filterOpen = !S.filterOpen; filterUi(true); break;
       case 'filter-tag': { const f = filterOf(), k = el.dataset.tag, v = el.dataset.v; Object.keys(f.tags).forEach(x => { if (LM.tags.key(x) === LM.tags.key(k)) delete f.tags[x]; }); if (v) f.tags[k] = v; setFilter(f); filterUi(true); A.refresh(); break; }
-      case 'filter-clear': setFilter({ tags: {}, name: '', pn: '' }); filterUi(true); A.refresh(); break;
+      case 'filter-clear': setFilter({ tags: {}, pats: {} }); filterUi(true); A.refresh(); break;
+      case 'filter-add': { const i = fwrap() && fwrap().querySelector('#sys-fpat'); if (i && addPattern(i.value)) { filterUi(true); A.refresh(); setTimeout(() => { const j = fwrap() && fwrap().querySelector('#sys-fpat'); if (j) j.focus(); }, 0); } break; }
+      case 'filter-pat': { const f = filterOf(), k = el.dataset.pat, v = el.dataset.v; if (v) f.pats[k] = v; else delete f.pats[k]; setFilter(f); filterUi(true); A.refresh(); break; }
       case 'list-fold': { const k = el.dataset.key, c = S.listClosed || (S.listClosed = new Set()); if (c.has(k)) c.delete(k); else c.add(k); A.refresh(); break; }
       case 'help': try { localStorage.setItem(NS + 'sysHelp', helpOpen() ? 'closed' : 'open'); } catch (e) { /* storage blocked */ } A.refresh(); break;
       case 'rotate-cw': case 'rotate-ccw': {

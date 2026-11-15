@@ -1288,7 +1288,7 @@
       top.cables.push({ id: 'kt', kind: 'bought', name: 'Mains lead', pn: 'RA-00378', tags: ['Low voltage'], ends: { a: { block: psu.id, conn: p1.id }, b: null } });
       pump.cables.push({ id: 'kp', kind: 'link', name: 'Pump feed', tags: ['24 VAC'], ends: { a: { block: a.id, conn: j2.id }, b: null } });
       const kt = top.cables.find(c => c.id === 'kt'), kp = pump.cables.find(c => c.id === 'kp');
-      const F = (tags, name, pn) => Y.filterMatch(top, { tags: tags || {}, name: name || '', pn: pn || '' });
+      const F = (tags, ...ps) => Y.filterMatch(top, { tags: tags || {}, pats: Object.fromEntries(ps.filter(Boolean).map(p => (p[0] === '-' ? [p.slice(1), 'out'] : [p, 'in']))) });
       eq(F(), null, 'nothing set: off');
       let m = F({ '24 vac': 'in' });
       ok(!m.cable(kt) && m.cable(kp), 'include: a cable with the tag, without case');
@@ -1302,8 +1302,12 @@
       ok(!m.cable(kt) && m.cable(kp) && m.block(sb), 'a wildcard name: the whole name, or the block’s name');
       m = F(null, 'S?');
       ok(m.block(sb) && !m.cable(kt), '? is one character, matched against the ref too');
-      m = F(null, '', 'RA-003*');
-      ok(m.cable(kt) && !m.cable(kp) && !m.block(sb) && !m.inside(sb), 'part number with a wildcard');
+      m = F(null, 'RA-003*');
+      ok(m.cable(kt) && !m.cable(kp) && !m.block(sb) && !m.inside(sb), 'a pattern matches a part number too');
+      m = F(null, 'Pump*', 'mains');
+      ok(m.cable(kt) && m.cable(kp), 'any included pattern');
+      m = F(null, '-mains');
+      ok(!m.cable(kt) && m.cable(kp) && !m.block(sb), 'an excluded pattern fades what it matches, and lights no block alone');
       m = F({ 'Low voltage': 'in' }, 'pump');
       ok(!m.cable(kt) && !m.cable(kp) && !m.block(sb), 'every part must hold, and an include keeps blocks from matching by name');
     } finally { done(); }

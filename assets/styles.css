@@ -1122,7 +1122,14 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-ftag { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sys-ftag .tag-badge { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sys-fseg button { padding: 3px 8px; font-size: 11.5px; }
+.sys-fmenu { user-select: none; }
+.sys-fmenu .input { user-select: text; }
 .sys-fmenu .input { width: 100%; }
+.sys-fadd { display: flex; gap: 6px; }
+.sys-fadd .input { flex: 1; min-width: 0; }
+.sys-fpat { display: inline-flex; align-items: center; gap: 4px; min-width: 0; height: 22px; padding: 0 3px 0 8px; border-radius: 11px; font-size: 12px; background: var(--bg-sunk); box-shadow: inset 0 0 0 1px var(--hair); }
+.sys-fpat .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sys-fpat .tag-x { --tag: var(--text-3); }
 .sys-fnote { margin: 4px 0 0; font-size: 11.5px; color: var(--text-3); }
 .sys-canvas .fout { opacity: 0.14; }
 .sys-canvas .sys-fring { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
