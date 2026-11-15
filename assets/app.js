@@ -615,7 +615,6 @@
       `<button class="icon-btn" data-act="sys-undo" title="Undo (Ctrl+Z)" aria-label="Undo"${Y.canUndo() ? '' : ' disabled'}>${ICON.undo}</button>` +
       `<button class="icon-btn" data-act="sys-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${Y.canRedo() ? '' : ' disabled'}>${ICON.redo}</button>` +
       (discard ? `<button class="btn" data-act="sys-discard" title="Put this system back as it was at the last sync (Ctrl+Z brings the changes back)">Discard changes</button>` : '') +
-      (s && LM.history ? `<button class="btn" data-act="sys-history" title="Who changed this system, from its versions on GitHub">History</button>` : '') +
       `<button class="btn btn-primary" data-act="sys-save" title="Download this system as a .loom.json file">${ICON.save}<span class="btn-label">Save file</span></button>`;
   }
   async function discardSystem() {
@@ -626,9 +625,19 @@
     if (b && LM.system.discardTo(b)) toast('Back to the last sync. Ctrl+Z brings your changes back.');
     else toast("There's no synced version of this system to go back to.", 'error');
   }
+  function menuItems() {
+    if (!LM.history) return [];
+    const sid = LM.system.current();
+    if (sid) return [{ label: 'History…', run: () => LM.history.open(LM.system.get(sid), 'system') }];
+    const h = H();
+    return h ? [{ label: 'History…', run: () => LM.history.open(h) }] : [];
+  }
   function renderToolbar() {
     const h = H();
     const seg = $('#view-seg'), crumbs = $('#sys-crumbs');
+    // History… in the ⋯ menu (Chris, 2026-11-14: in every tool's ⋯ menu, not a button), for the system or
+    // harness open; the ⋯ is the hub's tickets.js button, which draws a tool's own entries first.
+    if (window.SignoffTickets && SignoffTickets.items) SignoffTickets.items(menuItems);
     const bar = LM.system.current() ? LM.system.crumbs() : '';
     crumbs.innerHTML = bar; crumbs.hidden = !bar;
     // A system's tabs (Chris, 2026-11-12: as the harness's, over the canvas): System and List (Chris,
@@ -2082,7 +2091,7 @@
       ${fld('Wire allowance', inp('h.allowancePct', h.allowancePct, ' type="number" min="0" max="50" step="1"'), 'Percent added to every BOM length.')}
       ${fld('Notes', `<textarea class="input" rows="6" data-f="h.notes">${esc((h.notes || []).join('\n'))}</textarea>`, 'One note per line; the drawing numbers them.')}
       </div>${more || ''}<div class="cat-label">Checks</div>${checkRows(h, c)}
-      <div class="rail-actions"><button class="btn" data-act="history" title="Who changed this harness, from its versions on GitHub">History</button><button class="btn" data-act="duplicate">Duplicate</button><button class="btn btn-danger" data-act="delete-harness">${ICON.trash}Delete harness</button></div></div>`;
+      <div class="rail-actions"><button class="btn" data-act="duplicate">Duplicate</button><button class="btn btn-danger" data-act="delete-harness">${ICON.trash}Delete harness</button></div></div>`;
   }
   function railConnector(h, A, n) {
     const fam = L.family(n.family);
@@ -2597,7 +2606,6 @@
       case 'sys-redo': LM.system.act('redo'); break;
       case 'sys-discard': discardSystem(); break;
       case 'sys-resolve': { const sid = LM.system.current(); if (sid && LM.resolve) LM.resolve.open('system', LM.system.get(sid)); break; }
-      case 'sys-history': { const sid = LM.system.current(); if (sid && LM.history) LM.history.open(LM.system.get(sid), 'system'); break; }
       case 'resolve': if (H() && LM.resolve) LM.resolve.open('harness', H()); break;
       case 'sys-save': LM.system.saveFile(); break;
       case 'undo': undo(); break;
@@ -2637,7 +2645,6 @@
       case 'bm-add': addBoardConnector(el.dataset.ref); break;
       case 'match-wire': wireMatches(el.dataset.a, el.dataset.b); break;
       case 'delete': deleteSel(); break;
-      case 'history': if (LM.history) LM.history.open(h); break;
       case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); delete c.identAt; delete c.demoVersion; delete c.plPart; delete c.syncBase; delete c.conflictOf; S.store[c.id] = c; openHarness(c.id); break; }
       case 'delete-harness': {
         // Once synced, a harness is kept as a tombstone, so the next sync deletes it everywhere (its file

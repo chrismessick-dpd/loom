@@ -22,6 +22,9 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **History in the ⋯ menu (2026-11-14, Chris: in every tool's ⋯ menu, not a button).** *History…* for the open
+  harness or system is the first entry of the ⋯ at the toolbar's right (`menuItems` in `app.js`, through the hub's
+  `SignoffTickets.items`); the harness panel's and the system toolbar's History buttons are gone.
 - **No harness panel (2026-11-14, Chris).** The left rail is gone off phones: Properties with nothing selected is the
   harness's own fields (`railHarness(h, A, overviewHtml())`: title, numbers, project, defaults, notes, then the
   splices, notes, and wire sets, then checks), so a click on empty canvas shows the whole harness. A harness clicked
