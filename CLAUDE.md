@@ -29,7 +29,7 @@ links to it so far. Before every commit:
   systems down to boards and devices, keyed by path; `setLengths` is Apply lengths. On that tab Undo, Redo, and
   keys are the formboard's own (`fbToolbar`, `onKey` hands over). Formboards are local only so far
   (`loom.v1.formboards`, references in IndexedDB `loom-fbref`); syncing to `loom_data/formboards/` is next and
-  waits for Chris. See `docs/formboard.md`, *Built*. Tests 108 (14 router cases, also `node tests/fbroute-cases.js`,
+  waits for Chris. See `docs/formboard.md`, *Built*. Tests 109 (15 router cases, also `node tests/fbroute-cases.js`,
   and 2 flatten). Tried in the demo with synthetic pointer events: Route, Four views, a cable's panel, Apply and
   undo, drawing and editing a channel, a block drag, and STEP and DXF imports from Partcheck's made-up demo.
 - **Tabs on the block's edge (2026-11-14, Chris).** A placed system's tabs sit just outside its block's edge, each

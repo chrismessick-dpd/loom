@@ -121,25 +121,42 @@
 
   // Where an end joins the network: a straight drop to the nearest point of an allowed channel (every edge
   // that close, so an end at a corner or junction may leave by any of them). A longer drop could cut
-  // across the model, so it's never weighed against the channels. Over dropMax, it's flagged.
+  // across the model, so it's never weighed against the channels. Over dropMax, it's flagged. Tiers: each
+  // allowed channel's nearest entries, nearest channel first; a leg tries the next channel only when the
+  // nearer ones lead nowhere (a stub that joins nothing).
   const TIE = 0.5;
-  function entries(net, p, cab, dropMax) {
-    const all = [];
+  function entries(net, p, cab) {
+    const by = {};
     net.edges.forEach(e => {
       if (e.junction || !edgeOk(net, e, cab)) return;
       const r = onSeg(p, net.nodes[e.u].p, net.nodes[e.v].p);
-      all.push({ e, t: r.t, q: r.q, d: r.d });
+      (by[e.ch] = by[e.ch] || []).push({ e, t: r.t, q: r.q, d: r.d });
     });
-    if (!all.length) return { list: [], long: false };
-    const dmin = Math.min(...all.map(x => x.d));
-    return { list: all.filter(x => x.d <= dmin + TIE), long: dmin > dropMax };
+    const tiers = Object.values(by).map(list => { const dmin = Math.min(...list.map(x => x.d)); return { dmin, list: list.filter(x => x.d <= dmin + TIE) }; });
+    tiers.sort((x, y) => x.dmin - y.dmin);
+    // Channels as near as the nearest share its tier (an end at a junction may leave by either).
+    const out = [];
+    tiers.forEach(t => { const last = out[out.length - 1]; if (last && t.dmin <= last.dmin + TIE) last.list = last.list.concat(t.list); else out.push(t); });
+    return out;
   }
 
-  // One leg, from point A to point B, through the vias in order. States are (node, vias passed); running
-  // along an edge of the next via's channel passes it (touching it at a junction doesn't).
+  // One leg, from point A to point B, through the vias in order: the nearest channel at each end first; when
+  // those don't connect, the pairs of entry channels in order of their two drops together, so a far drop is
+  // taken only when nothing nearer connects. The first six channels at each end are tried.
+  const TRY = 6;
   function leg(net, cab, A, B, vias, dropMax) {
-    const ea = entries(net, A, cab, dropMax), eb = entries(net, B, cab, dropMax);
-    if (!ea.list.length || !eb.list.length) return null;
+    const ta = entries(net, A, cab).slice(0, TRY), tb = entries(net, B, cab).slice(0, TRY);
+    if (!ta.length || !tb.length) return null;
+    const pairs = [];
+    ta.forEach((x, i) => tb.forEach((y, j) => pairs.push({ i, j, d: x.dmin + y.dmin })));
+    pairs.sort((p, q) => p.d - q.d || p.i + p.j - q.i - q.j);
+    for (const pr of pairs) {
+      const r = legThrough(net, cab, A, B, vias, dropMax, ta[pr.i], tb[pr.j]);
+      if (r) return r;
+    }
+    return null;
+  }
+  function legThrough(net, cab, A, B, vias, dropMax, ea, eb) {
     const V = vias.length, N = net.nodes.length, cost = new Float64Array(N * (V + 1)).fill(Infinity), prev = new Int32Array(N * (V + 1)).fill(-1), prevE = new Array(N * (V + 1));
     const pass = (e, k) => (!e.junction && k < V && e.ch === vias[k] ? k + 1 : k);
     const h = new Heap(), seed = {};
@@ -202,7 +219,7 @@
     pts.push(B);
     const tidy = pts.filter((p, i) => !i || dist(p, pts[i - 1]) > 1e-6);
     const drops = entry.d + exit.d, total = best.c;
-    return { pts: tidy, path: total - drops, drops, dropA: entry.d, dropB: exit.d, channels: chans, longDrop: ea.long || eb.long || entry.d > dropMax || exit.d > dropMax };
+    return { pts: tidy, path: total - drops, drops, dropA: entry.d, dropB: exit.d, channels: chans, longDrop: entry.d > dropMax || exit.d > dropMax };
   }
 
   // The build length: (drop + path + drop) × (1 + slack %) + each channel's extra × the length run in it +

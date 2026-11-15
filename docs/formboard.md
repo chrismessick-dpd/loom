@@ -39,6 +39,10 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   the height; joining an existing channel's point within 8 px), double-click or Enter to finish. Selected,
   its points drag, a double-click on a run adds a point, and the panel has Name, Width, Height, Classes,
   Exclusive, Extra mm per meter, and each run's length (typing one moves the points after it).
+- **Entering the network:** each end drops to its nearest allowed channel. When the nearest channels at
+  the two ends don't connect (a stub that joins nothing), pairs of entry channels are tried in order of
+  their two drops together (six at each end at most), so a far drop is taken only when nothing nearer
+  connects.
 - **Route** routes every unpinned cable and stores each route (legs, points, lengths, and the breakdown)
   with a key of its end points, so a route whose ends have moved since is drawn dashed and marked. Routes
   are drawn over the views; Not routed is dashed and labeled.

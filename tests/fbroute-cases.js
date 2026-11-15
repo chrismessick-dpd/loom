@@ -64,6 +64,12 @@
     if (!near(r.legs[0].drops, 450) || !near(r.legs[0].path, 1000)) throw new Error(JSON.stringify(r.legs[0]));
     if (!r.flags.includes('long-drop')) throw new Error('should flag the 400 mm drop');
   });
+  t('a nearest channel that leads nowhere: the next nearest is tried', () => {
+    const main = { id: 'm', pts: [[0, 0, 0], [1000, 0, 0]], w: 10, h: 10 }, stub = { id: 's', pts: [[0, 60, 0], [100, 60, 0]], w: 10, h: 10 };
+    const r = R.route(R.build([main, stub]), { id: 'c', ends: [{ key: 'a', p: [50, 80, 0] }, { key: 'b', p: [900, 10, 0] }] }, { roundMm: 1 });
+    if (!r.ok) throw new Error('should route by the main channel');
+    if (!near(r.legs[0].dropA, 80) || r.legs[0].channels.s) throw new Error(JSON.stringify(r.legs[0]));
+  });
   t('both ends on one channel run along it', () => {
     const a = { id: 'a', pts: [[0, 0, 0], [1000, 0, 0]], w: 10, h: 10 };
     const r = R.route(R.build([a]), { id: 'c', ends: [{ key: 'a', p: [200, 10, 0] }, { key: 'b', p: [700, 10, 0] }] }, { roundMm: 1 });
