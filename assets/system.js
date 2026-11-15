@@ -1400,13 +1400,23 @@
     const inside = b => { const c = childOf(b); return !!c && c.id !== s.id && holds(c, [s.id, c.id]); };
     return { cable, block, inside };
   }
+  // For Formboard's flattened blocks and cables (flatten: each names its system and id), or null when off.
+  function filterFlat(rootId) {
+    const f = filterOf(rootId);
+    if (!filterOn(f)) return null;
+    const ms = {}, mOf = id => (id in ms ? ms[id] : (ms[id] = S.store[id] ? filterMatch(S.store[id], f) : null));
+    return {
+      cable: c => { const m = mOf(c.system), cab = m && S.store[c.system].cables.find(x => x.id === c.id); return !!cab && m.cable(cab); },
+      block: x => { const m = mOf(x.system), b = m && S.store[x.system].blocks.find(y => y.id === x.id); return !!b && (m.block(b) || m.inside(b)); },
+    };
+  }
   const fring = (X, Y, W, H) => `<rect class="sys-fring" x="${X - 6}" y="${Y - 6}" width="${W + 12}" height="${H + 12}" rx="12"/>`;
   const FUNNEL_I = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 3h12l-4.6 5.4V13l-2.8-1.4V8.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
-  const pageEl = () => document.querySelector('.sys-view') && document.querySelector('.sys-view').parentElement;
-  // The button and its menu, at the top right of the System and List views; the menu is drawn only when it opens
-  // or a tag changes, so typing in its boxes keeps focus.
-  function filterUi(pg, menuToo) {
-    const w = pg && pg.querySelector('#sys-filter');
+  // The button and its menu, at the top right of the System, List, and Formboard views (whichever shows); the
+  // menu is drawn only when it opens or a tag changes, so typing in its boxes keeps focus.
+  const fwrap = () => [...document.querySelectorAll('.sys-fwrap')].find(w => w.offsetParent !== null) || null;
+  function filterUi(menuToo) {
+    const w = fwrap();
     if (!w) return;
     const f = filterOf(), on = filterOn(f), s = cur();
     const n = on ? Object.values(f.tags).filter(Boolean).length + (f.name.trim() ? 1 : 0) + (f.pn.trim() ? 1 : 0) : 0;
@@ -2107,7 +2117,7 @@
         `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${style === k ? '● ' : '○ '}${t}</option>`).join('')}</optgroup></select></label>`;
       page.querySelector('#sys-labels').checked = labelsOn();
     }
-    filterUi(page);
+    filterUi();
     page.querySelector('#sys-help').innerHTML = listOn ? '' : helpHtml();
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'‹'} Back</button>` : '';
@@ -2641,7 +2651,7 @@
     page.sysWired = true;
     page.addEventListener('click', e => {
       const t = e.target;
-      if (S.filterOpen && !t.closest('.sys-fwrap')) { S.filterOpen = false; filterUi(page); }
+      if (S.filterOpen && !t.closest('.sys-fwrap')) { S.filterOpen = false; filterUi(); }
       const a = t.closest('[data-sact]');
       if (a && !a.disabled) { act(a.dataset.sact, a); return; }
       if (t.closest('[data-sfocus]')) return;   // a pick (app.js)
@@ -2661,7 +2671,7 @@
       A.refresh();
     });
     page.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && S.filterOpen && e.target.closest && e.target.closest('.sys-fwrap')) { S.filterOpen = false; filterUi(page); page.querySelector('.sys-fbtn').focus(); e.stopPropagation(); }
+      if (e.key === 'Escape' && S.filterOpen && e.target.closest && e.target.closest('.sys-fwrap')) { S.filterOpen = false; filterUi(); const b = fwrap() && fwrap().querySelector('.sys-fbtn'); if (b) b.focus(); e.stopPropagation(); }
     });
     page.addEventListener('change', e => {
       const t = e.target;
@@ -2744,9 +2754,9 @@
     switch (a) {
       case 'back': back(); break;
       case 'list-mode': { const p = listPrefs(); p.mode = el.dataset.mode === 'flat' ? 'flat' : 'tree'; setListPrefs(p); A.refresh(); break; }
-      case 'filter': S.filterOpen = !S.filterOpen; filterUi(pageEl(), true); break;
-      case 'filter-tag': { const f = filterOf(), k = el.dataset.tag, v = el.dataset.v; Object.keys(f.tags).forEach(x => { if (LM.tags.key(x) === LM.tags.key(k)) delete f.tags[x]; }); if (v) f.tags[k] = v; setFilter(f); filterUi(pageEl(), true); A.refresh(); break; }
-      case 'filter-clear': setFilter({ tags: {}, name: '', pn: '' }); filterUi(pageEl(), true); A.refresh(); break;
+      case 'filter': S.filterOpen = !S.filterOpen; filterUi(true); break;
+      case 'filter-tag': { const f = filterOf(), k = el.dataset.tag, v = el.dataset.v; Object.keys(f.tags).forEach(x => { if (LM.tags.key(x) === LM.tags.key(k)) delete f.tags[x]; }); if (v) f.tags[k] = v; setFilter(f); filterUi(true); A.refresh(); break; }
+      case 'filter-clear': setFilter({ tags: {}, name: '', pn: '' }); filterUi(true); A.refresh(); break;
       case 'list-fold': { const k = el.dataset.key, c = S.listClosed || (S.listClosed = new Set()); if (c.has(k)) c.delete(k); else c.add(k); A.refresh(); break; }
       case 'help': try { localStorage.setItem(NS + 'sysHelp', helpOpen() ? 'closed' : 'open'); } catch (e) { /* storage blocked */ } A.refresh(); break;
       case 'rotate-cw': case 'rotate-ccw': {
@@ -3131,7 +3141,7 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending || (S.tab === 'formboard' && !!LM.formboard && LM.formboard.busy()), act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
+    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, filterFlat, filterUi, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
     tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,
     canUndo: () => !locked() && S.past.length > 0, canRedo: () => !locked() && S.future.length > 0, discardTo, restore, saveFile, openDoc,
     // compare.js: a stored version made ready to draw (its placed systems' tabs resolved), the selection

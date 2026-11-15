@@ -116,7 +116,7 @@
   }
   // The scene: the reference, the blocks, and the channels, as the stage draws them.
   function scene() {
-    const f = cur(), fl = flat(), objs = [];
+    const f = cur(), fl = flat(), objs = [], fm = LM.system.filterFlat(S.root);
     const ref = refObj(f);
     if (ref) objs.push(ref);
     const refBox = ref && ref.mesh ? M3().placedBox(ref) : null, spots = startSpots(fl, refBox);
@@ -125,10 +125,13 @@
       const kept = f.blocks[b.path], rot = kept && kept.rot ? kept.rot : [0, 0, 0];
       const o = { id: 'b:' + b.path, b, mesh: slabMesh(b.w, b.h, thick(b), RGB[b.kind] || RGB.device), R: M3().rotation(rot[0], rot[1], rot[2]), rot, pivot: [0, 0, 0], T: kept && kept.at ? kept.at.slice() : spots[b.path], placed: !!(kept && kept.at) };
       if (!o.placed) o.tint = [235, 238, 242, 0.55];
+      // The system's filter (Chris, 2026-11-15: as on the System and List tabs): what doesn't match fades to gray;
+      // a match gets a dashed ring (drawOverlay).
+      if (fm) { o.lit = fm.block(b); if (!o.lit) o.tint = [128, 133, 141, 0.78]; }
       blocks[b.path] = o; objs.push(o);
     });
     f.channels.forEach(c => { const m = channelMesh(c, f); if (m) objs.push({ id: 'c:' + c.id, ch: c, mesh: m, fixed: true, pivot: [0, 0, 0], T: [0, 0, 0] }); });
-    return { objs, blocks, fl, refBox };
+    return { objs, blocks, fl, refBox, fm };
   }
   // A connector's world point: on its block's top face, where the system drawing puts it.
   function connPoint(o, connId) {
@@ -503,7 +506,7 @@
     }
     if (!host.querySelector('.fb-view') || host.dataset.fid !== f.id) {
       host.dataset.fid = f.id;
-      host.innerHTML = `<div class="fb-view"><div class="fb-bar" id="fb-bar"></div><div class="fb-main"><div class="fb-stage-wrap" id="fb-stage"></div><aside class="rail fb-panel" id="fb-panel"></aside></div></div>`;
+      host.innerHTML = `<div class="fb-view"><div class="fb-bar" id="fb-bar"></div><div class="fb-main"><div class="fb-stage-wrap" id="fb-stage"></div><div class="sys-fwrap fb-fwrap"></div><aside class="rail fb-panel" id="fb-panel"></aside></div></div>`;
       wire(host);
       if (S.st) S.st.destroy();
       S.st = LM.stage.create(stageHost());
@@ -519,6 +522,7 @@
     if (S.fitNext && (!f.reference || sc.objs.some(o => o.id === 'ref'))) { S.fitNext = false; S.st.fit(); }
     if (!S.st.cam) S.st.fit();
     S.st.draw(true);
+    LM.system.filterUi();
     const panel = host.querySelector('#fb-panel'), keep = panel.scrollTop;
     panel.innerHTML = panelHtml(f, sc);
     panel.scrollTop = keep;
@@ -884,6 +888,7 @@
       g.save();
       g.lineJoin = 'round'; g.lineCap = 'round';
       const col = x.c.color || (r && !r.ok ? '#7d8590' : '#00a3b4');
+      if (sc.fm && !sc.fm.cable(x.c)) g.globalAlpha = 0.15;
       legs.forEach(pts => {
         const q = pts.map(P);
         S.lines.push({ view: v.key, id: x.c.path, pts: q });
@@ -895,6 +900,16 @@
       x.input.ends.forEach(e => { const q = P(e.p); g.beginPath(); g.arc(q[0], q[1], 3.2 * k, 0, 7); g.fill(); });
       if (r && !r.ok && !r.stale) { const q = P(x.input.ends[0].p); g.font = `${11 * k}px system-ui, sans-serif`; g.fillStyle = '#5b636e'; g.fillText('Not routed', q[0] + 6 * k, q[1] - 6 * k); }
       g.restore();
+    });
+    // A dashed ring around each block the filter lights, on its outline as seen from this view.
+    if (sc.fm) sc.objs.forEach(o => {
+      if (!o.lit || !o.mesh) return;
+      const bx = M3().placedBox(o), pts = [];
+      [0, 1].forEach(i => [0, 1].forEach(j => [0, 1].forEach(l => pts.push(P([i ? bx.hi[0] : bx.lo[0], j ? bx.hi[1] : bx.lo[1], l ? bx.hi[2] : bx.lo[2]])))));
+      const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), pad = 6 * k;
+      const x0 = Math.min(...xs) - pad, y0 = Math.min(...ys) - pad, w = Math.max(...xs) - x0 + pad, h = Math.max(...ys) - y0 + pad;
+      g.save(); g.strokeStyle = '#00a3b4'; g.lineWidth = 2.5 * k; g.setLineDash([8 * k, 5 * k]);
+      g.beginPath(); if (g.roundRect) g.roundRect(x0, y0, w, h, 8 * k); else g.rect(x0, y0, w, h); g.stroke(); g.restore();
     });
     // The channel being drawn, with a rubber band to the pointer.
     if (S.tool === 'channel' && S.draft && S.draft.pts.length) {

@@ -36,6 +36,9 @@ links to it so far. Before every commit:
   the name and number; a block matches by itself only on a name or number with nothing included; `inside(b)` lights
   a placed system holding a match. Kept per open system in this browser (`sysFilter`). What doesn't match fades
   (`fout`), a lit block gets a dashed ring (`sys-fring`), and List rows fade or get an accent edge (`fhit`).
+  Formboard has the same filter (Chris, 2026-11-15): one `.sys-fwrap` per view, `filterUi()` drawing whichever shows;
+  `filterFlat(rootId)` matches flattened blocks and cables, unmatched blocks tint gray, unmatched cable lines fade, and
+  lit blocks get a dashed ring in `drawOverlay`.
 - **Harness crumb (2026-11-15, Chris: a harness in a hierarchy keeps the clickable hierarchy beside the tabs, as a
   system does).** `harnessCrumbs` in `app.js`: the systems holding it, from the menu row's tree path (`S.hpath`, set by
   `openHarness(id, path)`; from a system, the pick shown or the open system), else the first system holding it in

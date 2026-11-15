@@ -1107,6 +1107,7 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-main { position: relative; display: grid; min-width: 0; min-height: 0; }
 .sys-main > .sys-canvas-wrap, .sys-main > .sys-wires { grid-area: 1 / 1; }
 .sys-fwrap { position: absolute; top: 12px; right: 16px; z-index: 25; }
+.fb-main > .fb-fwrap { position: relative; top: auto; right: auto; grid-area: 1 / 1; justify-self: end; align-self: start; margin: 12px 16px 0 0; }
 .sys-fbtn { position: relative; width: 34px; height: 34px; }
 .sys-fbtn.on { background: var(--accent-soft); color: var(--accent); }
 .sys-fcount { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent, #fff); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
