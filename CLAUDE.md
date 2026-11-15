@@ -27,10 +27,11 @@ links to it so far. Before every commit:
   `assets/stage.js` (the 3D stage and Four views, from PL's Exploded), `assets/fbroute.js` (the router, pure),
   and `assets/vendor/model3d.js` (PL's renderer, vendored). `LM.system.flatten(rootId, keep)` opens placed
   systems down to boards and devices, keyed by path; `setLengths` is Apply lengths. On that tab Undo, Redo, and
-  keys are the formboard's own (`fbToolbar`, `onKey` hands over). Formboards are local only so far
-  (`loom.v1.formboards`, references in IndexedDB `loom-fbref`); syncing to `loom_data/formboards/` is next and
-  waits for Chris. See `docs/formboard.md`, *Built*. Tests 109 (15 router cases, also `node tests/fbroute-cases.js`,
-  and 2 flatten). Tried in the demo with synthetic pointer events: Route, Four views, a cable's panel, Apply and
+  keys are the formboard's own (`fbToolbar`, `onKey` hands over). Formboards sync (Chris, 2026-11-15) after the systems:
+  `loom_data/formboards/projects/<id>.json`, three-way as systems, and each reference once under `formboards/refs/`
+  (split over 4 MB, read back checked); locally `loom.v1.formboards` and IndexedDB `loom-fbref`. See
+  `docs/formboard.md`, *Built*. Tests 113 (15 router cases, also `node tests/fbroute-cases.js`, 2 flatten, and 4 sync).
+  Not tried signed in. Tried in the demo with synthetic pointer events: Route, Four views, a cable's panel, Apply and
   undo, drawing and editing a channel, a block drag, and STEP and DXF imports from Partcheck's made-up demo.
 - **Tabs on the block's edge (2026-11-14, Chris).** A placed system's tabs sit just outside its block's edge, each
   with a thin curved lead in to where its connector really sits in the mini view (`c.inner`, `leadPath`, `.sys-lead`).

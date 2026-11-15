@@ -52,10 +52,21 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   boards placed on it, a Low voltage channel and an exclusive 24 VAC raceway, and the wall wiring tagged
   24 VAC.
 
+- **Sync (2026-11-15, Chris: "Build sync next").** `store.js` `syncFormboards` runs after the systems in every
+  sync (on opening signed in, the Sync button, Ctrl+S). Each formboard is `loom_data/formboards/projects/<id>.json`
+  (envelope `{ schema, id, meta, summary, formboard }`; the summary is counts only), merged as systems are:
+  edited means its stamp moved off its own `syncBase`, an unedited copy takes GitHub's and writes nothing,
+  edited on both sides keeps the newer and a "(conflict copy)" of the other. Demo formboards never sync.
+  Its reference goes up first, once, in its own commit: `formboards/refs/<hash>.plm.gz` (a STEP's simplified
+  mesh), `.dxf`, or `.png`/`.jpg`/`.webp`, split into `.001`, `.002`, … over 4 MB; the reference records `file`,
+  `parts`, `sha256`, and `bytes`. A reference that isn't in this browser to upload fails the formboard sync, so
+  a document never names a missing file. Another browser reads it back when it first draws the formboard
+  (`readFormboardRef`, joined and checked against its SHA-256) and keeps it in IndexedDB. The sync pill counts
+  unsynced formboards. Tests: 4 against the fake GitHub (paths, upload and read-back, parts, a missing
+  reference, conflict copy and an unedited stale copy). Not tried signed in: the first real sync creates
+  `formboards/` in `loom_data`.
+
 **Not built yet:**
-- **Sync.** Formboards live only in this browser (localStorage `loom.v1.formboards`, references in
-  IndexedDB). Syncing them to `loom_data/formboards/` (and the reference files beside them) is the next
-  step; its first signed-in run creates that folder, so it waits for Chris.
 - Dragging a channel's side edge to change its width (the Width field does it), PL's turn ring (R and the
   Turn buttons do it), a linked library part's size for a device end, fill kept after a reload, and caching
   the reference's picture between camera moves (drawing speed with a machine-sized STEP is unmeasured).

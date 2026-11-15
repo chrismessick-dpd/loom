@@ -73,7 +73,9 @@
     if (!x) return;
     const f = S.store[x.id];
     if (!f) return;
+    const base = f.syncBase;
     S.store[x.id] = normalize(JSON.parse(back ? x.before : x.after));
+    if (base) S.store[x.id].syncBase = base; else delete S.store[x.id].syncBase;
     if (x.outside) (back ? x.outside.undo : x.outside.redo)();
     S.store[x.id].updated = Date.now();
     if (A && A.login()) S.store[x.id].updatedBy = A.login();
@@ -207,12 +209,31 @@
     const key = r.sha + '|' + (r.scale || 1);
     if (loading[key]) return;
     loading[key] = getRef(r.sha).then(async data => {
-      if (!data) { if (A) A.toast('This formboard’s reference isn’t in this browser. Import it again.', 'error'); return; }
+      if (!data && r.file && A && A.fetchRef) {
+        S.busy = 'Reading the reference…'; refresh();
+        const bytes = await A.fetchRef(r).catch(e => { A.toast('Couldn’t read the reference from GitHub: ' + e.message, 'error'); return null; });
+        S.busy = '';
+        if (bytes) { data = recordOf(r, bytes); await putRef(r.sha, data); }
+      }
+      if (!data) { if (A) A.toast('This formboard’s reference isn’t in this browser' + (r.file ? '' : ' and hasn’t been synced') + '. Import it again.', 'error'); refresh(); return; }
       if (r.kind === 'step') REF[key] = { mesh: await M3().decode(data.mesh) };
       else if (r.kind === 'image') REF[key] = await imagePlane(data.blob, r);
       else if (r.kind === 'dxf') REF[key] = await dxfPlane(data.text, r);
       refresh();
     }).catch(e => { if (A) A.toast('Couldn’t load the reference: ' + e.message, 'error'); }).finally(() => { delete loading[key]; });
+  }
+  // The stored record for a reference's bytes as uploaded (refBytes is the other way).
+  function recordOf(r, bytes) {
+    if (r.kind === 'step') return { mesh: bytes };
+    if (r.kind === 'dxf') return { text: new TextDecoder().decode(bytes) };
+    return { blob: new Blob([bytes], { type: /jpe?g$/i.test(r.name || '') ? 'image/jpeg' : /webp$/i.test(r.name || '') ? 'image/webp' : 'image/png' }) };
+  }
+  async function refBytes(r) {
+    const data = await getRef(r.sha);
+    if (!data) return null;
+    if (r.kind === 'step') return data.mesh instanceof Uint8Array ? data.mesh : new Uint8Array(data.mesh);
+    if (r.kind === 'dxf') return new TextEncoder().encode(data.text);
+    return new Uint8Array(await data.blob.arrayBuffer());
   }
   function texFromCanvas(c) { return M3().texture(c.getContext('2d').getImageData(0, 0, c.width, c.height)); }
   async function imagePlane(blob, r) {
@@ -885,8 +906,15 @@
   }
 
   function init(hooks) { A = hooks; load(); }
+  // After a sync (app.js): the documents GitHub's merge left, as plain objects, made whole again.
+  function synced() {
+    Object.keys(S.store).forEach(id => normalize(S.store[id]));
+    if (S.cur && (!S.store[S.cur] || S.store[S.cur].deleted)) { S.cur = null; S.sel = null; }
+    S.past = S.past.filter(x => S.store[x.id]); S.future = S.future.filter(x => S.store[x.id]);
+    persist();
+  }
   LM.formboard = {
-    init, render, leave, flush, undo, redo, onKey, ensureDemo, readDxf, forSystem,
+    init, render, leave, flush, undo, redo, onKey, ensureDemo, readDxf, forSystem, synced, refBytes, store: () => S.store, persist,
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0,
     busy: () => !!(S.st && S.st.busy()) || !!S.draft || !!S.busy,
     current: cur, state: () => S, routeAll, applyLengths, scene: () => S.sc, select: x => { S.sel = x; refresh(); },

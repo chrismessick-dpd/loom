@@ -175,6 +175,7 @@
   let keptMemo = { raw: null, map: {} };
   function keptStamp(kind, id) {
     if (kind === 'system') return sysStamps[id] || '';
+    if (kind === 'formboard') return '';
     let raw = null;
     try { raw = localStorage.getItem(NS + 'base'); } catch (e) { raw = null; }
     if (raw !== keptMemo.raw) {
@@ -194,10 +195,11 @@
     if (b) return stampKey(d) !== b;
     const kept = keptStamp(kind, d.id);
     if (kept && kept === stampKey(d)) return false;
-    const synced = read(kind === 'system' ? 'sysSynced' : 'synced', {})[d.id];
+    const pre = kind === 'system' ? 'sys' : kind === 'formboard' ? 'fb' : '';
+    const synced = read(pre ? pre + 'Synced' : 'synced', {})[d.id];
     if (!synced) return true;
     if (synced === hash(d)) return false;
-    const last = read(kind === 'system' ? 'sysLastSync' : 'lastSync', null), at = last && Date.parse(last.at);
+    const last = read(pre ? pre + 'LastSync' : 'lastSync', null), at = last && Date.parse(last.at);
     return !(at > 0 && (Number(d.updated) || 0) < at);
   }
 
@@ -592,6 +594,90 @@
   // Systems with edits here the last sync didn't take (never synced counts): by stamp, not bytes, as the
   // drawing writes derived block sizes as it draws (edited).
   const sysUnsynced = store => Object.keys(store).filter(id => !store[id].demoVersion && edited('system', store[id]));
+
+  // ── Formboards (docs/formboard.md, Chris, 2026-11-15) ──
+  // Each formboard is formboards/projects/<id>.json in the data repo (the engine's layout under a data path,
+  // as systems use systems/; never projects/, which Signoff PL reads as harnesses), merged three-way by its
+  // stamp as systems are. Its reference (a STEP's mesh, a picture, or a DXF) goes up once, before the
+  // document that names it, as formboards/refs/<its hash>.<ext>, split over 4 MB; the reference records the
+  // file, its parts, and its SHA-256, and another browser reads it back checked (readFormboardRef).
+  const FB_DIR = 'formboards/';
+  function fbEnvelope(f) {
+    return { schema: 1, id: f.id,
+      meta: { name: f.title || 'Formboard', number: '', revision: '', project: '', system: f.system || '', deleted: !!f.deleted, updatedAt: iso(f.updated), updatedBy: f.updatedBy || '' },
+      formboard: bare(f) };
+  }
+  const fbSummary = f => ({ v: 1, tool: 'loom', kind: 'formboard', system: f.system || '', reference: f.reference ? f.reference.kind : '',
+    channels: (f.channels || []).length, placed: Object.keys(f.blocks || {}).length,
+    routed: Object.values(f.cables || {}).filter(c => c && c.route && c.route.ok).length });
+  const REF_EXT = { step: '.plm.gz', dxf: '.dxf' };
+  const sha256 = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(b => b.toString(16).padStart(2, '0')).join('');
+  // The references edited formboards name that aren't up yet: their bytes (getRef(ref) → Uint8Array |
+  // null, from formboard.js's IndexedDB), one commit for all. Each one's record goes onto the formboard
+  // before it's pushed. A failure fails the formboard sync, so a document never names a missing file.
+  async function putRefs(store, local, ids, getRef) {
+    const files = [], recs = [];
+    for (const id of ids) {
+      const r = local[id] && local[id].reference;
+      if (!r || !r.sha || r.file || !(r.kind in REF_EXT || r.kind === 'image')) continue;
+      const bytes = await getRef(r);
+      if (!bytes) throw new Error((local[id].title || 'A formboard') + ': its reference isn’t in this browser to upload. Import it again.');
+      const ext = REF_EXT[r.kind] || (/jpe?g$/i.test(r.name || '') ? '.jpg' : /webp$/i.test(r.name || '') ? '.webp' : '.png');
+      const path = FB_DIR + 'refs/' + r.sha + ext, parts = SG.GitHubStore.splitParts(path, bytes);
+      (parts || [{ path, bytes }]).forEach(f => files.push(f));
+      recs.push({ r, rec: { file: path, parts: parts ? parts.map(x => x.path) : null, sha256: await sha256(bytes), bytes: bytes.length } });
+    }
+    if (!files.length) return 0;
+    await store.putFiles(files, { message: 'Loom: formboard references' });
+    recs.forEach(x => Object.assign(x.r, x.rec));
+    return recs.length;
+  }
+  async function syncFormboards(local, opts) {
+    opts = opts || {};
+    const cfg = config(), tok = opts.token || token();
+    if (!tok) return null;
+    const docs = {}, beforeStamp = {}, isEdited = {}, bases = {};
+    Object.keys(local).forEach(id => { const f = local[id]; if (f.demo) return; beforeStamp[id] = stampKey(f); isEdited[id] = edited('formboard', f); bases[id] = baseOf('formboard', f); });
+    const isDirty = id => !!isEdited[id];
+    const conflicts = [];
+    const store = new SG.GitHubStore({ owner: cfg.owner, repo: cfg.dataRepo, branch: 'main', dataPath: 'formboards', token: tok,
+      summarize: doc => (doc.formboard ? fbSummary(doc.formboard) : undefined) }, opts.fetch);
+    store.cfg.merge = (l, r, o) => {
+      const d = threeWay(l, r, o, x => x && x.formboard, (lose, win) => conflicts.push(conflictCopy(lose.formboard, win.formboard, 'f', 'Formboard')));
+      return d && d.formboard ? fbEnvelope(d.formboard) : d;
+    };
+    let res, refs = 0;
+    try {
+      refs = await putRefs(store, local, Object.keys(beforeStamp).filter(isDirty), opts.getRef || (() => null));
+      Object.keys(beforeStamp).forEach(id => { docs[id] = fbEnvelope(JSON.parse(JSON.stringify(local[id]))); });
+      const cache = read('fbCache', null);
+      if (cache) trustCache(cache, read('fbStampsAt', null), local, 'formboard', id => FB_DIR + 'projects/' + id + '.json', false);
+      res = await store.sync(docs, null, cache, { dropGone: true, keepLocal: isDirty, edited: isDirty,
+        mergeOpts: id => ({ base: bases[id] || '' }), message: opts.message || 'Loom: sync formboards' });
+    } catch (e) { if (denied(e)) return null; throw e; }
+    const out = {}, next = {};
+    Object.keys(res.projects).forEach(id => {
+      const f = res.projects[id] && res.projects[id].formboard;
+      if (!f || f.id !== id) return;
+      const n = JSON.parse(JSON.stringify(f)); delete n[BASE]; n[BASE] = stampKey(n); out[id] = n; next[id] = hash(n);
+    });
+    write('fbCache', res.cache); write('fbSynced', next); write('fbStampsAt', stampsOf(out)); write('fbLastSync', { at: new Date().toISOString() });
+    return { store: out, beforeStamp, conflicts, gone: res.gone || [], pushed: res.pushed, refs };
+  }
+  // A reference another browser uploaded: its bytes, joined from its parts and checked against its SHA-256.
+  async function readFormboardRef(ref, opts) {
+    opts = opts || {};
+    const cfg = config(), tok = opts.token || token();
+    if (!tok || !ref || !ref.file || !ref.sha256) return null;
+    const store = new SG.GitHubStore({ owner: cfg.owner, repo: cfg.dataRepo, branch: 'main', dataPath: 'formboards', token: tok }, opts.fetch);
+    return store.readVerified(ref.parts && ref.parts.length ? ref.parts : ref.file, ref.sha256);
+  }
+  const fbUnsynced = store => Object.keys(store).filter(id => !store[id].demo && edited('formboard', store[id]));
+  function forgetFormboards(ids) {
+    const c = read('fbCache', {});
+    ids.forEach(id => { delete c[FB_DIR + 'projects/' + id + '.json']; });
+    write('fbCache', c);
+  }
   // As forget, for systems edited while a sync brought someone else's change to them.
   function forgetSystems(ids) {
     const c = read('sysCache', {});
@@ -624,7 +710,7 @@
 
   LM.store = {
     DEMO, setNamespace: ns => { NS = ns; }, config, token, signedIn: () => !!token(), envelope, unwrap, summarize, makeMerge, slimPl, plIndex, waiting, startFromPl, adoptFromPl, hash,
-    sync, syncSystems, sysUnsynced, forgetSystems, stampKey, edited, baseOf, threeWay, conflictCopy, bare, BASE, sysBase, hasSysBase, loadSysBase, canDiscard, discardCopy, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, base, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
+    sync, syncSystems, sysUnsynced, forgetSystems, syncFormboards, readFormboardRef, fbUnsynced, forgetFormboards, fbEnvelope, stampKey, edited, baseOf, threeWay, conflictCopy, bare, BASE, sysBase, hasSysBase, loadSysBase, canDiscard, discardCopy, storeDrawings, DRAWING_DIR, unsynced, wasSynced, forget, base, homeOf, isShared, pl: () => read('pl', null), lastSync: () => read('lastSync', null), login: () => read('who', {}).login || '',
     access: () => read('who', {}).access || '',
   };
 })(window.LM = window.LM || {});

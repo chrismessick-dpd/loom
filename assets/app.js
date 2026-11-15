@@ -73,7 +73,7 @@
     else if (want) linked = want;   // not here yet: the first sync may bring it (syncNow)
     S.cur = S.store[c] && !S.store[c].deleted ? c : DEMO ? 'hdemo1' : null;
     // A system (assets/system.js) open last time, or asked for by ?system=, takes the page.
-    if (LM.formboard) LM.formboard.init(Object.assign({}, sysHooks, { editHarness }));
+    if (LM.formboard) LM.formboard.init(Object.assign({}, sysHooks, { editHarness, fetchRef: r => R.readFormboardRef(r) }));
     const sid = LM.system.init(sysHooks);
     if (sid) { LM.system.open(sid); S.cur = null; }
     // The systems' last synced copies (store.js, IndexedDB), for Discard changes: known once read.
@@ -202,6 +202,20 @@
           LM.system.persist();
         }
       } catch (e) { toast("Couldn't sync systems: " + (e.message || e), 'error'); }
+      // Formboards (formboard.js) with the data repo's formboards/ folder, after the systems; a reference goes up
+      // before the formboard naming it.
+      try {
+        const fs = LM.formboard ? LM.formboard.store() : null, rf = fs && await R.syncFormboards(fs, { getRef: r => LM.formboard.refBytes(r) });
+        if (rf) {
+          const ff = [];
+          keepEdited(fs, rf.store, rf.beforeStamp, ff);
+          if (ff.length) R.forgetFormboards(ff);
+          rf.gone.forEach(id => { if (fs[id] && R.stampKey(fs[id]) === rf.beforeStamp[id]) delete fs[id]; });
+          rf.conflicts.forEach(f => { fs[f.id] = f; });
+          sysCopies += rf.conflicts.length;
+          LM.formboard.synced();
+        }
+      } catch (e) { toast("Couldn't sync formboards: " + (e.message || e), 'error'); }
       // The part library (assets/parts.js), read only: a failure here never fails the sync.
       try { await LM.parts.syncLib(); if (PM.open) renderPartModal(); } catch (e) { console.warn('Loom: part library not read', e); }
       res.gone.forEach(id => { if (S.store[id] && R.stampKey(S.store[id]) === res.beforeStamp[id]) delete S.store[id]; });
@@ -216,7 +230,7 @@
       renderAll();
       res.dropped.forEach(id => { if (S.store[id] && R.stampKey(S.store[id]) === res.beforeStamp[id]) delete S.store[id]; });
       const copies = res.conflicts.length + sysCopies;
-      if (copies) toast(`${copies === 1 ? 'One ' + (sysCopies ? 'system was' : 'harness was') : copies + ' harnesses or systems were'} changed both here and elsewhere since the last sync. The newer one won; the other is kept as a "(conflict copy)". Open it to resolve it.`, 'error');
+      if (copies) toast(`${copies === 1 ? 'One ' + (sysCopies ? 'system or formboard was' : 'harness was') : copies + ' harnesses, systems, or formboards were'} changed both here and elsewhere since the last sync. The newer one won; the other is kept as a "(conflict copy)". Open it to resolve it.`, 'error');
       else if (res.errors.length) toast(res.errors[0].message + (res.errors.length > 1 ? ` (+${res.errors.length - 1} more)` : ''), 'error');
       else if (res.adopted.length) toast(`Name or part number taken from Signoff PL for ${res.adopted.length} harness${res.adopted.length > 1 ? 'es' : ''}.`);
       else if (!quiet) toast(res.pushed ? 'Synced.' : 'Up to date.');
@@ -505,7 +519,7 @@
       return `<div class="lm-tree" style="--d:${d}">${tog}${sysRow(n.sys, n.path)}</div>` +
         (open && has ? n.kids.map(k => treeRow(k, d + 1)).join('') + n.harnesses.map(id => { const h = S.store[id]; return h && !h.deleted ? `<div class="lm-tree" style="--d:${d + 1}"><span class="lm-tog"></span>${row(h, n.path)}</div>` : ''; }).join('') : '');
     };
-    const dirty = new Set(canSync() ? R.unsynced(S.store).concat(R.sysUnsynced(LM.system.store())) : []);
+    const dirty = new Set(canSync() ? R.unsynced(S.store).concat(R.sysUnsynced(LM.system.store()), LM.formboard ? R.fbUnsynced(LM.formboard.store()) : []) : []);
     // Grouped by client project, as Signoff EE groups boards (none: "No project", last).
     const groups = new Map();
     systems.concat(list).forEach(h => { const k = String(h.project || '').trim(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); });

@@ -919,6 +919,63 @@
     ends[1].board = { project: 'pb1', ref: 'J1' };
     eq(Y.bestEnd(s, null, h, a, c).id, ends[1].id);
   });
+  // ── Formboard sync (store.js syncFormboards): formboards/projects/, references first, three-way ──
+  const fbDoc = extra => Object.assign({ schema: 1, kind: 'formboard', id: 'ftest1', title: 'Plate', system: 'sys1', reference: null, blocks: {}, keep: {}, channels: [], cables: {}, classes: [], settings: {}, updated: 1000, updatedBy: 'alice' }, extra || {});
+  const fbOpts = (hub, bytes) => Object.assign(opts(hub), { getRef: () => bytes || null });
+  const clone = x => JSON.parse(JSON.stringify(x));
+  test('formboard sync: stored under formboards/, its reference goes up first and reads back checked', async () => {
+    const hub = setup();
+    const text = '0\nSECTION\n2\nENTITIES\n0\nLINE\n10\n0\n20\n0\n11\n100\n21\n0\n0\nENDSEC\n0\nEOF\n', bytes = new TextEncoder().encode(text);
+    const f = fbDoc({ reference: { kind: 'dxf', name: 'plate.dxf', sha: 'abc123', scale: 1 } });
+    const res = await R.syncFormboards({ [f.id]: f }, fbOpts(hub, bytes));
+    const files = hub.files(OWNER + '/loom_data');
+    ok(files['formboards/projects/ftest1.json'], 'stored under formboards/');
+    ok(files['formboards/refs/abc123.dxf'], 'the reference beside it');
+    ok(!Object.keys(files).some(p => p.indexOf('projects/') === 0), 'nothing in projects/, which Signoff PL reads as harnesses');
+    const r = res.store[f.id].reference;
+    eq([r.file, r.parts, r.bytes], ['formboards/refs/abc123.dxf', null, bytes.length], 'the record names the file');
+    eq(JSON.parse(files['formboards/projects/ftest1.json']).formboard.reference.file, r.file, 'the stored formboard names it too');
+    eq(new TextDecoder().decode(await R.readFormboardRef(r, opts(hub))), text, 'read back, checked against its SHA-256');
+    eq(R.fbUnsynced(res.store), [], 'nothing left unsynced');
+    const again = await R.syncFormboards(res.store, fbOpts(hub));
+    eq([again.pushed, again.refs], [0, 0], 'a second sync pushes nothing and uploads nothing');
+    let bad = null;
+    try { await R.readFormboardRef(Object.assign({}, r, { sha256: '0'.repeat(64) }), opts(hub)); } catch (e) { bad = e; }
+    ok(bad && bad.code === 'mismatch', 'a reference that doesn’t match its record is refused');
+  });
+  test('formboard sync: a reference over 4 MB goes up in parts and is joined when read', async () => {
+    const hub = setup();
+    const big = new Uint8Array(4 * 1048576 + 1000);
+    for (let i = 0; i < big.length; i++) big[i] = (i * 7) & 255;
+    const f = fbDoc({ reference: { kind: 'step', name: 'frame.step', sha: 'big1', scale: 1 } });
+    const res = await R.syncFormboards({ [f.id]: f }, fbOpts(hub, big));
+    const r = res.store[f.id].reference;
+    eq(r.parts, ['formboards/refs/big1.plm.gz.001', 'formboards/refs/big1.plm.gz.002']);
+    const back = await R.readFormboardRef(r, opts(hub));
+    ok(back.length === big.length && back[big.length - 1] === big[big.length - 1], 'joined whole');
+  });
+  test('formboard sync: no reference bytes here fails the sync, and nothing is written', async () => {
+    const hub = setup();
+    const f = fbDoc({ reference: { kind: 'dxf', name: 'gone.dxf', sha: 'gone1', scale: 1 } });
+    let err = null;
+    try { await R.syncFormboards({ [f.id]: f }, fbOpts(hub, null)); } catch (e) { err = e; }
+    ok(err && /isn’t in this browser/.test(err.message), 'it says why');
+    ok(!Object.keys(hub.files(OWNER + '/loom_data')).some(p => p.indexOf('formboards/') === 0), 'no formboard names a missing file');
+  });
+  test('formboard sync: edited on both sides keeps a conflict copy; an unedited stale copy takes GitHub’s and writes nothing', async () => {
+    const hub = setup();
+    const res = await R.syncFormboards({ ftest1: fbDoc() }, fbOpts(hub));
+    const there = clone(res.store.ftest1); there.title = 'There'; there.updated = 2000;
+    await R.syncFormboards({ ftest1: there }, fbOpts(hub));
+    const stale = clone(res.store.ftest1);
+    const calls = hub.calls.length, r1 = await R.syncFormboards({ ftest1: stale }, fbOpts(hub));
+    eq([r1.pushed, r1.store.ftest1.title], [0, 'There'], 'the unedited copy takes GitHub’s');
+    ok(!hub.calls.slice(calls).some(c => /POST|PUT|PATCH/.test(c) && /git\/(commits|refs)/.test(c)), 'and commits nothing');
+    const here = clone(res.store.ftest1); here.title = 'Here'; here.updated = 3000;
+    const r2 = await R.syncFormboards({ ftest1: here }, fbOpts(hub));
+    eq(r2.store.ftest1.title, 'Here', 'the newer edit wins');
+    eq(r2.conflicts.map(c => [c.title, c.conflictOf.id]), [['There (conflict copy)', 'ftest1']], 'the other is kept as a copy');
+  });
   test('system sync: systems go under systems/, never projects/, and come back', async () => {
     const hub = setup();
     const { Y, s, h, get } = sysFixture();
