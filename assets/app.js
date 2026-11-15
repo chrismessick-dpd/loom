@@ -2986,7 +2986,7 @@
     const typing = a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable);
     const cfg = document.getElementById('cfg-modal');
     return !typing && !document.hidden && !gesture && !S.pending && !BM.open && !remote.busy
-      && !(cfg && !cfg.hidden) && !document.querySelector('.tk-wrap, .tk-new, #people-pop, .sheet-wrap')
+      && !(cfg && !cfg.hidden) && !document.querySelector('.tk-wrap, .tk-new, #people-pop, .sheet-wrap') && !(LM.compare && LM.compare.active())
       && !(LM.system && LM.system.busy && LM.system.busy());
   }
   async function reloadWhenIdle() {
@@ -3080,17 +3080,19 @@
     toast('Restored the earlier version');
     return true;
   }
-  // Version tags on the open harness (assets/compare.js): set without an undo step, but stamped, so they sync.
-  function editTags(fn) {
+  // Version tags on the open harness (vendor/history.js): set without an undo step, but stamped, so they
+  // sync. The whole harness merges as one, so a removed tag needn't stay as a tombstone.
+  function editTags(map) {
     const h = S.store[S.cur];
     if (!h) return false;
-    const t = fn(LM.compare.tagsOf(h));
-    if (t.length) h.tags = t; else delete h.tags;
+    const t = {};
+    Object.keys(map || {}).forEach(k => { if (map[k] && !map[k].deleted) t[k] = map[k]; });
+    if (Object.keys(t).length) h.tags = t; else delete h.tags;
     h.updated = Date.now(); if (R && R.login()) h.updatedBy = R.login();
     persist(); renderAll();
     return true;
   }
-  // After the drawn copy changes (compare.js switching Current and the tag): drop what no longer exists.
+  // After the drawn copy changes (the comparison switching Current and the tag): drop what no longer exists.
   function tidy() { S.pending = null; S.placing = null; tidySel(); if (LM.system.tidy) LM.system.tidy(); }
   LM.app = { state: S, renderAll, H, demo: DEMO, restore, editTags, tidy, toast,
     guide: {

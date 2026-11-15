@@ -39,6 +39,13 @@ links to it so far. Before every commit:
 - **Version tags and Version comparison (2026-11-14, Chris: "view at version", across the suite, starting in Loom;
   his choices: tags stored in the data file, the tagged side read-only plus Restore, called "version tags" so they
   don't clash with EE's revision tags).** `assets/compare.js` (`LM.compare`).
+  - **Now the Signoff engine's (2026-11-14, Chris: one History engine, EE the reference).** The sheet, the tags, and
+    the bar are `vendor/history.js` (`window.SignoffHistory`, from `ee_design_review/assets/history.js` by
+    `tools/sync_vendor.py`; its styles in `suite.css`). `compare.js` is Loom's adapter (keys `harness|<id>` and
+    `system|<id>`, `parse`, `fresh`, `restore`), and `history.js`'s `open` passes the sheet Loom's rows and Restore.
+    Tags are now the engine's map of records, `tags: { <id>: { id, commit, note, at, updatedAt, updatedBy } }`,
+    matched to History by commit (no `stamp`); `editTags(map)` drops removed ones, since the whole document merges
+    as one. The bullets below describe the first, Loom-only build.
   - **Tags** live on the document, `h.tags` or `s.tags`: `[{ id, commit, stamp, note, at, by, made }]`. `stamp` is
     the version's own `R.stampKey` (how History matches a tag to its row; a summary-only rewrite keeps it), `commit`
     is how the version is fetched. Setting one (`LM.app.editTags`, `LM.system.editTags`) stamps the document so it

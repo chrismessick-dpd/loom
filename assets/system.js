@@ -2780,11 +2780,12 @@
     // so they sync).
     prepare: d => { normalize(d); d.blocks.forEach(b => { if (b.kind === 'system') resolveBlock(b, [d.id]); }); return d; },
     tidy: () => { S.pending = null; S.pair = null; S.picking = null; S.adding = null; if (S.sel && !selValid()) S.sel = null; },
-    editTags: fn => {
+    editTags: map => {
       const s = S.store[S.cur];
       if (!s) return false;
-      const t = fn(LM.compare.tagsOf(s));
-      if (t.length) s.tags = t; else delete s.tags;
+      const t = {};
+      Object.keys(map || {}).forEach(k => { if (map[k] && !map[k].deleted) t[k] = map[k]; });
+      if (Object.keys(t).length) s.tags = t; else delete s.tags;
       s.updated = now(); if (A.login()) s.updatedBy = A.login();
       persist(); A.refresh();
       return true;

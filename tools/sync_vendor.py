@@ -7,6 +7,7 @@ at the source and re-run this.
   classify.js              real outline (outlineLoops) in Loom systems.
 - model.js, github.js      the Signoff engine (ee_design_review): GitHubStore, which syncs Loom's
                            harnesses with its private data repo, and the merge helpers it needs.
+- history.js               the engine's History sheet, version tags, and Version comparison bar.
 
     python tools/sync_vendor.py           # copy
     python tools/sync_vendor.py --check   # exit 1 if a copy is stale
@@ -22,7 +23,8 @@ FAB_HEADER = ("/* Vendored from pcb_dfm/assets/{name} (Fabcheck). Do not edit he
 EE_HEADER = "/* Vendored from ee_design_review/assets/{name} (the Signoff engine). Do not edit here: re-copy with tools/sync_vendor.py. */\n"
 FILES = [(FAB, "util.js", FAB_HEADER), (FAB, "gerber.js", FAB_HEADER), (FAB, "classify.js", FAB_HEADER),
          (FAB, "ipc356.js", FAB_HEADER), (FAB, "assembly.js", FAB_HEADER),
-         (EE, "model.js", EE_HEADER), (EE, "github.js", EE_HEADER), (EE, "auth.js", EE_HEADER)]
+         (EE, "model.js", EE_HEADER), (EE, "github.js", EE_HEADER), (EE, "auth.js", EE_HEADER),
+         (EE, "history.js", EE_HEADER)]
 
 stale = []
 for src, name, header in FILES:

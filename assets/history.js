@@ -85,9 +85,9 @@
     return withTags(a, b, items, summary, 'no change to the harness');
   }
 
-  // Version tags set, renamed, or removed (assets/compare.js) come first in a change's summary and items.
+  // Version tags set, renamed, or removed (vendor/history.js) come first in a change's summary and items.
   function withTags(a, b, items, summary, none) {
-    const t = LM.compare ? LM.compare.tagPhrases(a, b) : [];
+    const t = window.SignoffHistory ? window.SignoffHistory.tags.phrases(a, b) : [];
     const tagItems = t.map(p => ({ part: 'tag', name: p.what, change: p.verb, detail: '' }));
     const all = t.map(p => p.verb + ' ' + p.what).concat(summary);
     return { items: tagItems.concat(items), summary: all.length ? list3(all) : none };
@@ -191,174 +191,76 @@
   }
 
   // ── The sheet ──
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const cache = {};   // per repo, for fileHistory
-  function rel(iso) {
-    const s = (Date.now() - Date.parse(iso)) / 1000;
-    if (!(s >= 0)) return '';
-    if (s < 60) return 'just now'; if (s < 3600) return Math.round(s / 60) + ' min ago'; if (s < 86400) return Math.round(s / 3600) + ' h ago';
-    return Math.round(s / 86400) + ' d ago';
-  }
-  const clock = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
-  function day(iso) {
-    const d = new Date(iso), t = new Date();
-    if (isNaN(d)) return '';
-    if (d.toDateString() === t.toDateString()) return 'Today';
-    if (d.toDateString() === new Date(Date.now() - 864e5).toDateString()) return 'Yesterday';
-    return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-  }
-  const TAG_ICON = '<svg class="hist-tagico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5V3.2c0-.4.3-.7.7-.7h5.3l5 5-6 6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5.6" cy="5.6" r="1.1" fill="currentColor"/></svg>';
-  const initials = name => { const w = String(name || '?').replace(/^@/, '').split(/[\s._-]+/).filter(Boolean); return ((w[0] || '?').charAt(0) + (w.length > 1 ? w[w.length - 1].charAt(0) : (w[0] || '').charAt(1))).toUpperCase(); };
+  const HIST = window.SignoffHistory;   // the shared History sheet, version tags, and comparison (vendor/history.js)
+  const esc = s => HIST.fmt.esc(s);
 
+  // The sheet is the Signoff engine's (vendor/history.js); Loom says what a version is and what it did.
   // kind: 'harness' (the default) or 'system'.
   function open(h, kind) {
     if (!h) return;
     const SYS = kind === 'system', WORD = SYS ? 'system' : 'harness', cmp = SYS ? sysDiff : diff;
-    const R = LM.store, M = SG.model, DEMO = R && R.DEMO;
-    const st = { rows: [], versions: [], page: 0, more: !DEMO, loading: false, error: '', gap: 2 * 3600e3, open: {}, sel: null, filter: 'all' };
+    const R = LM.store, DEMO = R && R.DEMO;
     // The document as it is now, never the tagged copy the Version comparison bar may be drawing.
     const live = () => (SYS ? LM.system.get(h.id) : LM.app.state.store[h.id]) || h;
     h = live();
-    const C = LM.compare;
-    const stampOf = r => (r.after ? R.stampKey(r.after) : '');
-    // A row's version can be tagged once it's on GitHub (it has a commit to fetch it by).
-    const tagOf = r => (r.commit && r.commit.sha && C ? C.tagAt(live(), stampOf(r)) : null);
-    const shown = () => (st.filter === 'tagged' ? st.rows.filter(tagOf) : st.rows);
-    const tagChip = t => `<span class="hist-tag hist-vtag" title="${esc(t.note)}">${TAG_ICON}${esc(t.note)}</span>`;
+    const c = R.config(), full = (!SYS && R.homeOf(h.id)) || (c.owner + '/' + c.dataRepo), tok = R.token();
+    const store = DEMO || !tok ? null : new SG.GitHubStore({ owner: full.split('/')[0], repo: full.split('/')[1], branch: 'main', dataPath: '', token: tok });
+    cache[full] = cache[full] || {};
+    const who = by => by ? '@' + by : 'Someone';
     close();
-    const wrap = document.createElement('div');
-    wrap.className = 'sheet-wrap'; wrap.id = 'lm-hist';
-    wrap.innerHTML = '<div class="sheet wide hist-sheet" role="dialog" aria-modal="true" aria-label="History"></div>';
-    wrap.addEventListener('mousedown', e => { if (e.target === wrap) close(); });
-    document.body.appendChild(wrap);
-    const box = wrap.querySelector('.sheet');
-    const who = r => r.by ? '@' + r.by : 'Someone';
-    function pane() {
-      const s = st.sel;
-      if (!s) return '<p class="note">Pick a block or a change to see what it did.</p>';
-      const list = s.row != null ? [st.rows[s.row]] : ((M.historyBlocks(shown(), st.gap).find(b => b.by + '|' + b.end === s.block)) || { rows: [] }).rows;
-      return list.map(r => {
-        const k = st.rows.indexOf(r);
-        const where = r.commit ? `synced in <a href="https://github.com/${esc(st.full)}/commit/${esc(r.commit.sha)}" target="_blank" rel="noopener"><code>${esc(r.commit.sha.slice(0, 7))}</code></a>` : r.commit === null ? 'not synced yet' : '';
+    const api = HIST.open({
+      title: h.title, word: WORD, demo: DEMO, demoNote: `The demo isn’t on GitHub, so it has no history; a synced ${WORD} shows every version.`,
+      mount: () => {
+        const wrap = document.createElement('div');
+        wrap.className = 'sheet-wrap'; wrap.id = 'lm-hist';
+        wrap.innerHTML = '<div class="sheet wide" role="dialog" aria-modal="true" aria-label="History"></div>';
+        wrap.addEventListener('mousedown', e => { if (e.target === wrap) close(); });
+        document.body.appendChild(wrap);
+        return wrap.querySelector('.sheet');
+      },
+      unmount: close,
+      store, repo: full, path: (SYS ? 'systems/projects/' : 'projects/') + h.id + '.json', cache: cache[full],
+      noStore: `Sign in to GitHub to see this ${WORD}’s history.`, toast: (t, err) => LM.app.toast(t, err ? 'error' : undefined),
+      parse: text => LM.compare.parse(SYS ? 'system' : 'harness', h.id, JSON.parse(text)),
+      live,
+      rows: (versions, complete) => rows(versions, { complete, diff: cmp }),
+      // This browser's edit not synced yet: the document here is newer than the newest version.
+      unsynced: (d, newest) => newest ? ((d.updated || 0) > (newest.updated || 0) ? rows([{ doc: d, commit: null }, { doc: newest }], { diff: cmp }) : [])
+        : rows([{ doc: d, commit: null }], { complete: true, diff: cmp }),
+      demoRows: d => rows([{ doc: d }], { complete: true, diff: cmp }),
+      intro: list => list.length ? plural(list.length, 'version') + ' by ' + list3([...new Set(list.map(r => who(r.by)))]) + `. Loom keeps the whole ${WORD} as one record, so each version is one change by one person.` : `Who changed the ${WORD}, from its versions on GitHub.`,
+      empty: () => 'No versions yet.',
+      filters: [['all', 'Every version']],
+      person: who,
+      counts: list => plural(list.length, 'version'),
+      row: r => ({ label: r.summary }),
+      change: (r, k) => {
         const items = r.items.map(it => `<li><b>${esc(it.change === 'moved on the drawing' ? 'Moved' : it.change.charAt(0).toUpperCase() + it.change.slice(1))}</b> ${esc(it.name)}${it.detail ? ` <span class="muted">· ${esc(it.detail)}</span>` : ''}</li>`).join('');
-        const canRestore = !DEMO && r.before && k > 0, tag = tagOf(r), canTag = !DEMO && C && r.commit && r.commit.sha;
-        const tagBox = tag ? `<div class="hist-vbox">${tagChip(tag)}<span class="muted">${esc('tagged' + (tag.by ? ' by @' + tag.by : '') + (tag.made ? ', ' + rel(tag.made) : ''))}</span>
-            <span class="hist-vacts"><button class="btn btn-sm btn-primary" data-h="compare" data-r="${k}">Compare</button><button class="btn btn-sm" data-h="tag" data-r="${k}">Edit note…</button><button class="btn btn-sm" data-h="untag" data-r="${k}">Remove tag</button></span></div>` : '';
-        const acts = [!tag && canTag ? `<button class="btn btn-sm" data-h="tag" data-r="${k}">${TAG_ICON}Tag this version…</button>` : '',
-          canRestore ? `<button class="btn btn-sm" data-h="restore" data-r="${k}">Restore the version before this…</button>` : ''].filter(Boolean).join('');
-        return `<div class="hist-chg"><h3>${esc(r.summary.charAt(0).toUpperCase() + r.summary.slice(1))}</h3>
-          <p class="hist-meta">${esc(who(r) + ' · ' + clock(r.at) + ', ' + rel(r.at))}${where ? ' · ' + where : ''}</p>
-          ${tagBox}
-          ${items ? `<ul class="hist-items">${items}</ul>` : ''}
-          ${acts ? `<div class="hist-acts">${acts}</div>` : ''}</div>`;
-      }).join('');
-    }
-    function draw() {
-      const blocks = M.historyBlocks(shown(), st.gap);
-      let html = '', last = '';
-      blocks.forEach(b => {
-        const d = day(b.end);
-        if (d !== last) { html += `<li class="hist-day">${esc(d)}</li>`; last = d; }
-        const key = b.by + '|' + b.end, isOpen = !!st.open[key];
-        const span = clock(b.start) !== clock(b.end) ? clock(b.start) + '–' + clock(b.end) : clock(b.end);
-        const unsynced = b.rows.every(r => r.commit === null), tags = b.rows.map(tagOf).filter(Boolean);
-        html += `<li class="hist-blk${isOpen ? ' open' : ''}${st.sel && st.sel.block === key ? ' sel' : ''}"><span class="hist-node" aria-hidden="true">${esc(initials(b.by))}</span>
-          <button class="hist-head" data-h="block" data-k="${esc(key)}" aria-expanded="${isOpen}"><span class="hist-who">${esc(b.by ? '@' + b.by : 'Someone')}</span>${unsynced ? '<span class="hist-tag">Not synced yet</span>' : ''}${tags.map(tagChip).join('')}
-          <span class="hist-when">${esc(span + ' · ' + rel(b.end))}</span><span class="hist-counts">${esc(plural(b.rows.length, 'version'))}</span></button>
-          ${isOpen ? `<ul class="hist-rows">${b.rows.map(r => { const k = st.rows.indexOf(r); return `<li><button class="hist-row${st.sel && st.sel.row === k ? ' sel' : ''}" data-h="row" data-r="${k}"><span class="hist-what">${esc(r.summary)}${tagOf(r) ? ' ' + tagChip(tagOf(r)) : ''}</span><time>${esc(clock(r.at))}</time></button></li>`; }).join('')}</ul>` : ''}</li>`;
-      });
-      const foot = st.loading ? `<p class="note">Reading the ${WORD}’s history from GitHub…</p>` : st.error ? `<p class="note">${esc(st.error)}</p>`
-        : st.more ? '<button class="btn" data-h="older">Load older</button>'
-        : st.rows.length ? `<p class="note">${DEMO ? `The demo isn’t on GitHub, so it has no history; a synced ${WORD} shows every version.` : 'That’s the whole history.'}</p>` : '';
-      const nTags = C ? C.tagsOf(live()).length : 0;
-      box.innerHTML = `<div class="sheet-head"><h2>History · ${esc(h.title)}</h2><p>${esc(st.rows.length ? plural(st.rows.length, 'version') + ' by ' + list3([...new Set(st.rows.map(who))]) + `. Loom keeps the whole ${WORD} as one record, so each version is one change by one person.` : `Who changed the ${WORD}, from its versions on GitHub.`)}</p></div>
-        <div class="hist-bar"><div class="seg" role="group" aria-label="Show">${[['all', 'Every version'], ['tagged', 'Tagged' + (nTags ? ' (' + nTags + ')' : '')]].map(([f, t]) => `<button data-h="filter" data-f="${f}" aria-pressed="${st.filter === f}">${esc(t)}</button>`).join('')}</div><label class="hist-gap">Fold runs within <select data-h="gap">${[[30, '30 min'], [120, '2 h'], [1440, '1 day'], [0, 'Never']].map(([m, t]) => `<option value="${m * 6e4}"${st.gap === m * 6e4 ? ' selected' : ''}>${t}</option>`).join('')}</select></label></div>
-        <div class="hist-grid"><div class="hist-col"><ol class="hist-tl">${html || (st.loading ? '' : st.filter === 'tagged' ? `<li class="note">No tagged versions${st.more ? ' among those read so far' : ''}. Pick a synced version, then Tag this version… to name it.</li>` : '<li class="note">No versions yet.</li>')}</ol>${foot}</div><div class="hist-col hist-pane">${pane()}</div></div>
-        <div class="sheet-foot"><button class="btn" data-h="close">Close</button></div>`;
-    }
-    function load() {
-      if (DEMO) { st.rows = rows([{ doc: h }], { complete: true, diff: cmp }); st.rows.forEach(r => { r.commit = undefined; }); st.more = false; draw(); return; }
-      const c = R.config(), full = (!SYS && R.homeOf(h.id)) || (c.owner + '/' + c.dataRepo), tok = R.token();
-      st.full = full;
-      if (!tok) { st.more = false; st.error = `Sign in to GitHub to see this ${WORD}’s history.`; draw(); return; }
-      const store = new SG.GitHubStore({ owner: full.split('/')[0], repo: full.split('/')[1], branch: 'main', dataPath: '', token: tok });
-      st.loading = true; st.error = ''; draw();
-      cache[full] = cache[full] || {};
-      store.fileHistory((SYS ? 'systems/projects/' : 'projects/') + h.id + '.json', { page: st.page + 1, perPage: 15, cache: cache[full] }).then(got => {
-        st.page++;
-        got.versions.forEach(v => {
-          let doc = null; try { doc = v.text ? JSON.parse(v.text) : null; } catch (e) { /* not a Loom file */ }
-          let hh = null;
-          if (SYS) { try { hh = doc && doc.system && doc.system.id === h.id ? LM.system.normalize(JSON.parse(JSON.stringify(doc.system))) : null; } catch (e) { hh = null; } }
-          else hh = doc && R.unwrap(doc);
-          if (hh && hh.id === h.id) st.versions.push({ doc: hh, commit: v.commit });
-        });
-        st.more = got.more;
-        build();
-        st.loading = false; draw();
-      }, err => { st.loading = false; st.error = 'Couldn’t read the history from GitHub: ' + (err.message || 'unknown error'); draw(); });
-    }
-    // The rows: this browser's edit not synced yet (the document here is newer than the newest version),
-    // then the versions read so far.
-    function build() {
-      const d = live(), newest = st.versions[0], mine = newest && (d.updated || 0) > (newest.doc.updated || 0)
-        ? rows([{ doc: d, commit: null }, newest], { diff: cmp }) : !newest ? rows([{ doc: d, commit: null }], { complete: true, diff: cmp }) : [];
-      st.rows = mine.concat(rows(st.versions, { complete: !st.more, diff: cmp }));
-    }
-    // Tag a version, rename its tag, or remove it: an edit to the document now, which syncs.
-    function setTag(r, remove) {
-      const t = tagOf(r);
-      let note = null;
-      if (!remove) {
-        note = prompt(t ? 'Rename this tag:' : 'Tag this version with a note on what it was (for example “Sent for the EVT build”):', t ? t.note : '');
-        if (note == null || !note.trim()) return;
-        note = note.trim();
-      } else if (!confirm(`Remove the tag “${t.note}”? The version itself stays in the history.`)) return;
-      const v = { commit: r.commit.sha, stamp: stampOf(r), at: r.at };
-      const edit = list => C.withTag(list, v, note, R.login());
-      if (!(SYS ? LM.system.editTags(edit) : LM.app.editTags(edit))) { alert(`Open the ${WORD} to tag its versions.`); return; }
-      const sha = r.commit.sha;
-      build();
-      const k = st.rows.findIndex(x => x.commit && x.commit.sha === sha);
-      st.sel = k >= 0 ? { row: k } : null;
-      draw();
-    }
-    async function compare(r) {
-      const t = tagOf(r);
-      if (!t) return;
-      const b = wrap.querySelector('[data-h="compare"]');
-      if (b) { b.disabled = true; b.textContent = 'Reading…'; }
-      if (await C.start(SYS ? 'system' : 'harness', live(), t)) close();
-      else if (b) { b.disabled = false; b.textContent = 'Compare'; }
-    }
-    function restore(r) {
+        return { title: r.summary.charAt(0).toUpperCase() + r.summary.slice(1), body: items ? `<ul class="hist-items">${items}</ul>` : '',
+          acts: !DEMO && r.before && k > 0 ? `<button class="btn btn-sm" data-h="restore" data-r="${k}">Restore the version before this…</button>` : '' };
+      },
+      act: (name, r, x) => { if (name === 'restore') restore(r, x); },
+      tags: true, user: () => R.login(),
+      writeTags: map => {
+        if ((SYS ? LM.system.current() : LM.app.state.cur) !== h.id) { alert(`Open the ${WORD} to tag its versions.`); return false; }
+        return SYS ? LM.system.editTags(map) : LM.app.editTags(map);
+      },
+      compareKey: LM.compare.key(SYS ? 'system' : 'harness', h.id), compareTitle: h.title
+    });
+    function restore(r, x) {
       const cur = live();
       if (!cur || cur.id !== h.id || (SYS ? LM.system.current() : LM.app.state.cur) !== h.id) return;
-      if (C && C.active()) C.exit(true);   // a restore writes the live document, never the compared copy
-      if ((cur.updated || 0) !== (st.rows[0] && st.rows[0].after.updated || 0)) { alert(`This ${WORD} changed since the history was read. Close and open History again.`); return; }
+      if (LM.compare.active()) LM.compare.exit(true);   // a restore writes the live document, never the compared copy
+      const top = x.rows()[0];
+      if ((cur.updated || 0) !== (top && top.after.updated || 0)) { alert(`This ${WORD} changed since the history was read. Close and open History again.`); return; }
       if (!confirm(`Put the ${WORD} back as it was before this change (` + r.summary + ')?\n\nIt’s saved as a new edit by you and syncs like any other. Nothing in GitHub’s history is rewritten, and Undo takes it back.')) return;
       if (SYS) LM.system.restore(r.before); else LM.app.restore(r.before);
-      close();
+      x.close();
     }
-    box.addEventListener('click', e => {
-      const b = e.target.closest('[data-h]'); if (!b) return;
-      const act = b.getAttribute('data-h');
-      if (act === 'close') close();
-      else if (act === 'block') { const k = b.getAttribute('data-k'); st.open[k] = !st.open[k]; st.sel = { block: k }; draw(); }
-      else if (act === 'row') { st.sel = { row: +b.getAttribute('data-r') }; draw(); }
-      else if (act === 'older') load();
-      else if (act === 'restore') restore(st.rows[+b.getAttribute('data-r')]);
-      else if (act === 'tag') setTag(st.rows[+b.getAttribute('data-r')]);
-      else if (act === 'untag') setTag(st.rows[+b.getAttribute('data-r')], true);
-      else if (act === 'compare') compare(st.rows[+b.getAttribute('data-r')]);
-      else if (act === 'filter') { st.filter = b.getAttribute('data-f'); st.sel = null; draw(); }
-    });
-    box.addEventListener('change', e => { if (e.target.getAttribute('data-h') === 'gap') { st.gap = +e.target.value; st.open = {}; st.sel = null; draw(); } });
-    document.addEventListener('keydown', onKey);
-    load();
+    return api;
   }
-  function onKey(e) { if (e.key === 'Escape' && document.getElementById('lm-hist')) close(); }
-  function close() { const w = document.getElementById('lm-hist'); if (w) w.remove(); document.removeEventListener('keydown', onKey); }
+  function close() { const w = document.getElementById('lm-hist'); if (w) w.remove(); }
 
   LM.history = { diff, sysDiff, rows, open, close, LAYOUT };
 })(window.LM = window.LM || {});

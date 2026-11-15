@@ -190,41 +190,42 @@
     eq(D.rows([{ harness: v1, commit: { sha: 'c1' } }], { complete: true })[0].summary.indexOf('Made the harness'), 0, 'the first version makes the harness');
   });
 
-  // ── Version tags (compare.js) ──
-  test('version tags: set, renamed, and removed by version stamp; bad entries ignored', () => {
-    const C = LM.compare, v = { commit: 'a1b2c3d4', stamp: '1893492000000|alice', at: '2030-01-01T10:00:00.000Z' };
-    let list = C.withTag([], v, 'EVT build', 'chris');
-    eq(list.map(t => [t.commit, t.stamp, t.note, t.by]), [['a1b2c3d4', '1893492000000|alice', 'EVT build', 'chris']]);
-    const id = list[0].id;
-    list = C.withTag(list, v, 'EVT build, rev B', 'chris');
-    eq([list.length, list[0].id, list[0].note], [1, id, 'EVT build, rev B'], 'renaming keeps the tag');
-    const h = { tags: list.concat([{ commit: 'not a sha', stamp: 'x', note: 'junk' }, null]) };
-    eq(C.tagsOf(h).length, 1, 'a tag without a commit is ignored');
-    eq(C.tagAt(h, v.stamp).note, 'EVT build, rev B');
-    eq(C.withTag(list, v, null), [], 'removed');
+  // ── Version tags (vendor/history.js, the engine's; compare.js is Loom's side) ──
+  test('version tags: set, renamed, and removed by commit, as records; bad entries ignored', () => {
+    const T = LM.compare.tags, v = { commit: 'a1b2c3d4', at: '2030-01-01T10:00:00.000Z' };
+    let h = { tags: T.set({}, v, 'EVT build', 'chris') };
+    eq(T.list(h).map(t => [t.commit, t.note, t.updatedBy]), [['a1b2c3d4', 'EVT build', 'chris']]);
+    const id = T.list(h)[0].id;
+    h = { tags: T.set(h, v, 'EVT build, rev B', 'chris') };
+    eq([T.list(h).length, T.list(h)[0].id, T.list(h)[0].note], [1, id, 'EVT build, rev B'], 'renaming keeps the tag');
+    const bad = { tags: Object.assign({ x: { commit: 'not a sha', note: 'junk' }, y: null }, h.tags) };
+    eq(T.list(bad).length, 1, 'a tag without a commit is ignored');
+    eq(T.at(h, v.commit).note, 'EVT build, rev B');
+    eq(T.list({ tags: T.set(h, v, null, 'chris') }), [], 'removed');
   });
   test('version tags: a version put back keeps the tags the document has now', () => {
-    const C = LM.compare, tags = [{ id: 't1', commit: 'abcdef1', stamp: '1|a', note: 'Shipped', at: '', by: '', made: '' }];
-    eq(C.carry({ title: 'old' }, { tags }).tags, tags, 'an older version gains today’s tags');
-    ok(!('tags' in C.carry({ title: 'old', tags }, { title: 'now' })), 'and loses tags removed since');
+    const T = LM.compare.tags, tags = { t1: { id: 't1', commit: 'abcdef1', note: 'Shipped', at: '', updatedAt: '', updatedBy: '' } };
+    eq(LM.compare.carry({ title: 'old' }, { tags }).tags, tags, 'an older version gains today’s tags');
+    ok(!('tags' in LM.compare.carry({ title: 'old', tags }, { title: 'now' })), 'and loses tags removed since');
     const s = sysFixture().s, older = JSON.parse(JSON.stringify(s));
     s.tags = tags;
     const cur = LM.system.normalize(JSON.parse(JSON.stringify(older)));
-    eq(C.carry(cur, s).tags, tags, 'a system too');
+    eq(LM.compare.carry(cur, s).tags, tags, 'a system too');
+    eq(T.list(LM.compare.carry(cur, s)).length, 1);
   });
   test('version tags: History names a tag change, and a tag-only version is its own row', () => {
     const D = LM.history, a = harness('Pump harness', { updated: Date.parse('2030-01-01T10:00:00Z'), updatedBy: 'alice' });
-    const tag = { id: 't1', commit: 'abcdef1', stamp: '1893492000000|alice', note: 'EVT build', at: '2030-01-01T10:00:00.000Z', by: 'bob', made: '' };
-    const b = Object.assign(JSON.parse(JSON.stringify(a)), { tags: [tag], updated: Date.parse('2030-01-02T10:00:00Z'), updatedBy: 'bob' });
+    const tag = { id: 't1', commit: 'abcdef1', note: 'EVT build', at: '2030-01-01T10:00:00.000Z', updatedAt: '2030-01-02T10:00:00.000Z', updatedBy: 'bob' };
+    const b = Object.assign(JSON.parse(JSON.stringify(a)), { tags: { t1: tag }, updated: Date.parse('2030-01-02T10:00:00Z'), updatedBy: 'bob' });
     eq(D.diff(a, b).summary, 'tagged a version “EVT build”');
     eq(D.diff(a, b).items.map(it => it.part + ':' + it.change), ['tag:tagged a version']);
-    const c = Object.assign(JSON.parse(JSON.stringify(b)), { title: 'Pump harness B', tags: [Object.assign({}, tag, { note: 'EVT' })] });
+    const c = Object.assign(JSON.parse(JSON.stringify(b)), { title: 'Pump harness B', tags: { t1: Object.assign({}, tag, { note: 'EVT' }) } });
     eq(D.diff(b, c).summary, 'renamed a tag “EVT build” to “EVT” and title changed');
     const d = Object.assign(JSON.parse(JSON.stringify(c)), { tags: undefined });
     eq(D.diff(c, d).summary, 'removed the tag “EVT”');
     const rows = D.rows([{ harness: b, commit: { sha: 'c2' } }, { harness: a, commit: { sha: 'c1' } }]);
     eq(rows.map(r => r.by + ':' + r.summary), ['bob:tagged a version “EVT build”']);
-    const s = sysFixture().s, s2 = Object.assign(JSON.parse(JSON.stringify(s)), { tags: [tag] });
+    const s = sysFixture().s, s2 = Object.assign(JSON.parse(JSON.stringify(s)), { tags: { t1: tag } });
     eq(D.sysDiff(s, s2).summary, 'tagged a version “EVT build”', 'a system too');
   });
 
