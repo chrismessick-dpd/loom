@@ -1,0 +1,255 @@
+# Formboard: routing a system's harnesses over a drawing or a model (proposal, 2026-11-15)
+
+Chris's idea: a new tab in Loom that takes a whole system, drops its blocks as squares (2D) or boxes
+(3D) onto a canvas with a reference (a DXF or PNG for 2D, a STEP for 3D) that sets the real scale, lets
+the blocks be dragged or snapped into place, lets routing channels be drawn with parameters (high
+voltage, drag chain, and so on), and then auto-routes every unpinned connection through the channels its
+constraints allow, shortest first, giving each one a length. The canvas is PL's Exploded view: one main
+view, with Four views as an option.
+
+This note checks how sound that is, what in the suite it can reuse, how other tools do it, and what to
+simplify. Nothing is built.
+
+## Verdict
+
+Sound, and worth building. Every decision below was settled with Chris on 2026-11-15. The suite already has most of the expensive parts: a 3D renderer with STEP
+import and feature snapping (PL), real board sizes and connector positions (Loom systems, from Fabcheck's
+pick-and-place), a DXF reader (Partcheck), and a document with blocks, connectors, and cables (the Loom
+system). The router itself is the cheapest part, as long as channels become a graph (below), not a
+volume to search.
+
+Three things need changing or deciding before it's built:
+1. **Channels should become a graph of centerlines.** (Decided: they're drawn as polylines.)
+2. **"No Constraints = point to point" needed pinning down.** Read literally, an unconstrained cable in
+   the cube picture cuts straight through the solid. (Decided: see *Constraints*.)
+3. **PL's Exploded UI isn't reusable as it stands.** Its renderer is; its four-view stage has to be
+   lifted out of PL's `app.js` first, the way History was made one engine.
+
+## How other tools do it
+
+Harness tools that route in 2D or 3D (the big electrical CAD suites, the routing add-ins of the
+mechanical CAD packages, and the harness tools built around a 2D layout) mostly share one approach:
+- **A routing network.** The designer lays out a network of bundle segments (centerlines with a
+  diameter) and junction points, in 2D or in the 3D model, and wires are routed along it by shortest
+  path. The volume around a segment is drawn, not searched.
+- **Separation classes.** Segments and wires carry classes (power, signal, high voltage, and so on);
+  a wire may only use segments that accept its class. This is Chris's green and yellow.
+- **Fill.** Each segment's bundle diameter is computed from the wires in it and checked against the
+  segment's size (a fill ratio), as a check or as a limit.
+- **Allowances.** Lengths get termination allowances and a slack or service-loop percentage on top of
+  the path length.
+- **Flattening.** The routed 3D harness is then flattened into a 1:1 build drawing, the
+  **formboard** (nail board) the harness is built on, with the routed segment lengths.
+
+So the industry word "formboard" means the 1:1 build board that comes *after* routing. What's described
+here is the routing step (often called harness routing or installation). Chris kept the name (*Decisions*, 5); the flatten-to-1:1 output will earn it outright, since Loom's
+harness drawing already holds segments with lengths.
+
+## What can be reused
+
+| Piece | Where | Reuse |
+| --- | --- | --- |
+| Software 3D renderer, pick buffer, `project`/`point`, slab with texture, orbit | `signoff_pl/assets/model3d.js` | As is (vendor into Loom, as Partcheck's `me-send` does) |
+| STEP → simplified, gzipped mesh (`prepare`, `simplify`, `encode`) | `model3d.js` + an `occt-worker.js` (Loom has its own) | As is |
+| Feature snapping: corners, edges, hole axes, flat faces (`features`, `alignMove`) | `model3d.js` | As is; the blocks are boxes, so they snap face to face |
+| Four views, per-view cameras, Link views, flat-view drag, turn ring, snap hover, back and forward | PL `app.js`, about lines 1009–1700 | **Not as is.** It reads `current()`, `P.tree`, `p.nodes[id].place`, `ui.cam`, `ui.flatCams`, `placeStep`, and `touch` directly. Lift it into a shared `stage.js` with an adapter (objects, read and write a place, history), PL first with its tests unchanged, then vendor into Loom: the History-engine pattern. Roughly 700 lines plus its CSS; the biggest single job here |
+| Blocks with real sizes, connectors at their pick-and-place spots (`conns[].x, y, side`) | Loom system document | As is: route from each **connector**, not the block's middle |
+| Board pictures (Fabcheck renders) on a slab | Loom `boards.js`, PL's board slabs | As is: a board block can be a textured slab, as in PL |
+| DXF lines, arcs, circles, polylines | `partcheck/assets/drawing.js` `readDxf` | Needs work: it reads only ENTITIES (no HEADER, so no `$INSUNITS`), skips layers named like text or notes, and has no blocks (`INSERT`), splines, or ellipses, which machine layouts use a lot |
+| History, version tags, comparison | `history.js` engine | Free, if the formboard lives in a document Loom already syncs |
+| Large file storage | PL's `models/` (gzipped mesh), `GitHubStore.splitParts` for files over 4 MB | As is, for a machine-sized reference model |
+| Segments with lengths, breakouts, and coverings | Loom harness model (`h.segments`; the old 2D formboard view, `render.js`, was removed 2026-11-06 but the model kept them "so a Layout view can come back") | Where routed lengths and branch points land in a harness, and what a 1:1 board would draw |
+| Length override as a variant PN `<harness PN>-<mm>` | `docs/system.md`, *Decisions* | The place routed lengths would land (see *Lengths*) |
+| `connect.js` router | Loom | **Not reused.** It's a 2D grid search around rectangles, built for drawings. Routing through channels is a graph problem, far simpler and faster |
+
+## Simplifications and improvements
+
+### One 3D model; 2D is a plane in it
+Keep every coordinate in 3D (mm) from day one. A PNG or DXF reference is a textured plane at z = 0
+(`slab` + `texture`, as PL draws a board), blocks are boxes of the block's size, and 2D mode is just the
+Top view, locked. There's then no second code path for 2D: a flat formboard and a 3D install are the
+same document, and a 2D layout can be lifted onto a STEP later.
+
+### Channels are a graph
+A channel is a **polyline** (its centerline) with one width and height, drawn as a rectangular section
+swept along it. Where two channels touch or cross, a junction joins them. Then:
+- the network has a few hundred nodes at most;
+- routing one connection is Dijkstra over the edges its constraints allow, weighted by length: well
+  under a millisecond each, so Route all for 150 cables is instant;
+- the result is a list of segments, which is exactly what fill, lengths, and a later flatten need.
+
+In the cube picture, the green L-shaped path down the front is one polyline, and each yellow strip
+another; where they meet at the top edge, junctions join them. The shortest allowed path from 1 to 2 is
+then found exactly, with no volume search.
+
+**Decided (Chris, 2026-11-15):**
+- **Polylines, not boxes.** Click point to point along the path, double-click (or Enter) to finish; Esc
+  cancels. Each run between two points is straight; the channel turns at its points. Properties has
+  Width, Height, and its classes and Exclusive; Length is read out (the sum of its runs) and per-run
+  lengths can be typed, moving the next point along the run. On the canvas, a point drags (moving the
+  corner), a side edge drags (changing Width for the whole channel), and a double-click on a run adds a
+  point. This replaces the first idea's boxes with edges that drag to resize.
+- **Placing in 3D: both.** A click over the model snaps to it (a face, an edge, or a corner, with PL's
+  `features` and `alignMove`), and the channel stands its height off that face, like a tray on a wall
+  (its section's up is the face's normal at the first snapped point). Off the model, a point is placed
+  in the plane of the flat view clicked (Top, Front, or Right), or in 3D on a point already placed. In
+  2D everything is on the plane, so only the Top view applies.
+- **Joining is automatic.** Where two channels touch or overlap (their sections within each other's
+  width), a junction is made at the nearest points of their centerlines, and the network is rebuilt
+  whenever a channel changes. An end or a point snapped onto another channel makes a clean T or
+  end-to-end join there. Junctions are derived, never stored, so two channels crossing apart (one
+  bridging over the other, sections clear) stay separate.
+
+### Ends join the network by a drop
+A connector usually isn't on a channel. Each end joins the network by a straight drop to the nearest
+point of an allowed channel, counted in the length. A drop longer than a set distance (say 300 mm) is
+flagged rather than trusted.
+
+### Constraints
+First proposed: a connection starts as *No Constraints* and routes point to point; adding tags that
+match a channel's parameters lets it route through that channel.
+
+**Decided (Chris, 2026-11-15):**
+- **A tag is permission.** A cable's classes let it into channels of those classes; it still takes
+  the shortest allowed path, which may not use them.
+- **Channels can be Exclusive** (a tick box). An exclusive channel takes only cables sharing one of its
+  classes; any other channel takes every cable.
+- **An untagged cable** (the default) may use every channel that isn't exclusive.
+- **No allowed path:** the cable draws as a straight dashed line, is flagged **Not routed** in the
+  List and Checks, and shows its straight-line length.
+
+So a cable may use a channel when the channel isn't exclusive, or when they share a class. Tags only
+make a difference on exclusive channels. In the cube example the yellow channels are exclusive: a
+cable tagged yellow may take the shorter way through them, and any other cable stays in the green.
+
+### Per cable, with a trunk for many ends
+A system connection is a cable (a harness), not a wire: its wires share one path. Lengths are per cable
+end-to-end; per-wire lengths differ only by where each wire terminates, which Loom's harness already
+handles with segments and breakouts. A cable with three or more ends routes from its first end to each
+other one, as `system.js` already does on the drawing; a true shortest branching tree (a Steiner tree)
+is a later refinement.
+
+### Pinned, and vias
+Pinned keeps a cable's route through Route all. A cheaper middle ground worth adding early: **vias**,
+channels a cable must pass through, which steer one cable without pinning its whole path.
+
+### Fill, shown before it's enforced
+Loom knows each wire's gauge (and mm² per AWG), so each channel segment can show its bundle diameter and
+fill percentage from the cables routed through it. Enforcing a limit makes the result depend on the
+order cables are routed in; show it first, enforce later (Chris already said "later").
+
+### Lengths
+**Decided (Chris, 2026-11-15):**
+- **The build length** = (drop + path through the channels + drop) × (1 + slack %) + each channel's
+  extra × the length run in it + each end's allowance, **rounded up to the next 10 mm**.
+  - Drops (connector to the nearest allowed channel) count.
+  - Slack % and the end allowance are formboard settings; an end's allowance can be changed per cable end.
+  - A channel can add length per meter (a drag chain's loop, a coiled run): `extraPerM`, mm per meter.
+  - The breakdown (path, drops, slack, extras, and allowances) shows in the cable's panel, so the
+    number can be checked.
+- **Report, then Apply.** Route shows each cable's length in the List and its panel, and writes nothing
+  outside the formboard. Two explicit actions then use it:
+  - **Apply lengths** (all routed cables, or one from its panel) writes the placed cable's length in
+    the system (`lengthMm`). It's a variant (`<PN>-<mm>`) only where it differs from the base part's own
+    length; where it equals it, the override is cleared.
+  - **Save to base part** (per cable, Chris: "PN-001 is connected but has no length in Loom; the
+    formboard routes it; apply that length to PN-001") writes the length into the part itself, so the
+    base PN carries it and the placed cable needs no override:
+    - a Loom harness: its segment between those two ends, when the run between them is one segment;
+      with breakouts it waits for branch routing (the trunk's split points give each segment);
+    - a purchased cable: its `length`;
+    - a generic connection has no part, so only Apply lengths applies.
+    The confirm lists the harness's other uses (other cables, other systems) and their lengths when
+    they differ, since the base length changes for all of them: those then become variants, or match.
+    It's one undoable edit to the harness, synced like any other.
+
+### Scale
+A PNG has no scale: it needs two-point calibration (click two points, type the distance). A DXF has
+`$INSUNITS` in its header, which the reader must learn to read, with calibration as a fallback when it's
+missing or 0. A STEP is in mm.
+
+### Nested systems
+A placed system is an abstract 150 × 150 mm block. Physical routing needs the boards and devices inside
+it, at their real connectors.
+
+**Decided (Chris, 2026-11-15):**
+- **Leaves, with a choice.** Every placed system opens down to its boards and devices by default, and
+  every cable at every level comes with them. Any one placed system can be kept as a single block
+  (*Keep as one block* in its panel, `keep: true` under its path), for a sub-assembly that sits as one
+  physical box with its inside cabling done: its size is its drawing's extent, its external connectors
+  are where its tabs sit, and cables wholly inside it aren't routed.
+- **Start spots as the system draws them.** Each leaf starts flat on the floor (z = 0) beside the
+  reference, where its system's drawing puts it, in mm. A placed system's contents are laid at their own
+  true scale, centered on where its 150 mm block sits in the parent, and pushed apart in rows where two
+  such groups would overlap (the parent's blocks aren't to scale, so this is the one adjustment). These
+  spots are view state, never stored: a block is stored only once you move it (`blocks[path].at`), and
+  until then it's drawn faded and listed **Not placed**. Lengths of cables with an unplaced end are
+  marked provisional, and Apply lengths skips them.
+- **Device ends become small blocks.** A harness built onto its device (*Is its device*: a motor, a
+  sensor, or flying leads) gets a small block at its far end (`<cable path>/<end id>`, about 30 mm, or a
+  part's size when it's linked to one in the library) to place where the device sits, so it routes and
+  gets a length like any cable.
+- **Follow the system automatically.** Each time the formboard opens it reads the system: new blocks and
+  device ends start Not placed, removed ones are dropped from view (their stored place stays until the
+  next real edit, then goes), and a cable whose ends changed is marked for re-routing. Reading never
+  writes; only a move, a channel edit, Route, or Apply does (see *Derived data and sync*).
+
+### Derived data and sync
+Routes and lengths are derived. Write them only on an explicit Route (or a drag), never while drawing:
+the false conflict copies of 2026-11-14 (*Sync guards* in `loom/CLAUDE.md`) came from a drawing pass
+writing derived sizes into a system and making every open tab look edited. The same holds for fitted cameras and auto-placed blocks: keep them in
+view state, as PL now does.
+
+### Speed
+`model3d.js` was measured at about 30–40 ms per quick frame for PL-sized scenes. A machine-frame STEP
+may be several times larger, and Four views draws it four times; that's unmeasured. Before any WebGL:
+cap the reference mesh with `simplify`, and cache the reference model's color and depth for each view
+while its camera holds still, drawing only the blocks, channels, and routes over it (they're a few
+hundred boxes and lines). Moving a block then costs almost nothing. If that still isn't enough, three.js
+is already vendored in the hub (`signoff/assets/vendor/three.min.js`).
+
+### Possibly: start from PL's arrangement
+When a product is already arranged in PL's Exploded (boards and enclosure STEPs placed), the formboard
+could take PL's places and models as its starting reference instead of re-placing everything. Not needed
+for a machine that has no PL project.
+
+## Storage
+
+**Decided (Chris, 2026-11-15): its own file**, `loom_data/formboards/projects/<id>.json` (the engine's
+layout under a data path, as systems use `systems/projects/`, so PL never reads it as a harness),
+naming its system. The system stays light, a system can have several formboards (a 2D layout and a 3D
+one, or one per machine variant), and each gets its own History and version tags. A system's Formboard
+tab lists its formboards, with New formboard. The reference goes beside it, as PL stores models: a
+gzipped mesh (and optionally the gzipped STEP), the PNG, or the DXF, split over 4 MB. The sync guards
+apply as for systems: stamped on edit, three-way against `syncBase`, no write without an edit.
+
+```
+{ schema, id, meta: { name, system, units: 'mm' },
+  reference: { kind: 'step' | 'dxf' | 'png', file, scale, at },   // scale from calibration for PNG and DXF
+  blocks:   { <block path>: { at: [x, y, z], rot, keep } },       // leaves, kept systems, device ends; only once moved
+  channels: [{ id, pts: [[x, y, z]…], up: [x, y, z], w, h, classes: [], exclusive, extraPerM, name }],
+  cables:   { <cable path>: { classes: [], pinned, vias: [], endMm: { <end>: mm }, route: { pts, length, channels } } },
+  settings: { dropMax, endMm, slackPct, roundMm: 10 } }
+```
+
+## Suggested order
+
+1. **Lift the stage out of PL** into a shared `stage.js` with an adapter; PL's tests unchanged; vendor
+   into Loom. Measure render speed on a large made-up STEP.
+2. **Formboard tab, placing only:** import a system (flattened), blocks as boxes (boards as textured
+   slabs), straight lines between connectors, a STEP, DXF, or PNG reference with calibration, drag and
+   snap, saved.
+3. **Channels:** draw, size, classes, properties panel.
+4. **Route:** the graph, Dijkstra, drops, Not routed, pinned, vias, lengths in the List tab.
+5. **Fill and allowances**, then Apply lengths and Save to base part (see *Lengths*).
+6. Later: flatten a routed harness to a 1:1 formboard drawing.
+
+## Decisions for Chris
+
+1. ~~**Constraint rule**~~: decided 2026-11-15 (see *Constraints*).
+2. ~~**Nested systems**~~: decided 2026-11-15 (see *Nested systems*).
+3. ~~**Lengths**~~: decided 2026-11-15 (see *Lengths*).
+4. ~~**Channels**~~: decided 2026-11-15 (see *Channels are a graph*).
+5. ~~**Name**~~: decided 2026-11-15: **Formboard**. The later 1:1 build drawing goes in the same tab,
+   so the name grows into its industry meaning.
+6. ~~**Storage**~~: decided 2026-11-15 (see *Storage*).
