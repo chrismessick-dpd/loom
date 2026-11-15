@@ -742,9 +742,15 @@
       if (prop) { sz.ext.forEach((e, id) => sz.arc.set(id, { u0: e.x0, u1: e.x1 })); return; }
       const run = M.setRun(A, b.set);
       sz.k = run ? Math.min(10, Math.max(0.3, run / S)) : 2;
+      // A packing set stops its fan length short of a route's end on pins, so its wires fan out of it and
+      // land on their own pins (Chris, 2026-11-14: a shield reaching the wire ends packed them right up to
+      // the connector, so they ended between rows, off their pins). A breakout end keeps 0: the branches
+      // fan from there.
+      const R0 = it.path.route, spans = sz.spans || [];
       setsUnder(h, b.set).forEach(({ s: st }) => {
-        const r = M.reach(h, st);
-        sz.arc.set(st.id, span(r.l / sz.k, S - r.r / sz.k, 0, S));
+        const r = M.reach(h, st), sp = spans.find(o => o.s === st), F = sp && rides(st) ? Math.min(fanLen(sp), S / 2 - 6) : 0;
+        const lo = R0 && R0.A.pins ? F : 0, hi = R0 && R0.B.pins ? S - F : S;
+        sz.arc.set(st.id, span(r.l / sz.k, S - r.r / sz.k, lo, Math.max(lo + 12, hi)));
       });
     });
     // A breakout's branches (Chris, 2026-11-10): each wire runs on from where it leaves the trunk to

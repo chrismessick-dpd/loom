@@ -491,7 +491,7 @@
     S.sel = selOf(bs, cs); S.pair = null; S.picking = null; S.adding = null;
   }
 
-  function open(id) { S.cur = id; S.root = id; S.tab = 'detail'; S.focus = null; S.hist = {}; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
+  function open(id) { S.cur = id; S.root = id; S.focus = null; S.hist = {}; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
 
   // ── System and List (Chris, 2026-11-12; Overview removed 2026-11-14) ──
   // The tabs over the canvas. A pick in the menu inside the open system's tree is a focus, not a jump:

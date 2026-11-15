@@ -481,9 +481,8 @@
     const treeRow = (n, d) => {
       const has = n.kids.length + n.harnesses.length > 0, open = n.path in treeFold ? !!treeFold[n.path] : holdsOpen(n);
       const tog = has ? `<button class="lm-tog" data-act="toggle-sys" data-path="${esc(n.path)}" aria-expanded="${open}" title="${open ? 'Fold' : 'Show'} what it holds"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : '<span class="lm-tog"></span>';
-      const pick = inOpen(n.path);
-      return `<div class="lm-tree" style="--d:${d}">${tog}${sysRow(n.sys, pick ? n.path : null)}</div>` +
-        (open && has ? n.kids.map(k => treeRow(k, d + 1)).join('') + n.harnesses.map(id => { const h = S.store[id]; return h && !h.deleted ? `<div class="lm-tree" style="--d:${d + 1}"><span class="lm-tog"></span>${row(h, pick ? n.path : null)}</div>` : ''; }).join('') : '');
+      return `<div class="lm-tree" style="--d:${d}">${tog}${sysRow(n.sys, n.path)}</div>` +
+        (open && has ? n.kids.map(k => treeRow(k, d + 1)).join('') + n.harnesses.map(id => { const h = S.store[id]; return h && !h.deleted ? `<div class="lm-tree" style="--d:${d + 1}"><span class="lm-tog"></span>${row(h, n.path)}</div>` : ''; }).join('') : '');
     };
     const dirty = new Set(canSync() ? R.unsynced(S.store).concat(R.sysUnsynced(LM.system.store())) : []);
     // Grouped by client project, as Signoff EE groups boards (none: "No project", last).
@@ -493,7 +492,8 @@
     const keys = [...groups.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
     const sysRow = (s, path) => {
       const c = LM.system.checks(s, sysHooks.harness);
-      const active = path ? picked('system', s.id, path) : s.id === root, attr = path ? `data-sfocus="${esc('system|' + s.id + '|' + path)}"` : `data-open-sys="${s.id}"`;
+      // A row in another system's tree carries its tree path (data-tpath), so a click keeps the system's tab.
+      const pick = path && inOpen(path), active = pick ? picked('system', s.id, path) : s.id === root, attr = pick ? `data-sfocus="${esc('system|' + s.id + '|' + path)}"` : `data-open-sys="${s.id}"${path ? ` data-tpath="${esc(path)}"` : ''}`;
       const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
       // One line (Chris, 2026-11-12: a compact list); the counts are in the tooltip.
       return `<button class="proj${active ? ' active' : ''}" ${attr} title="${esc(`${s.title}\nSystem · ${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'} · ${s.cables.length} cable${s.cables.length === 1 ? '' : 's'}`)}">
@@ -503,7 +503,7 @@
     };
     const row = (h, path) => {
       if (h.kind === 'tree') return treeRow(h.node, 0);
-      const active = path ? picked('harness', h.id, path) : h.id === S.cur, attr = path ? `data-sfocus="${esc('harness|' + h.id + '|' + path)}"` : `data-open="${h.id}"`;
+      const pick = path && inOpen(path), active = pick ? picked('harness', h.id, path) : h.id === S.cur, attr = pick ? `data-sfocus="${esc('harness|' + h.id + '|' + path)}"` : `data-open="${h.id}"${path ? ` data-tpath="${esc(path)}"` : ''}`;
       const c = M.checks(h);
       const e = c.filter(x => x.sev === 'error').length, w = c.filter(x => x.sev === 'warn').length;
       const ends = h.nodes.filter(M.isConn).length;
@@ -2730,6 +2730,16 @@
     // A pick under the open system, in the menu or on its Wires page: kind|id|path.
     const pk = t.closest('[data-sfocus]');
     if (pk) { const [kind, id, path] = pk.dataset.sfocus.split('|'); LM.system.setFocus(kind, id, path); return; }
+    // A row in another system's tree while a system is open (Chris, 2026-11-14: a click in the menu never changes
+    // the main view's tab): that tree's top system opens on the same tab with the row picked, as a row in the
+    // open tree is.
+    const tp = t.closest('[data-tpath]');
+    if (tp && LM.system.current()) {
+      const path = tp.dataset.tpath, top = path.split('>')[0];
+      if (top !== LM.system.root()) openSystem(top);
+      if (tp.dataset.openSys) LM.system.setFocus('system', tp.dataset.openSys, path); else LM.system.setFocus('harness', tp.dataset.open, path);
+      return;
+    }
     const os = t.closest('[data-open-sys]');
     if (os) { if (os.dataset.openSys !== LM.system.root()) openSystem(os.dataset.openSys); return; }
     const o = t.closest('[data-open]');

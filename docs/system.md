@@ -125,8 +125,9 @@ system outside the tree opens as the top one, as a click on it in the menu does 
 re-rooted).
 
 A single placed system or harness cable selected on the canvas becomes the pick when the tab changes, unless
-it's the selection the tab made itself (`S.autoSel`). The tab and pick aren't stored; opening a system starts
-on System, drawing it whole. List draws the listed system as the current one, so the panel edits it. Screenshots (the made-up nested demo): `docs/screens/system-tabs-*.jpg`.
+it's the selection the tab made itself (`S.autoSel`). The tab and pick aren't stored. A click in the menu never changes the tab (Chris, 2026-11-14): opening a
+system keeps it, and with a system open, a row in another system's tree (`data-tpath`) opens that tree's top
+system with the row picked, so List lists it and System shows it where it's placed. List draws the listed system as the current one, so the panel edits it. Screenshots (the made-up nested demo): `docs/screens/system-tabs-*.jpg`.
 
 ## Toolbar (2026-11-12, Chris)
 

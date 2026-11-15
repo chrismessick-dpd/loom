@@ -22,6 +22,12 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Menu clicks keep the tab; wires land on their pins (2026-11-14, Chris).** With a system open, a row in
+  another system's tree (`data-tpath`) opens that tree's top system on the same tab with the row picked, as a row
+  in the open tree is; `LM.system.open` no longer resets the tab. A shield, cable, bundle, or twist reaching its
+  wire ends now stops its fan length short of a route end on pins (`sz.arc` in `conn.js`), so its wires fan out
+  and land on their own pins; before, they stayed packed to the connector and ended between rows. A breakout end
+  is unchanged. Golden routes unchanged; tests 88.
 - **No Overview tab (2026-11-14, Chris: redundant).** A system's tabs are System (was Detail; tab value still
   `detail`, the default) and List. System draws the open system whole when nothing is picked (its own row, or
   *Placed in* back to it), and otherwise the system placing the pick with it selected. `overviewSel` is gone.
