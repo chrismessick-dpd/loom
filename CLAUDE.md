@@ -40,6 +40,13 @@ links to it so far. Before every commit:
   the parent's `b.tabs[id].edge` (`{ side, t }`, the side in the block's own frame, t its middle along it); the cables
   into it re-route, and one undo puts it back. A click still starts a cable. Edge tabs leave from their edge (no
   `autoExits`). Old hand-placed `x`/`y` spots in `b.tabs` are dropped. Tests 92.
+  Then (2026-11-15, Chris): an edge tab ignores any picked exit (`exitSide`, `keepTabs`) and run drags leave it alone
+  (`endTabs`), so its cable always leaves straight out from its edge; leads take their cable's color (`cabColor`).
+- **Loose cable ends (2026-11-15, Chris: detach a cable without it leaving the drawing).** A cable end dragged off
+  its connector onto empty canvas stays where it's dropped: `cab.loose[end id]` (`{ x, y }`, mm), kept only while
+  that end is unplugged (`tidyLoose`). The cable routes out to it (`looseGeom`, a level terminal facing the first
+  end), its ring drags onto any connector (which clears the spot) or somewhere else. Ends unplugged from the panel
+  have no spot and keep the old dashed stub. Tests 114.
 - **One block size, upright names (2026-11-14, Chris: blocks fitted to their drawings came out all sizes).** Every
   placed system's block is 150 × 150 mm (`SYS_BLOCK` in `resolveBlock`; `fitMini` is gone, and the panel's Width and
   Height are gone for them), its mini view fitted inside. Its name, its one block's, else the system's title, is

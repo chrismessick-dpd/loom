@@ -836,6 +836,19 @@
     const draw = CN.draw(Object.assign({}, R0, { v: [100, 200, 30] })).pts;
     ok(Math.abs(draw[0].x - 100) < 0.5 && Math.abs(draw[1].x - 100) < 0.5 && draw[1].y > 180, 'drawn straight down from the exit to the corner');
   });
+  test('system: an end taken off its connector stays where it was dropped, and the cable routes out to it', () => {
+    const Y = LM.system, s = Y.blank('Gizmo');
+    const a = Y.addDrawn(s, 'board', { x: 0, y: 0 });
+    a.w = 80; a.h = 40; a.conns.length = 0;
+    const ar = Y.mkConn(a, 'J1', 2, { x: 80 - Y.TAB.w, y: 18 });
+    s.cables.push({ id: 'k1', kind: 'link', ends: { a: { block: a.id, conn: ar.id }, b: null }, loose: { b: { x: 200, y: 60 } } });
+    Y.normalize(s);
+    const L = Y.layout(s).get('k1'), r = L.routes[0], last = r.pts[r.pts.length - 1];
+    eq(L.routes.length, 1, 'one route, from J1 to the loose end');
+    ok(Math.abs(last.x - 800) < 0.5 && Math.abs(last.y - 240) < 0.5, 'it ends at the loose spot');
+    s.cables[0].ends.b = { block: a.id, conn: ar.id }; Y.normalize(s);
+    ok(!s.cables[0].loose, 'plugged in again, the spot is dropped');
+  });
   test('system: a turned block turns its connectors, their exits, and its size, and its cables still fit', () => {
     const Y = LM.system, s = Y.blank('Gizmo');
     const a = Y.addDrawn(s, 'board', { x: 0, y: 0 }), b = Y.addDrawn(s, 'board', { x: 0, y: 200 });

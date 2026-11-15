@@ -39,9 +39,19 @@
       if (c.kind !== 'harness') TWO.forEach(e => { if (!(e.id in c.ends)) c.ends[e.id] = null; });
       // A route kept as a bare v (before cables kept the harness's record) becomes { v }.
       if (c.routes && typeof c.routes === 'object') Object.keys(c.routes).forEach(k => { const r = LM.connect.record(c.routes[k]); if (r) c.routes[k] = r; else delete c.routes[k]; });
+      tidyLoose(c);
     });
     return s;
   }
+  // A cable end taken off its connector and left where it was dropped (Chris, 2026-11-15): cab.loose[end id] is
+  // its spot ({ x, y }, mm), only while that end isn't plugged in. The cable routes out to it, and it drags onto
+  // any connector later.
+  function tidyLoose(c) {
+    if (!c.loose || typeof c.loose !== 'object') { delete c.loose; return; }
+    Object.keys(c.loose).forEach(k => { const q = c.loose[k]; if (c.ends[k] || !q || !isFinite(+q.x) || !isFinite(+q.y)) delete c.loose[k]; });
+    if (!Object.keys(c.loose).length) delete c.loose;
+  }
+  const looseAt = (cab, id) => (!cab.ends[id] && cab.loose && cab.loose[id]) || null;
   function nextRef(list, prefix) {
     let n = 1;
     const used = new Set(list.map(x => x.ref));
@@ -813,7 +823,12 @@
     });
   }
   function cableEnds(s, cab, h) {
-    return endsOf(cab, h).map(n => { const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn); return { n, b, c, g: c ? tabGeom(b, c) : null }; });
+    return endsOf(cab, h).map(n => { const e = cab.ends[n.id], b = e && block(s, e.block), c = b && conn(b, e.conn), q = !c && looseAt(cab, n.id); return { n, b, c, g: c ? tabGeom(b, c) : null, free: q ? { x: q.x * K, y: q.y * K } : null }; });
+  }
+  // A loose end as the router's terminal: the cable runs level into its spot from the side the cable comes from.
+  function looseGeom(q, toward) {
+    const dx = toward >= q.x ? 1 : -1;
+    return { b: { id: '', x: q.x / K, y: q.y / K }, g: { x: q.x, y: q.y, w: 0, h: 0, cx: q.x, cy: q.y, mid: q.y, side: dx > 0 ? 'right' : 'left', dx, dy: 0, ex: q.x, ey: q.y, tx: q.x, out: dx, inside: 0 } };
   }
   const pathOf = pts => 'M' + pts.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('L');
   // The point halfway along a drawn route (route.js shape samples carry their arc length s).
@@ -829,7 +844,7 @@
   const memos = new Map();
   function layout(s, view) {
     autoExits(s);
-    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted, c.tw || 0])]), s.cables.map(c => [c.id, c.kind, c.harness, c.ends, c.routes]), s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
+    const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted, c.tw || 0])]), s.cables.map(c => [c.id, c.kind, c.harness, c.ends, c.routes, c.loose || null]), s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
     const memo = memos.get(s.id);
     if (memo && memo.key === key && memo.lo) return memo.lo;
     const lo = layoutNow(s, view);
@@ -1189,23 +1204,26 @@
     const list = [], per = [], step = gridStep(rects);
     s.cables.forEach(cab => {
       const h = harnessOf(cab), ends = cableEnds(s, cab, h), at = ends.filter(x => x.g);
-      per.push({ cab, h, ends, at });
+      // The ends a route runs between: the plugged ones first, then the loose ones (each toward the first end).
+      const rt = at.slice(), fr = ends.filter(x => x.free);
+      fr.forEach(x => { const o = rt[0] ? rt[0].g.ex : fr[0] === x && fr[1] ? fr[1].free.x : x.free.x; rt.push(Object.assign({ loose: true }, x, looseGeom(x.free, o))); });
+      per.push({ cab, h, ends, at, rt });
       if (deviceEnds(h).length) return;
-      for (let i = 1; i < at.length; i++) {
-        const a = at[0], b = at[i];
+      for (let i = 1; i < rt.length; i++) {
+        const a = rt[0], b = rt[i];
         const As = terminals(a.g, a.b, 'A', b.g.ex, step), Bs = terminals(b.g, b.b, 'B', a.g.ex, step), combos = [];
         As.forEach(A => Bs.forEach(B => combos.push({ A, B })));
         list.push({ key: cab.id + '|' + b.n.id, weight: h ? Math.max(1, h.wires.length) : 1, combos, half: HALF, stub: STUB_R, r: RADIUS, shape: CN().record(cab.routes && cab.routes[b.n.id]) });
       }
     });
     const res = CN().routeAll(s.id, rects, list, { fast: !!(view && view.fast), grid: step });
-    per.forEach(({ cab, h, ends, at }) => {
+    per.forEach(({ cab, h, ends, at, rt }) => {
       const routes = [], dv = deviceEnds(h).length > 0;
-      for (let i = 1; i < at.length && !dv; i++) {
-        const R0 = res.routes.get(cab.id + '|' + at[i].n.id), sh = drawCable(R0);
-        routes.push(Object.assign({}, R0, { end: at[i].n.id, d: pathOf(sh.pts), mid: midOfPts(sh.pts), pts: sh.pts }));
+      for (let i = 1; i < rt.length && !dv; i++) {
+        const R0 = res.routes.get(cab.id + '|' + rt[i].n.id), sh = drawCable(R0);
+        routes.push(Object.assign({}, R0, { end: rt[i].n.id, d: pathOf(sh.pts), mid: midOfPts(sh.pts), pts: sh.pts }));
       }
-      out.set(cab.id, { cab, h, ends, at, routes, dev: deviceEnds(h).map(n => n.name || n.ref) });
+      out.set(cab.id, { cab, h, ends, at, rt, routes, dev: deviceEnds(h).map(n => n.name || n.ref) });
     });
     out.step = step;
     return out;
@@ -1384,7 +1402,8 @@
       routes.forEach(r => { html += wire(r.d); });
       if (routes.length) mid = midOf(routes[0]);
       // Ends not plugged in yet: a dashed stub ending in a ring, off the one plugged end or the middle.
-      const open = ends.length - at.length;
+      const open = ends.filter(x => !x.g && !x.free).length;
+      const frees = dev && dev.length ? [] : ends.filter(x => x.free);
       const D = dev && dev.length ? devLayout(s).get(cab.id) : null;
       if (D) {
         // A harness ending at its own device: drawn as itself (devLayout), its wires in their colors out to
@@ -1400,7 +1419,7 @@
           (D.cap ? `<g class="sys-dend" data-devgrab="${cab.id}"><text class="sys-dcap${on ? ' sel' : ''}" x="${D.cap.x}" y="${D.cap.y}">${esc(D.cap.text)}</text></g>` : '') + '</g>';
         // Its name is the caption over its far ends, not a floating label.
         lane = null; mid = null;
-      } else if (at.length === 1) {
+      } else if (at.length === 1 && !frees.length) {
         const g = at[0].g, x2 = g.ex + g.dx * STUB_U * 2.2, y2 = g.ey + g.dy * STUB_U * 2.2;
         html += `<g class="sys-open">${wire(`M${g.ex} ${g.ey}L${x2} ${y2}`, 'open')}<circle class="sys-ring" cx="${x2}" cy="${y2}" r="5"/></g>`;
         if (!lane) lane = laneOfPts([{ x: g.ex, y: g.ey }, { x: x2, y: y2 }]);
@@ -1415,7 +1434,12 @@
         const a = anchorOf(x);
         handles += `<circle class="cv-end sys-end" cx="${x.g.tx}" cy="${x.g.cy}" r="4.5"/><circle class="cv-hitend" data-cend="${cab.id}|${x.n.id}" data-from='${esc(JSON.stringify({ block: x.b.id, conn: x.c.id }))}' data-x="${a.tx}" data-y="${a.cy}" cx="${x.g.tx}" cy="${x.g.cy}" r="10"><title>Drag this end to another connector, or off to leave it open</title></circle>`;
       });
-      const loose = ends.find(x => !x.g);
+      // Loose ends: a ring where each was dropped, which drags onto a connector or somewhere else.
+      frees.forEach(x => {
+        const o = at[0] ? at[0].g : frees.find(y => y !== x) ? { tx: frees.find(y => y !== x).free.x, cy: frees.find(y => y !== x).free.y } : { tx: x.free.x, cy: x.free.y };
+        handles += `<circle class="sys-ring sys-free" style="stroke:${color}" cx="${x.free.x}" cy="${x.free.y}" r="7"/><circle class="cv-hitend" data-cend="${cab.id}|${x.n.id}" data-x="${o.tx}" data-y="${o.cy}" cx="${x.free.x}" cy="${x.free.y}" r="10"><title>${esc(x.n.ref)} isn't plugged in: drag it onto a connector</title></circle>`;
+      });
+      const loose = ends.find(x => !x.g && !x.free);
       if (loose && ring) handles += `<circle class="cv-hitend" data-cend="${cab.id}|${loose.n.id}" data-x="${ring.ax}" data-y="${ring.ay}" cx="${ring.x}" cy="${ring.y}" r="10"><title>${esc(loose.n.ref)} isn't plugged in: drag it onto a connector</title></circle>`;
       if (mid && labelsOn()) {
         const raw = `${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`, t = esc(raw), cls = `sys-clabel${on ? ' sel' : ''}${dim ? ' dim' : ''}`, tw0 = U.textW(raw, 11);
@@ -2342,8 +2366,17 @@
         const t = e && e.type === 'pointerup' ? tabAt(e) : null, to = t ? tabRef(t) : null;
         const gh = svg.querySelector('#sys-ghost');
         if (gh) gh.innerHTML = '';
-        if (sameTab(to, d.from)) { A.refresh(); return; }
-        change(s => { const cab = cable(s, d.cab); cab.ends[d.node] = to; if (to) conn(block(s, to.block), to.conn).used = true; if (cab.routes) delete cab.routes[d.node]; S.sel = { kind: 'cable', id: cab.id }; });
+        if (sameTab(to, d.from) || !e || e.type !== 'pointerup') { A.refresh(); return; }
+        // Dropped off any connector, the end stays where it was let go (Chris, 2026-11-15), unplugged.
+        const p = toWorld(svg, e);
+        change(s => {
+          const cab = cable(s, d.cab); cab.ends[d.node] = to;
+          if (to) conn(block(s, to.block), to.conn).used = true;
+          else cab.loose = Object.assign({}, cab.loose, { [d.node]: { x: Math.round(p.x / K * 10) / 10, y: Math.round(p.y / K * 10) / 10 } });
+          tidyLoose(cab);
+          if (cab.routes) delete cab.routes[d.node];
+          S.sel = { kind: 'cable', id: cab.id };
+        });
         return;
       }
       if (d.kind === 'up') {
