@@ -1173,6 +1173,44 @@
       Y.store()[pump.id] = pump;
     } finally { done(); }
   });
+  // ── Formboard (docs/formboard.md): the router's cases (tests/fbroute-cases.js, also run by Node) and the
+  // system flattened to its boards and devices, keyed by path. ──
+  (LM.fbrouteCases || []).forEach(c => test('formboard route: ' + c.name, c.fn));
+  test('formboard flatten: a system placed twice gives two sets of leaves, and cables reach the leaf connector', () => {
+    const { Y, pump, top, a, j1, psu, sb, done } = nestFixture();
+    try {
+      const sb2 = Y.addSystem(top, pump, { x: 0, y: 400 });
+      const p1 = psu.conns[0] || Y.mkConn(psu, 'TB1', 2, { x: 0, y: 5 });
+      top.cables.push({ id: 'k1', kind: 'link', ends: { a: { block: psu.id, conn: p1.id }, b: { block: sb.id, conn: a.id + '/' + j1.id } } });
+      top.cables.push({ id: 'k2', kind: 'link', ends: { a: { block: psu.id, conn: p1.id }, b: { block: sb2.id, conn: a.id + '/' + j1.id } } });
+      Y.resolve();
+      const fl = Y.flatten(top.id);
+      eq(fl.blocks.map(b => b.path).sort(), [psu.id, sb.id + '/' + a.id, sb2.id + '/' + a.id].sort(), 'the device, and the pump board once per placement');
+      eq(fl.cables.find(c => c.id === 'k1').ends.map(e => [e.block, e.conn]), [[psu.id, p1.id], [sb.id + '/' + a.id, j1.id]]);
+      eq(fl.cables.find(c => c.id === 'k2').ends[1].block, sb2.id + '/' + a.id, 'the second placement’s cable reaches its own board');
+      const b1 = fl.blocks.find(b => b.path === sb.id + '/' + a.id), b2 = fl.blocks.find(b => b.path === sb2.id + '/' + a.id);
+      ok(b1.x + b1.w <= b2.x || b2.x + b2.w <= b1.x || b1.y + b1.h <= b2.y || b2.y + b2.h <= b1.y, 'the two groups don’t overlap');
+      const kept = Y.flatten(top.id, { [sb.id]: true });
+      ok(kept.blocks.some(b => b.path === sb.id && b.kind === 'kept'), 'kept as one block');
+      eq(kept.cables.find(c => c.id === 'k1').ends[1], { key: 'b', block: sb.id, conn: a.id + '/' + j1.id }, 'a kept block keeps the tab’s path id');
+    } finally { done(); }
+  });
+  test('formboard flatten: a connector passed up two levels reaches its board', () => {
+    const { Y, store, pump, top, a, j1, sb, done } = nestFixture();
+    const plant = Y.blank('Gizmo'); plant.title = 'Plant';
+    store[plant.id] = plant;
+    try {
+      sb.tabs[a.id + '/' + j1.id] = { external: true };
+      Y.resolve();
+      const tb = Y.addSystem(plant, top, { x: 0, y: 0 }), dev = Y.addDrawn(plant, 'device', { x: -200, y: 0 });
+      Y.resolve();
+      const tab = tb.conns.find(c => c.id === sb.id + '/' + a.id + '/' + j1.id), d1 = dev.conns[0] || Y.mkConn(dev, 'TB1', 2, { x: 0, y: 5 });
+      ok(tab, 'the tab is on the plant’s block for the machine');
+      plant.cables.push({ id: 'k9', kind: 'link', ends: { a: { block: dev.id, conn: d1.id }, b: { block: tb.id, conn: tab.id } } });
+      const fl = Y.flatten(plant.id);
+      eq(fl.cables.find(c => c.id === 'k9').ends[1], { key: 'b', block: tb.id + '/' + sb.id + '/' + a.id, conn: j1.id });
+    } finally { delete store[plant.id]; done(); }
+  });
   test('nest: a system can’t hold one that holds it, and the tree lists systems with their systems and harnesses', () => {
     const { Y, store, pump, top, done } = nestFixture();
     const h = harness('Pump power', { pn: '2200300-001' });

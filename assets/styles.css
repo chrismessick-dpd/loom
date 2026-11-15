@@ -1339,3 +1339,59 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
    make room for the bar. */
 body.has-compare .build-view, body.has-compare .sys-view { height: calc(100dvh - 56px - 44px); }
 body.has-banner.has-compare .build-view, body.has-banner.has-compare .sys-view { height: calc(100dvh - 56px - 33px - 44px); }
+
+/* ── Formboard (docs/formboard.md, 2026-11-15): the stage beside a panel, a bar over both ── */
+.fb-host { flex: 1; display: flex; min-width: 0; }
+.fb-host[hidden] { display: none; }
+.fb-view { flex: 1; display: grid; grid-template-rows: auto 1fr; height: calc(100dvh - 56px); min-height: 420px; min-width: 0; }
+body.has-banner .fb-view { height: calc(100dvh - 56px - 33px); }
+.fb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--hair); background: var(--bg-elev); }
+.fb-bar select { max-width: 220px; }
+.fb-bar .btn.on, .fb-bar .seg button.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.fb-sep { width: 1px; height: 22px; background: var(--hair); }
+.fb-grow { flex: 1; }
+.fb-link { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-2); }
+.fb-busy { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.fb-main { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+.fb-stage-wrap { grid-area: 1 / 1; position: relative; min-width: 0; min-height: 0; background: var(--bg-sunk); }
+.fb-panel { grid-area: 1 / 2; border-right: none; border-left: 1px solid var(--hair); overflow-y: auto; min-height: 0; }
+.fb-panel .rail-body { padding: 0 16px 16px; }
+.fb-panel .field { margin-top: 10px; }
+.fb-panel .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; }
+.fb-panel .hint { font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.fb-panel .sys-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.fb-h { margin: 16px 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
+.fb-list { display: grid; gap: 2px; }
+.fb-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--text); text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.fb-row:hover { background: var(--accent-soft); }
+.fb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-pn { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; }
+.fb-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18); }
+/* A cable's state: words and a pattern, never hue alone (Chris is colorblind). */
+.fb-st { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.fb-st.ok { font-family: var(--mono); color: var(--text); }
+.fb-st.bad { padding: 1px 6px; border-radius: 4px; background: var(--issue-hatch, repeating-linear-gradient(135deg, rgba(0,0,0,0.08) 0 3px, transparent 3px 6px)); color: var(--text); }
+.fb-class { display: grid; grid-template-columns: 30px 1fr 28px; gap: 6px; align-items: center; margin-bottom: 6px; }
+.fb-class input[type=color] { width: 30px; height: 28px; padding: 0; border: 0; background: none; }
+.fb-ticks { display: grid; gap: 4px; }
+.fb-tick { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-top: 6px; }
+.fb-runs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fb-runs label { display: grid; gap: 2px; font-size: 12px; color: var(--text-3); }
+.fb-ends { margin: 0; padding-left: 18px; font-size: 13px; }
+.fb-parts { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+.fb-parts td { padding: 3px 0; border-bottom: 1px solid var(--hair); }
+.fb-parts td:last-child { text-align: right; font-family: var(--mono); }
+.fb-parts tr.tot td { font-weight: 600; border-bottom: 0; }
+.fb-empty { margin: 48px auto; max-width: 520px; padding: 24px; text-align: center; }
+/* The stage (stage.js): one view, or Four views in a 2 × 2 grid. */
+.fb-stage { position: absolute; inset: 0; display: grid; }
+.fb-stage.fb-quad { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 1px; background: var(--hair); }
+.fb-pane { position: relative; min-width: 0; min-height: 0; background: var(--bg-sunk); color: var(--text-3); }
+.fb-cv, .fb-over { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.fb-cv { outline: none; touch-action: none; }
+.fb-over { pointer-events: none; }
+.fb-tag { position: absolute; left: 8px; top: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); pointer-events: none; }
+.fb-tag span { font-weight: 400; color: var(--text-3); }
+.fb-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 4px 10px; font-size: 12px; font-family: var(--mono); pointer-events: none; }
+.fb-hint[hidden] { display: none; }
+@media (max-width: 860px) { .fb-main { grid-template-columns: 1fr; grid-template-rows: 1fr 40%; } .fb-panel { grid-area: 2 / 1; border-left: 0; border-top: 1px solid var(--hair); } }

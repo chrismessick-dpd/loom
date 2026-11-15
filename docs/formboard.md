@@ -1,4 +1,4 @@
-# Formboard: routing a system's harnesses over a drawing or a model (proposal, 2026-11-15)
+# Formboard: routing a system's harnesses over a drawing or a model (2026-11-15)
 
 Chris's idea: a new tab in Loom that takes a whole system, drops its blocks as squares (2D) or boxes
 (3D) onto a canvas with a reference (a DXF or PNG for 2D, a STEP for 3D) that sets the real scale, lets
@@ -8,7 +8,53 @@ constraints allow, shortest first, giving each one a length. The canvas is PL's 
 view, with Four views as an option.
 
 This note checks how sound that is, what in the suite it can reuse, how other tools do it, and what to
-simplify. Nothing is built.
+simplify; Chris's decisions follow each part. What's built is in *Built* below.
+
+## Built (2026-11-15, Chris: "start all steps")
+
+A third tab on a system, **Formboard**, beside System and List. Files:
+
+| File | What |
+| --- | --- |
+| `assets/fbroute.js` (`LM.fbroute`) | The router, pure: `build(channels)` (the network, junctions derived), `route`, `routeAll` (with fill), `buildLength`. Tested by `tests/fbroute-cases.js`, which runs in Node (`node tests/fbroute-cases.js`) and in `tests/test.html`; the cases include Chris's cube. |
+| `assets/stage.js` (`LM.stage`) | The 3D stage: one view or Four views (Top, 3D, Front, Right), per-view cameras, Link views, drag in a plane, orbit, pan, zoom, R to turn 90°, and feature snapping (PL's `featureAt`). Driven by a host; it knows nothing of Loom. |
+| `assets/formboard.js` (`LM.formboard`) | The tab: its documents, the reference (STEP, DXF, PNG or JPEG), blocks, channels, Route, Apply lengths, Save to base part, the panel, and the demo. |
+| `assets/vendor/model3d.js` | Signoff PL's renderer, STEP reader, and snapping, vendored by `tools/sync_vendor.py`. |
+| `assets/system.js` | `flatten(rootId, keep)` and `setLengths(list)`; the tab hands the page to the formboard. |
+| `assets/app.js` | The tab button, the formboard's own Undo and Redo in the toolbar, and `editHarness` for Save to base part. |
+
+- **Order changed from *Suggested order*:** the stage is a new file in Loom built from PL's Exploded code,
+  not lifted out of PL first (rewriting PL's Exploded while Chris arranges real data in it was the riskier
+  path). PL can move onto `stage.js` later as its own step.
+- **The reference** is read in the browser and kept in IndexedDB (`loom-fbref`) by its hash; the document
+  names it. A STEP becomes a simplified mesh (80k triangles at most). A picture or DXF is drawn onto a thin
+  plane at z = 0; a DXF's `$INSUNITS` sets its scale (unset: mm, flagged), and **Calibrate** (two clicks,
+  the real distance) scales a picture or DXF. DXF blocks (`INSERT`), splines, and ellipses aren't read yet.
+- **Blocks** are boxes (boards 1.6 mm thick, devices 20 mm, kept systems 30 mm, device ends 10 mm) at their
+  start spots, faded until moved; moved, `blocks[path] = { at, rot }`. Drag in any flat view, or in 3D once
+  selected; X, Y, and Z fields; Turn 90° about Z, X, or Y (or R); **Snap block** is PL's two-step align
+  (corners, edges, hole axes, flat faces). *Keep <system> as one block* and *Open into its boards and
+  devices* set `keep`.
+- **Channels:** Draw channel clicks point to point (snapping to the model, standing off its face by half
+  the height; joining an existing channel's point within 8 px), double-click or Enter to finish. Selected,
+  its points drag, a double-click on a run adds a point, and the panel has Name, Width, Height, Classes,
+  Exclusive, Extra mm per meter, and each run's length (typing one moves the points after it).
+- **Route** routes every unpinned cable and stores each route (legs, points, lengths, and the breakdown)
+  with a key of its end points, so a route whose ends have moved since is drawn dashed and marked. Routes
+  are drawn over the views; Not routed is dashed and labeled.
+- **Apply lengths** and **Save to base part** as decided under *Lengths*, each one undo step in the
+  formboard's own history (which puts the system's or harness's values back).
+- **The demo** (`?demo`, the thermostat system): a made-up 320 × 220 mm wall plate (built in, no file), the
+  boards placed on it, a Low voltage channel and an exclusive 24 VAC raceway, and the wall wiring tagged
+  24 VAC.
+
+**Not built yet:**
+- **Sync.** Formboards live only in this browser (localStorage `loom.v1.formboards`, references in
+  IndexedDB). Syncing them to `loom_data/formboards/` (and the reference files beside them) is the next
+  step; its first signed-in run creates that folder, so it waits for Chris.
+- Dragging a channel's side edge to change its width (the Width field does it), PL's turn ring (R and the
+  Turn buttons do it), a linked library part's size for a device end, fill kept after a reload, and caching
+  the reference's picture between camera moves (speed on a machine-sized STEP is unmeasured).
 
 ## Verdict
 

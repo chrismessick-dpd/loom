@@ -73,6 +73,7 @@
     else if (want) linked = want;   // not here yet: the first sync may bring it (syncNow)
     S.cur = S.store[c] && !S.store[c].deleted ? c : DEMO ? 'hdemo1' : null;
     // A system (assets/system.js) open last time, or asked for by ?system=, takes the page.
+    if (LM.formboard) LM.formboard.init(Object.assign({}, sysHooks, { editHarness }));
     const sid = LM.system.init(sysHooks);
     if (sid) { LM.system.open(sid); S.cur = null; }
     // The systems' last synced copies (store.js, IndexedDB), for Discard changes: known once read.
@@ -247,6 +248,18 @@
   function flushSaves() {
     if (saveTimer) { clearTimeout(saveTimer); writeNow(); }
     if (LM.system && LM.system.flush) LM.system.flush();
+    if (LM.formboard && LM.formboard.flush) LM.formboard.flush();
+  }
+  // An edit to a harness that may not be open (Formboard's Save to base part): stamped and saved as any
+  // edit is. The formboard keeps its own undo step for it.
+  function editHarness(id, fn) {
+    const h = S.store[id];
+    if (!h || h.deleted) return false;
+    fn(h);
+    h.updated = Date.now();
+    if (R && R.login()) h.updatedBy = R.login();
+    persist(); renderAll();
+    return true;
   }
   window.addEventListener('pagehide', flushSaves);
 
@@ -617,6 +630,12 @@
   }
   // A system's top right (Chris, 2026-11-12: as a harness's): Undo, Redo, Discard changes while it has
   // changes since the last sync and this browser kept that sync's copy (R.hasSysBase), and Save file.
+  // On the Formboard tab, Undo and Redo are the formboard's own (Ctrl+Z never undoes a system edit you can't see).
+  function fbToolbar() {
+    const F = LM.formboard;
+    return `<button class="icon-btn" data-act="fb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"${F.canUndo() ? '' : ' disabled'}>${ICON.undo}</button>` +
+      `<button class="icon-btn" data-act="fb-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${F.canRedo() ? '' : ' disabled'}>${ICON.redo}</button>`;
+  }
   function sysToolbar() {
     const id = LM.system.current(), s = id && LM.system.get(id), Y = LM.system;
     const discard = s && canSync() && R.sysUnsynced({ [id]: s }).length && R.canDiscard('system', id);
@@ -655,9 +674,9 @@
     if (LM.system.current()) {
       const tab = LM.system.tab();
       seg.hidden = false;
-      seg.innerHTML = [['detail', 'System', 'The open system, or the one placing what’s picked in the menu (the pick selected)'], ['list', 'List', 'What’s picked, and its connectors, cables, and wires, as a table; click one for its properties']]
+      seg.innerHTML = [['detail', 'System', 'The open system, or the one placing what’s picked in the menu (the pick selected)'], ['list', 'List', 'What’s picked, and its connectors, cables, and wires, as a table; click one for its properties'], ['formboard', 'Formboard', 'Place the system on a drawing or a 3D model, draw channels, and route its cables for their lengths']]
         .map(([v, l, tip]) => `<button class="${tab === v ? 'on' : ''}" data-act="sys-tab" data-tab="${v}" title="${tip}">${l}</button>`).join('');
-      $('#toolbar-actions').innerHTML = sysToolbar(); return;
+      $('#toolbar-actions').innerHTML = tab === 'formboard' && LM.formboard ? fbToolbar() : sysToolbar(); return;
     }
     if (!h) { seg.innerHTML = ''; seg.hidden = true; $('#toolbar-actions').innerHTML = ''; return; }
     seg.hidden = false;
@@ -2645,6 +2664,8 @@
       case 'sync': syncNow(false); break;
       case 'sys-tab': LM.system.setTab(el.dataset.tab); break;
       case 'sys-undo': LM.system.act('undo'); break;
+      case 'fb-undo': LM.formboard.undo(); break;
+      case 'fb-redo': LM.formboard.redo(); break;
       case 'sys-redo': LM.system.act('redo'); break;
       case 'sys-discard': discardSystem(); break;
       case 'sys-resolve': { const sid = LM.system.current(); if (sid && LM.resolve) LM.resolve.open('system', LM.system.get(sid)); break; }

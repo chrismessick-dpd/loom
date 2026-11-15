@@ -8,6 +8,7 @@ at the source and re-run this.
 - model.js, github.js      the Signoff engine (ee_design_review): GitHubStore, which syncs Loom's
                            harnesses with its private data repo, and the merge helpers it needs.
 - history.js               the engine's History sheet, version tags, and Version comparison bar.
+- model3d.js               Signoff PL's 3D renderer, STEP reader, and snapping (signoff_pl), for Formboard.
 
     python tools/sync_vendor.py           # copy
     python tools/sync_vendor.py --check   # exit 1 if a copy is stale
@@ -18,13 +19,15 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DST = ROOT / "assets" / "vendor"
 FAB = ROOT.parent / "pcb_dfm" / "assets"
 EE = ROOT.parent / "ee_design_review" / "assets"
+PL = ROOT.parent / "signoff_pl" / "assets"
 FAB_HEADER = ("/* Vendored from pcb_dfm/assets/{name} (Fabcheck). Do not edit here: re-copy with tools/sync_vendor.py. */\n"
               "window.Fab = window.Fab || {{}};\n")
 EE_HEADER = "/* Vendored from ee_design_review/assets/{name} (the Signoff engine). Do not edit here: re-copy with tools/sync_vendor.py. */\n"
+PL_HEADER = "/* Vendored from signoff_pl/assets/{name} (Signoff PL). Do not edit here: re-copy with tools/sync_vendor.py. */\n"
 FILES = [(FAB, "util.js", FAB_HEADER), (FAB, "gerber.js", FAB_HEADER), (FAB, "classify.js", FAB_HEADER),
          (FAB, "ipc356.js", FAB_HEADER), (FAB, "assembly.js", FAB_HEADER),
          (EE, "model.js", EE_HEADER), (EE, "github.js", EE_HEADER), (EE, "auth.js", EE_HEADER),
-         (EE, "history.js", EE_HEADER)]
+         (EE, "history.js", EE_HEADER), (PL, "model3d.js", PL_HEADER)]
 
 stale = []
 for src, name, header in FILES:

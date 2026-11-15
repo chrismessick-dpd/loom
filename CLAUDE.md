@@ -22,6 +22,16 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Formboard (2026-11-15, Chris: a tab placing a system on a drawing or STEP, channels, auto-routed lengths;
+  his decisions are in `docs/formboard.md`).** A third system tab, Formboard: `assets/formboard.js` (the tab),
+  `assets/stage.js` (the 3D stage and Four views, from PL's Exploded), `assets/fbroute.js` (the router, pure),
+  and `assets/vendor/model3d.js` (PL's renderer, vendored). `LM.system.flatten(rootId, keep)` opens placed
+  systems down to boards and devices, keyed by path; `setLengths` is Apply lengths. On that tab Undo, Redo, and
+  keys are the formboard's own (`fbToolbar`, `onKey` hands over). Formboards are local only so far
+  (`loom.v1.formboards`, references in IndexedDB `loom-fbref`); syncing to `loom_data/formboards/` is next and
+  waits for Chris. See `docs/formboard.md`, *Built*. Tests 108 (14 router cases, also `node tests/fbroute-cases.js`,
+  and 2 flatten). Tried in the demo with synthetic pointer events: Route, Four views, a cable's panel, Apply and
+  undo, drawing and editing a channel, a block drag, and STEP and DXF imports from Partcheck's made-up demo.
 - **Tabs on the block's edge (2026-11-14, Chris).** A placed system's tabs sit just outside its block's edge, each
   with a thin curved lead in to where its connector really sits in the mini view (`c.inner`, `leadPath`, `.sys-lead`).
   Unmoved, a tab goes to the edge its connector faces inside, level with it; tabs on one side spread so none overlap

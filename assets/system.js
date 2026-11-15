@@ -627,11 +627,13 @@
       if (!S.cam) S.cam = bounds(s);
       reveal(s, S.sel);
     } else if (S.tab === 'list') { show(listSys(f)); S.sel = null; }
+    else if (S.tab === 'formboard') { show(S.root); S.sel = null; }
     S.autoSel = JSON.stringify(S.sel);
   }
   function setTab(tab) {
-    if (!['detail', 'list'].includes(tab) || !S.root) return;
-    if (tab !== S.tab) focusFromSel();
+    if (!['detail', 'list', 'formboard'].includes(tab) || !S.root) return;
+    if (tab === 'formboard' && LM.formboard) LM.formboard.ensureDemo(S.root);
+    if (tab !== S.tab && tab !== 'formboard') focusFromSel();
     S.tab = tab; applyTab(); persist(); A.refresh();
   }
   // A pick in the menu (app.js, a row under the open system): kind system or harness, its id, and its
@@ -1867,12 +1869,24 @@
     const s = cur();
     if (!s) return;
     page.classList.add('sys-on');
-    if (!page.querySelector('.sys-view')) {
-      page.innerHTML = `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+    // Formboard (docs/formboard.md): its own view beside the system's, which stays (its listeners are wired
+    // once) and hides.
+    const sv0 = page.querySelector('.sys-view');
+    if (S.tab === 'formboard' && LM.formboard) {
+      if (sv0) sv0.hidden = true;
+      LM.formboard.render(page, S.root);
+      return;
+    }
+    if (LM.formboard) LM.formboard.leave(page);
+    if (sv0) sv0.hidden = false;
+    if (!sv0) {
+      if (page.querySelector('.fb-host')) page.querySelectorAll(':scope > :not(.fb-host)').forEach(x => x.remove());
+      else page.innerHTML = '';
+      page.insertAdjacentHTML('afterbegin', `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
         <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><button class="icon-btn" data-sact="turn-all" title="Turn the system 90° clockwise (Shift-click: counterclockwise)" aria-label="Turn the system 90°">⟳</button><span id="sys-grid-menu"></span></div>
         <div class="hud-br"><label class="seg glass hud-check" title="Show each cable’s name and part number, on a dot you can slide along it"><input type="checkbox" data-slabels id="sys-labels"><span>Cable labels</span></label></div></div>
         <div class="sys-wires" id="sys-wires" hidden></div>
-        <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div>`;
+        <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div>`);
       wire(page);
     }
     // List takes the canvas's place beside the panel; the canvas stays (its listeners are wired once).
@@ -2651,6 +2665,7 @@
   function onKey(e) {
     const mod = e.ctrlKey || e.metaKey, typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
     if (typing) return;
+    if (S.tab === 'formboard') { if (LM.formboard) LM.formboard.onKey(e); return; }
     if (S.tab === 'list' && !mod && e.key !== 'Escape') return;
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? swap(S.future, S.past) : swap(S.past, S.future); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); swap(S.future, S.past); return; }
@@ -2763,6 +2778,103 @@
     open(s.id);
     return s;
   }
+  // ── Formboard (docs/formboard.md, Chris, 2026-11-15) ──
+  // A system flattened to what's physically there: every placed system opened down to its boards and
+  // devices (unless keep[<block path>] keeps it as one block), every cable at every level, and a small block
+  // at each harness end built onto its device. Keys are paths ('/'-joined block ids from the root), never
+  // bare ids, so a system placed twice gives two sets of leaves. Spots are the system drawings' own, in mm
+  // (x right, y down): a placed system's contents at their true scale, centered on where its block sits, then
+  // groups pushed apart in rows where they'd overlap. Nothing here is stored.
+  function flatten(rootId, keep) {
+    keep = keep || {};
+    const root = S.store[rootId];
+    if (!root) return null;
+    const blocks = [], byPath = {}, cables = [], groups = [];
+    const harness = id => (A ? A.harness(id) : null);
+    function walk(s, prefix, origin, trail, group) {
+      s.blocks.forEach(b => {
+        const path = prefix ? prefix + '/' + b.id : b.id, z = sizeOf(b), ch = childOf(b);
+        if (b.kind === 'system' && ch && !keep[path] && !trail.includes(ch.id) && trail.length <= DEPTH) {
+          const E = extentOf(ch) || { x: 0, y: 0, w: 1, h: 1 }, cx = origin.x + b.x + z.W / 2, cy = origin.y + b.y + z.H / 2;
+          const g = group || { id: path, items: [] };
+          if (!group) groups.push(g);
+          walk(ch, path, { x: cx - (E.x + E.w / 2), y: cy - (E.y + E.h / 2) }, trail.concat(ch.id), g);
+          return;
+        }
+        const x = {
+          path, id: b.id, kind: b.kind === 'system' ? 'kept' : b.kind || 'board', ref: b.ref || '', name: b.kind === 'system' && ch ? ch.title : b.name || '',
+          system: s.id, source: b.source || null, x: origin.x + b.x, y: origin.y + b.y, w: z.W, h: z.H,
+          conns: (b.conns || []).filter(fitted).map(c => { const t = tabSpot(b, c); return { id: c.id, ref: c.ref, x: t.x + tw(c) / 2, y: t.y + TAB.h / 2 }; }),
+        };
+        blocks.push(x); byPath[path] = x;
+        if (group) group.items.push(x);
+      });
+      s.cables.forEach(cab => {
+        const k = kindOf(cab), h = k === 'harness' ? harness(cab.harness) : null, path = (prefix ? prefix + '/' : '') + cab.id;
+        const area = h ? h.wires.reduce((n, w) => n + (M.AWG[w.gauge] || 0), 0) : 0;
+        cables.push({
+          path, id: cab.id, system: s.id, kind: k, harness: cab.harness || null, title: titleOf(cab, h), pn: pnOf(h, cab), basePn: k === 'harness' ? (h && h.pn) || '' : k === 'bought' ? cab.pn || cab.mpn || '' : '',
+          lengthMm: cab.lengthMm || null, baseMm: k === 'bought' ? cab.lengthMm || null : null, areaMm2: Math.round(area * 100) / 100, color: colorOf(cab), group: group ? group.id : null,
+          raw: Object.keys(cab.ends).map(key => ({ key, at: cab.ends[key], prefix })),
+          devices: deviceEnds(h).map(n => ({ key: n.id, name: devLabel(n) })),
+        });
+      });
+    }
+    walk(root, '', { x: 0, y: 0 }, [root.id], null);
+    // Groups pushed apart: each placed system's leaves are kept clear of the ones before them, left to right.
+    const box = items => items.reduce((r, b) => ({ x0: Math.min(r.x0, b.x), y0: Math.min(r.y0, b.y), x1: Math.max(r.x1, b.x + b.w), y1: Math.max(r.y1, b.y + b.h) }), { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
+    const GAP = 20, done = [];
+    groups.filter(g => g.items.length).sort((p, q) => box(p.items).x0 - box(q.items).x0).forEach(g => {
+      for (let tries = 0; tries < 200; tries++) {
+        const a = box(g.items), hit = done.find(d => { const b = box(d.items); return a.x0 < b.x1 + GAP && a.x1 + GAP > b.x0 && a.y0 < b.y1 + GAP && a.y1 + GAP > b.y0; });
+        if (!hit) break;
+        const dx = box(hit.items).x1 + GAP - a.x0;
+        g.items.forEach(b => { b.x += dx; });
+      }
+      done.push(g);
+    });
+    // Each cable end to the leaf it plugs into: a tab id on a placed system is the inner block's id and its
+    // connector's, one step per level, followed down until a leaf (or a kept system, whose tabs keep the path).
+    function leafOf(prefix, at) {
+      if (!at) return null;
+      let bp = (prefix ? prefix + '/' : '') + at.block, conn = String(at.conn);
+      while (!byPath[bp] && conn.includes('/')) { const i = conn.indexOf('/'); bp += '/' + conn.slice(0, i); conn = conn.slice(i + 1); }
+      const b = byPath[bp], c = b && b.conns.find(x => x.id === conn);
+      return c ? { block: bp, conn } : null;
+    }
+    cables.forEach(c => {
+      c.ends = c.raw.map(e => ({ key: e.key, ...(leafOf(e.prefix, e.at) || { block: null, conn: null }) }));
+      // A harness built onto its device: a small block at that end, near the first plugged end, to place
+      // where the device sits.
+      const from = c.ends.find(e => e.block);
+      c.devices.forEach((d, i) => {
+        const fb = from && byPath[from.block], fc = fb && fb.conns.find(x => x.id === from.conn);
+        const bx = fb ? fb.x + fc.x + 40 + i * 40 : 0, by = fb ? fb.y + fc.y - 15 : 0, path = c.path + '/' + d.key;
+        const x = { path, id: d.key, kind: 'device-end', ref: '', name: d.name, system: c.system, source: null, x: bx, y: by, w: 30, h: 30, conns: [{ id: 'd', ref: d.name, x: 15, y: 15 }], cable: c.path };
+        blocks.push(x); byPath[path] = x;
+        c.ends.push({ key: d.key, block: path, conn: 'd', device: true });
+      });
+      delete c.raw; delete c.devices;
+    });
+    return { root: rootId, title: root.title, blocks, cables };
+  }
+  // Lengths written to placed cables (Apply lengths): [{ system, cable, lengthMm }] → what each was, for undo.
+  // Each system touched is stamped, as any edit is.
+  function setLengths(list) {
+    const was = [], touched = new Set();
+    (list || []).forEach(x => {
+      const s = S.store[x.system], cab = s && cable(s, x.cable);
+      if (!cab) return;
+      was.push({ system: x.system, cable: x.cable, lengthMm: cab.lengthMm || null });
+      const v = +x.lengthMm > 0 ? Math.round(+x.lengthMm) : null;
+      if (v) cab.lengthMm = v; else delete cab.lengthMm;
+      touched.add(s);
+    });
+    touched.forEach(s => { s.updated = now(); if (A && A.login()) s.updatedBy = A.login(); });
+    if (touched.size) persist();
+    return was;
+  }
+
   function init(hooks) {
     A = hooks;
     const c = load();
@@ -2770,9 +2882,9 @@
     return c;
   }
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
-    store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
+    store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending || (S.tab === 'formboard' && !!LM.formboard && LM.formboard.busy()), act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
+    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
     tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,
     canUndo: () => !locked() && S.past.length > 0, canRedo: () => !locked() && S.future.length > 0, discardTo, restore, saveFile, openDoc,
     // compare.js: a stored version made ready to draw (its placed systems' tabs resolved), the selection
