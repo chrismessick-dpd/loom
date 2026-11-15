@@ -28,6 +28,10 @@ links to it so far. Before every commit:
   `sys-pulse` keyframes), brighter with a dark rim, and dark (`.ink`) on a light cable (`lightColor`, which reads a
   `var(--x)` color from the theme: a purchased cable's gray on a dark page). Device harness wires too.
 
+- **Harness crumb (2026-11-15, Chris: a harness in a hierarchy keeps the clickable hierarchy beside the tabs, as a
+  system does).** `harnessCrumbs` in `app.js`: the systems holding it, from the menu row's tree path (`S.hpath`, set by
+  `openHarness(id, path)`; from a system, the pick shown or the open system), else the first system holding it in
+  `LM.system.tree()`; then the harness's name. A system in it opens that system (`hcrumb`).
 - **Cable tags (2026-11-15, Chris: Formboard's classes on the system drawing; his choices: kept on the system
   cable and shared with Formboard, the + offering every tag in Loom).** `cab.tags` (names; `assets/tags.js`,
   `LM.tags`: `tidy`, `all`, `color`, `editorHtml`, `pillsSvg`, events delegated by scope `sys:<cable id>` or

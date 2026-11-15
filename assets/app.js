@@ -109,7 +109,8 @@
     harnesses: () => live(),
     projects: () => [...new Set(live().map(h => h.project).concat(LM.system.live().map(s => s.project)).map(p => String(p || '').trim()).filter(Boolean))].sort(),
     // sel: { kind, ids } to select in it (a system's List opens a wire or end this way).
-    openHarness: (id, sel) => { S.view = 'build'; openHarness(id); if (sel) select(sel.kind, sel.ids); },
+    // From a system, the crumb keeps the system it was opened from (the pick shown, else the open system).
+    openHarness: (id, sel) => { const f = LM.system.focused(), from = f && f.kind === 'system' ? f.path : LM.system.root(); S.view = 'build'; openHarness(id, from); if (sel) select(sel.kind, sel.ids); },
     // The grid's Dots or Lines (fold.gridStyle), shared with the harness canvas, and its icon.
     gridStyle: () => (fold.gridStyle === 'lines' ? 'lines' : 'dots'),
     setGridStyle: v => { fold.gridStyle = v === 'lines' ? 'lines' : 'dots'; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } renderAll(); },
@@ -390,7 +391,9 @@
     S.sel = mkSel(P);
     renderAll();
   }
-  function openHarness(id) {
+  // path: the systems holding it, as the menu's tree names them (rootId>childId), for the toolbar's crumb.
+  function openHarness(id, path) {
+    S.hpath = path || null;
     LM.system.close();
     S.cur = id; S.sel = null; S.pending = null; S.past = []; S.future = []; S.cam = null;
     persist();
@@ -674,13 +677,28 @@
     const h = H();
     return h ? [{ label: 'History…', run: () => LM.history.open(h) }] : [];
   }
+  // Where the open harness sits (Chris, 2026-11-15: the clickable hierarchy beside the tabs, as a system has):
+  // the tree path it was opened from when a system there still holds it, else the first system holding it.
+  function harnessPath(id) {
+    const T = LM.system.tree(), paths = [];
+    const walk = n => { if (n.harnesses.includes(id)) paths.push(n.path); n.kids.forEach(walk); };
+    T.roots.forEach(walk);
+    return paths.includes(S.hpath) ? S.hpath : paths[0] || '';
+  }
+  function harnessCrumbs(h) {
+    const path = harnessPath(h.id);
+    if (!path) return '';
+    const ids = path.split('>');
+    return ids.map((id, i) => { const s = LM.system.get(id); return s ? `<button class="sys-crumb" data-act="hcrumb" data-path="${esc(ids.slice(0, i + 1).join('>'))}" title="Open ${esc(s.title)}">${esc(s.title)}</button>` : ''; })
+      .concat(`<span class="sys-crumb-tail">${esc(h.title)}</span>`).join('<span class="sep">›</span>');
+  }
   function renderToolbar() {
     const h = H();
     const seg = $('#view-seg'), crumbs = $('#sys-crumbs');
     // History… in the ⋯ menu (Chris, 2026-11-14: in every tool's ⋯ menu, not a button), for the system or
     // harness open; the ⋯ is the hub's tickets.js button, which draws a tool's own entries first.
     if (window.SignoffTickets && SignoffTickets.items) SignoffTickets.items(menuItems);
-    const bar = LM.system.current() ? LM.system.crumbs() : '';
+    const bar = LM.system.current() ? LM.system.crumbs() : h ? harnessCrumbs(h) : '';
     crumbs.innerHTML = bar; crumbs.hidden = !bar;
     // A system's tabs (Chris, 2026-11-12: as the harness's, over the canvas): System and List (Chris,
     // 2026-11-14: Overview was redundant; Detail, renamed System, draws the open system at the top).
@@ -2677,6 +2695,7 @@
       case 'save': if (h) U.download(baseName(h) + '.loom.json', JSON.stringify(h, null, 2), 'application/json'); break;
       case 'sync': syncNow(false); break;
       case 'sys-tab': LM.system.setTab(el.dataset.tab); break;
+      case 'hcrumb': { const path = el.dataset.path, ids = path.split('>'); openSystem(ids[0]); if (ids.length > 1) LM.system.setFocus('system', ids[ids.length - 1], path); break; }
       case 'sys-undo': LM.system.act('undo'); break;
       case 'fb-undo': LM.formboard.undo(); break;
       case 'fb-redo': LM.formboard.redo(); break;
@@ -2838,7 +2857,8 @@
       const unfold = fold.parts && !narrow();
       if (unfold) { fold.parts = false; saveFold(); }
       S.paneTab = 'props';
-      if (o.dataset.open !== S.cur) openHarness(o.dataset.open);
+      if (o.dataset.open !== S.cur) openHarness(o.dataset.open, o.dataset.tpath);
+      else if (o.dataset.tpath && o.dataset.tpath !== S.hpath) { S.hpath = o.dataset.tpath; renderAll(); }
       else if (S.view !== 'build') { S.view = 'build'; renderAll(); }
       else if (unfold || S.sel) { S.sel = null; S.pending = null; renderAll(); }
       return;
