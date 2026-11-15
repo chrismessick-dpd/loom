@@ -1434,6 +1434,9 @@ body.has-banner .fb-view { height: calc(100dvh - 56px - 33px); }
 .tag-add:hover, .tag-add:focus-visible { border-style: solid; border-color: var(--accent); color: var(--accent); }
 .tag-box .tag-in { height: 26px; width: 140px; padding: 2px 8px; font-size: 12px; }
 .tag-none { margin: 0; }
+.tag-row { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: 1px; }
+.tag-badge.sm { height: 18px; padding: 0 7px; gap: 4px; font-size: 11px; border-radius: 9px; }
+.tag-badge.sm .tag-dot { width: 6px; height: 6px; }
 .sys-open-h { margin-top: 10px; margin-bottom: 14px; }
 .tag-pill rect { fill: var(--bg-elev); stroke-width: 1.2; }
 .tag-pill text { font: 600 10px var(--font, sans-serif); fill: var(--text); pointer-events: none; }

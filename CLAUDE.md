@@ -34,7 +34,8 @@ links to it so far. Before every commit:
   `fb:<cable path>`). Every system cable's panel has Tags (badges with ×, a + box with a list of every tag used
   on any system's cables or any formboard's classes) after Length here, with Reset route and Remove from the
   system below; a Loom harness's *Open the harness* is now at the top. The drawing shows tags as pills after each
-  cable's label and a device harness's caption, also with Cable labels off; the hover card lists them.
+  cable's label and a device harness's caption, also with Cable labels off; the hover card lists them. The system List shows them as small badges after each cable's name (`LM.tags.badgesHtml`), and after
+  each harness an external connector is connected to.
   Formboard routes by them (`classIds`: its classes named as a tag, without case), its cable panel edits them
   (`LM.system.setTags`, one formboard undo step), and renaming a class renames the tag on its cables. Formboard's
   own per-cable `classes` are gone. Demo systems `DEMO_V` 6 (Wall wires 24 VAC, FFC Low voltage), demo formboard

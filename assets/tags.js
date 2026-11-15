@@ -54,6 +54,8 @@
       (opts.readOnly ? '' : `<button type="button" class="tag-add" data-tagadd title="Add a tag" aria-label="Add a tag">+</button>`) +
       (!tags.length && opts.empty ? `<span class="hint tag-none">${esc(opts.empty)}</span>` : '') + '</div>';
   }
+  // Read-only badges for lists (the system List): small, no ×, nothing when there are none.
+  const badgesHtml = list => { const tags = tidy(list); return tags.length ? `<span class="tag-row">${tags.map(n => `<span class="tag-badge sm" style="--tag:${esc(color(n))}"><span class="tag-dot"></span>${esc(n)}</span>`).join('')}</span>` : ''; };
   const handlers = {};
   function handle(prefix, fn) { handlers[prefix] = fn; }
   function current(ed) { return [...ed.querySelectorAll('.tag-badge')].map(b => b.childNodes[1] ? b.childNodes[1].textContent : b.textContent.replace(/×$/, '')); }
@@ -115,5 +117,5 @@
     return out;
   }
 
-  LM.tags = { tidy, has, key, all, color, editorHtml, handle, pillsSvg, pillsW };
+  LM.tags = { tidy, has, key, all, color, editorHtml, badgesHtml, handle, pillsSvg, pillsW };
 })(window.LM = window.LM || {});

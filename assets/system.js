@@ -1870,7 +1870,7 @@
     };
     const cabRow = (cab, lvl) => {
       const h = harnessOf(cab), st = statusOf(cab, h), k = kindOf(cab), pn = pnOf(h, cab);
-      const title = `<b>${esc(titleOf(cab, h))}</b>`;
+      const title = `<b>${esc(titleOf(cab, h))}</b>${LM.tags.badgesHtml(cab.tags)}`;
       const cells = { ends: `<td>${esc(endsText(cab)) || '<span class="sys-none">—</span>'}</td>`, length: `<td class="num">${cab.lengthMm ? U.fmtLen(cab.lengthMm) : ''}</td>`, wires: `<td class="num">${h ? h.wires.length : ''}</td>` };
       return `<tr${rowAttr('cable:' + cab.id, 'cab')}>${nameCell(lvl, lvl ? spacer : '', title, esc(pn || NOPN))}<td class="sys-ltype">${chip(CAB_CHIP[k] || k, 'k-' + k)}${h ? drill('harness', h.id, path, 'harness') : ''}</td>` +
         `<td class="sys-lst"><span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}</td>${cols.map(([c]) => cells[c]).join('')}</tr>`;
@@ -1899,7 +1899,7 @@
           });
           let sub = what, kinds = '', stat = '';
           if (above.length) {
-            sub = `<span class="sys-lconn">Connected to ${above.map(cab => { const h = harnessOf(cab), pn = pnOf(h, cab); return esc(titleOf(cab, h)) + (pn ? ' · ' + esc(pn) : ''); }).join(', ')}</span>`;
+            sub = `<span class="sys-lconn">Connected to ${above.map(cab => { const h = harnessOf(cab), pn = pnOf(h, cab); return esc(titleOf(cab, h)) + (pn ? ' · ' + esc(pn) : '') + LM.tags.badgesHtml(cab.tags); }).join(', ')}</span>`;
             kinds = [...new Set(above.map(cab => kindOf(cab)))].map(k => chip(CAB_CHIP[k] || k, 'k-' + k)).join('');
             stat = above.map(cab => { const st = statusOf(cab, harnessOf(cab)); return `<span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}`; }).join('<br>');
           } else if (!at.length) stat = '<span class="sys-none">No harness connected</span>';
