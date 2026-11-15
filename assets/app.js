@@ -1702,7 +1702,7 @@
   }
   document.addEventListener('pointerdown', e => { if (ctxEl && !ctxEl.contains(e.target)) closeCtx(); }, true);
   // Right-click a system or harness in the menu (Chris, 2026-11-14): Open draws a system itself (on the System
-  // tab, where Open <system> in its panel goes), and opens a harness in the harness editor.
+  // tab, where Open <system> in its panel goes), and opens a harness in the harness editor; both read Open <name>.
   function rowCtx(e, row) {
     const sf = row.dataset.sfocus ? row.dataset.sfocus.split('|') : null;
     const kind = sf ? sf[0] : row.dataset.openSys ? 'system' : 'harness';
@@ -1715,7 +1715,7 @@
     const m = document.createElement('div');
     m.className = 'menu lm-ctx';
     m.setAttribute('role', 'menu');
-    m.innerHTML = `<button data-ctx="open" role="menuitem"><span>${kind === 'system' ? 'Open ' + esc(item.title) : 'Open in the harness editor'}</span></button>`;
+    m.innerHTML = `<button data-ctx="open" role="menuitem"><span>Open ${esc(item.title)}</span></button>`;
     m.addEventListener('click', ev => {
       if (!ev.target.closest('[data-ctx]')) return;
       closeCtx();
