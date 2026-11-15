@@ -195,6 +195,15 @@ match a channel's parameters lets it route through that channel.
 - **No allowed path:** the cable draws as a straight dashed line, is flagged **Not routed** in the
   List and Checks, and shows its straight-line length.
 
+**Tags on the system cable (Chris, 2026-11-15).** A cable's classes are its **tags**, kept on the cable in the
+system (`cab.tags`, a list of names), not in the formboard: the system drawing always shows them as pills after
+the cable's label (and after a device harness's caption), even with Cable labels off, and its panel has a tag
+editor (badges with ×, and a + offering every tag used in Loom). Formboard's cable panel edits the same tags
+(one step of the formboard's undo, as Apply lengths). A channel's class lets a cable in when a tag has the
+class's name, matched without case; renaming a class renames that tag on the formboard's cables. A tag's color
+is a formboard class's of that name, else a fixed palette color. Code: `assets/tags.js` (`LM.tags`),
+`LM.system.setTags`.
+
 So a cable may use a channel when the channel isn't exclusive, or when they share a class. Tags only
 make a difference on exclusive channels. In the cube example the yellow channels are exclusive: a
 cable tagged yellow may take the shorter way through them, and any other cable stays in the green.

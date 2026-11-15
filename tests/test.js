@@ -1265,6 +1265,22 @@
       eq(kept.cables.find(c => c.id === 'k1').ends[1], { key: 'b', block: sb.id, conn: a.id + '/' + j1.id }, 'a kept block keeps the tab’s path id');
     } finally { done(); }
   });
+  test('cable tags: tidied on load, carried by flatten, and set with undo info by setTags', () => {
+    const { Y, top, psu, done } = nestFixture();
+    try {
+      const p1 = psu.conns[0] || Y.mkConn(psu, 'TB1', 2, { x: 0, y: 5 });
+      top.cables.push({ id: 'kt', kind: 'link', tags: [' 24 VAC ', '24 vac', '', 'Shielded'], ends: { a: { block: psu.id, conn: p1.id }, b: null } });
+      Y.normalize(top);
+      eq(top.cables.find(c => c.id === 'kt').tags, ['24 VAC', 'Shielded'], 'trimmed, no blanks, no repeats without case');
+      eq(Y.flatten(top.id).cables.find(c => c.id === 'kt').tags, ['24 VAC', 'Shielded']);
+      const was = Y.setTags([{ system: top.id, cable: 'kt', tags: ['Low voltage'] }]);
+      eq(was, [{ system: top.id, cable: 'kt', tags: ['24 VAC', 'Shielded'] }], 'what it was, for undo');
+      eq(top.cables.find(c => c.id === 'kt').tags, ['Low voltage']);
+      Y.setTags([{ system: top.id, cable: 'kt', tags: [] }]);
+      ok(!('tags' in top.cables.find(c => c.id === 'kt')), 'no tags, no key');
+      ok(LM.tags.has(['24 VAC'], '24 vac') && !LM.tags.has(['24 VAC'], '24'), 'names match without case');
+    } finally { done(); }
+  });
   test('formboard flatten: a connector passed up two levels reaches its board', () => {
     const { Y, store, pump, top, a, j1, sb, done } = nestFixture();
     const plant = Y.blank('Gizmo'); plant.title = 'Plant';

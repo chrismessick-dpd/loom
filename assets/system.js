@@ -40,6 +40,8 @@
       // A route kept as a bare v (before cables kept the harness's record) becomes { v }.
       if (c.routes && typeof c.routes === 'object') Object.keys(c.routes).forEach(k => { const r = LM.connect.record(c.routes[k]); if (r) c.routes[k] = r; else delete c.routes[k]; });
       tidyLoose(c);
+      // Tags (Formboard's classes, kept on the cable; assets/tags.js): a tidy list of names, or none.
+      if (c.tags) { const t = LM.tags ? LM.tags.tidy(c.tags) : c.tags; if (t.length) c.tags = t; else delete c.tags; }
     });
     return s;
   }
@@ -425,6 +427,7 @@
       (splices ? row('Splices', String(splices)) : '') +
       (sets ? row('Wire sets', String(sets)) : '') +
       (cab.lengthMm ? row('Length here', `${Math.round(cab.lengthMm)} mm`) : '') +
+      ((cab.tags || []).length ? row('Tags', cab.tags.join(', ')) : '') +
       (h && h.project ? row('Client project', h.project) : '') +
       (hint ? `<div class="sys-tip-k">${esc(hint)}</div>` : '');
   }
@@ -919,7 +922,7 @@
   const pinIdx = (n, pin) => { const l = M.pinList(n).map(String), i = l.indexOf(String(pin)); return i < 0 ? 999 : i; };
   function devKey(s, cabs, hOf) {
     return JSON.stringify([labelsOn(), s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), (b.conns || []).map(c => [c.id, c.x, c.y, c.exit || c.exit0 || ''])]),
-      cabs.map(c => { const h = hOf(c); return [c.id, c.ends, c.devAt || null, c.kind || '', c.lengthMm || null, h.title, h.pn || '', h.nodes.map(n => [n.id, n.kind, n.ref, n.name || '', n.family || '', !!n.atDevice]), h.wires.map(w => [w.id, w.from, w.to, w.color || ''])]; })]);
+      cabs.map(c => { const h = hOf(c); return [c.id, c.ends, c.devAt || null, c.tags || null, c.kind || '', c.lengthMm || null, h.title, h.pn || '', h.nodes.map(n => [n.id, n.kind, n.ref, n.name || '', n.family || '', !!n.atDevice]), h.wires.map(w => [w.id, w.from, w.to, w.color || ''])]; })]);
   }
   // get: a harness by id, where the app's hooks aren't there (tests); else the app's.
   function devLayout(s, get) {
@@ -972,7 +975,9 @@
         const Ld = horiz ? (leads ? DW.lead + 10 + tw0 : tw0 + 20) : (leads ? DW.lead : DW.box);
         return { T, into, nw, leads, label, full, Lp, Ld };
       });
-      const st = status(h), caption = caps ? clip(`${st.glyph} ${h.title}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`, 64) : '', capW = caption ? U.textW(caption, 13) : 0;
+      // Its tags ride after the caption, and show even with Cable labels off (Chris: always shown).
+      const st = status(h), tags = cab.tags || [], text = caps ? clip(`${st.glyph} ${h.title}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`, 64) : '';
+      const caption = text || tags.length ? { text, tags } : null, capW = caption ? (text ? U.textW(text, 13) : 0) + (tags.length ? (text ? 8 : 0) + LM.tags.pillsW(tags) : 0) : 0;
       let span = tg.reduce((n, t) => n + t.Lp, 0) + DW.gap * Math.max(0, tg.length - 1);
       const lane = caption && horiz ? DW.cap : 0;
       if (caption && !horiz) span = Math.max(span, capW);
@@ -1072,7 +1077,7 @@
       let cap = null;
       if (D.caption) {
         const maxLd = Math.max(0, ...tg.map(t => t.Ld)), top = pt(B, 0, -D.span / 2);
-        cap = horiz ? { x: d[0] > 0 ? top.x : top.x - D.capW, y: top.y + 15, text: D.caption } : { x: top.x, y: B.y + d[1] * (maxLd + 22) + (d[1] > 0 ? 4 : 0), text: D.caption };
+        cap = horiz ? { x: d[0] > 0 ? top.x : top.x - D.capW, y: top.y + 15, text: D.caption.text, tags: D.caption.tags } : { x: top.x, y: B.y + d[1] * (maxLd + 22) + (d[1] > 0 ? 4 : 0), text: D.caption.text, tags: D.caption.tags };
         const c0 = { x: cap.x, y: cap.y - 14 }, c1 = { x: cap.x + D.capW, y: cap.y + 4 };
         pts.push(c0, c1); bare.add(c0); bare.add(c1);
       }
@@ -1461,7 +1466,8 @@
           D.juncs.map(j => `<circle class="sys-djunc" cx="${j.x}" cy="${j.y}" r="4.5"/>`).join('') +
           D.boxes.map(x => `<g class="sys-dend" data-devgrab="${cab.id}"><rect class="sys-dbox${x.ghost ? ' ghost' : ''}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="3"/><text class="sys-dtext" x="${x.cx}" y="${x.cy}">${esc(x.label)}</text></g>`).join('') +
           D.leads.map(l => `<g class="sys-dend" data-devgrab="${cab.id}">${l.dots.map(q => `<circle class="sys-ddot"${q.color ? ` style="fill:${q.color}"` : ''} cx="${q.x}" cy="${q.y}" r="4.2"/>`).join('')}<text class="sys-dtext lead" x="${l.lx}" y="${l.ly}" style="text-anchor:${l.anchor}">${esc(l.label)}</text></g>`).join('') +
-          (D.cap ? `<g class="sys-dend" data-devgrab="${cab.id}"><text class="sys-dcap${on ? ' sel' : ''}" x="${D.cap.x}" y="${D.cap.y}">${esc(D.cap.text)}</text></g>` : '') + '</g>';
+          (D.cap ? `<g class="sys-dend" data-devgrab="${cab.id}">${D.cap.text ? `<text class="sys-dcap${on ? ' sel' : ''}" x="${D.cap.x}" y="${D.cap.y}">${esc(D.cap.text)}</text>` : ''}` +
+            (D.cap.tags && D.cap.tags.length ? LM.tags.pillsSvg(D.cap.tags, D.cap.x + (D.cap.text ? U.textW(D.cap.text, 13) + 8 : 0), D.cap.y - 1) : '') + '</g>' : '') + '</g>';
         // Its name is the caption over its far ends, not a floating label.
         lane = null; mid = null;
       } else if (at.length === 1 && !frees.length) {
@@ -1486,8 +1492,11 @@
       });
       const loose = ends.find(x => !x.g && !x.free);
       if (loose && ring) handles += `<circle class="cv-hitend" data-cend="${cab.id}|${loose.n.id}" data-x="${ring.ax}" data-y="${ring.ay}" cx="${ring.x}" cy="${ring.y}" r="10"><title>${esc(loose.n.ref)} isn't plugged in: drag it onto a connector</title></circle>`;
-      if (mid && labelsOn()) {
-        const raw = `${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`, t = esc(raw), cls = `sys-clabel${on ? ' sel' : ''}${dim ? ' dim' : ''}`, tw0 = U.textW(raw, 11);
+      // Its tags ride after the label as pills, and stay with Cable labels off (Chris, 2026-11-15: always shown).
+      const ctags = cab.tags || [];
+      if (mid && (labelsOn() || ctags.length)) {
+        const raw = labelsOn() ? `${st.glyph} ${titleOf(cab, h)}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}` : '', t = esc(raw), cls = `sys-clabel${on ? ' sel' : ''}${dim ? ' dim' : ''}`;
+        const tx = raw ? U.textW(raw, 11) : 0, pw = ctags.length ? LM.tags.pillsW(ctags) : 0, tw0 = tx + (raw && pw ? 6 : 0) + pw;
         const set = cab.labelAt != null || cab.labelOff != null;
         // Where it has always been, unset: by the route's middle, or along a device stub past its mark.
         const t0 = cab.labelAt != null ? cab.labelAt : routes.length ? 0.5 : 1;
@@ -1499,7 +1508,9 @@
         else { x0 = dot.x + 8; y0 = dot.y - 9; }
         labInfo.set(cab.id, { lane, t: t0, dot, off: { dx: (x0 - dot.x) / K, dy: (y0 - dot.y) / K }, rot });
         const ax = end ? x0 + 4 : x0 - 4, ay = y0 - 4, lead = !rot && Math.hypot(ax - dot.x, ay - dot.y) > 10 ? `<path class="sys-ldot-lead${dim ? ' dim' : ''}" d="M${dot.x} ${dot.y}L${ax} ${ay}"/>` : '';
-        const gx = end ? x0 - tw0 - 5 : x0 - 5, body = `<rect class="sys-lgrab" x="${gx}" y="${y0 - 12}" width="${tw0 + 10}" height="16" rx="5"/><text class="${cls}" x="${x0}" y="${y0}"${end ? ' style="text-anchor:end"' : ''}>${t}</text>`;
+        // An end-anchored label (text running left of x0) keeps its pills on the left of the text.
+        const px = end ? x0 - tw0 : x0 + tx + (raw ? 6 : 0), pills = ctags.length ? LM.tags.pillsSvg(ctags, px, y0 - 0.5, dim ? 'dim' : '') : '';
+        const gx = end ? x0 - tw0 - 5 : x0 - 5, body = `<rect class="sys-lgrab" x="${gx}" y="${y0 - 12}" width="${tw0 + 10}" height="16" rx="5"/>${raw ? `<text class="${cls}" x="${x0}" y="${y0}"${end ? ' style="text-anchor:end"' : ''}>${t}</text>` : ''}${pills}`;
         labels += `<g class="sys-lab${on ? ' sel' : ''}${S.slide === cab.id ? ' slide' : ''}" data-clabel="${cab.id}">${lead}` +
           (rot ? `<g transform="rotate(${rot} ${x0} ${y0})">${body}</g>` : body) +
           (lane ? `<circle class="sys-ldot-hit" cx="${dot.x}" cy="${dot.y}" r="8" data-cldot="${cab.id}"/><circle class="sys-ldot${dim ? ' dim' : ''}" cx="${dot.x}" cy="${dot.y}" r="3"/>` : '') + '</g>';
@@ -1672,17 +1683,22 @@
     const endsHtml = endsOf(cab, h).map(n => fld(`${esc(n.ref)}${n.name ? ' · ' + esc(n.name) : ''} plugs into`, `<select class="input" data-send="${n.id}">${opts(cab.ends[n.id])}</select>`)).join('');
     const routes = cab.routes && Object.keys(cab.routes).length ? btn('reset-route', 'Reset route') : '';
     const head = `<div class="rail-head"><div class="eyebrow">${KINDS[k]}</div><div class="rail-title">${esc(titleOf(cab, h))}</div></div>`;
+    // Tags (Chris, 2026-11-15): Formboard's classes, kept on the cable, shown on the drawing; a channel of the
+    // same class name lets it in. Last before the actions, with Remove at the very bottom.
+    const tags = `<div class="field"><label>Tags</label>${LM.tags.editorHtml('sys:' + cab.id, cab.tags, { empty: 'No tags.' })}<div class="hint">Shown on the drawing. A Formboard channel with a class of the same name lets this cable in.</div></div>`;
+    const foot = `${routes ? `<div class="sys-actions">${routes}</div>` : ''}<div class="sys-actions">${btn('delete-cable', 'Remove from the system', '', 'btn-danger')}</div>`;
     if (k !== 'harness') {
       return head + kind + fld('Name', inp('cab.name', cab.name || '', k === 'link' ? ' placeholder="USB, 24 VAC, CAN…"' : ' placeholder="USB-C cable, 1 m"')) +
         (k === 'bought' ? `<div class="field-row">${fld('Part number', inp('cab.pn', cab.pn || ''))}${fld('Length, mm', inp('cab.len', cab.lengthMm || '', ' type="number" min="1"'))}</div>` +
           `<div class="field-row">${fld('Maker', inp('cab.mfr', cab.mfr || ''))}${fld('Maker’s part number', inp('cab.mpn', cab.mpn || ''))}</div>` : '') +
-        endsHtml + colorField(cab) + `<div class="sys-actions">${routes}${btn('delete-cable', 'Remove from the system', '', 'btn-danger')}</div>`;
+        endsHtml + colorField(cab) + tags + foot;
     }
-    return head + kind +
+    // Open the harness at the top (Chris, 2026-11-15).
+    return head + (h ? `<div class="sys-actions sys-open-h">${btn('open-harness', 'Open the harness', '', 'btn-primary')}</div>` : '') + kind +
       `<p class="hint"><span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}${h && h.pn ? ' · ' + esc(h.pn) : ''}</p>` +
       (h ? endsHtml : '') + colorField(cab) +
       fld('Length here, mm', inp('cab.len', cab.lengthMm || '', ' type="number" min="1" placeholder="The harness’s own"'), cab.lengthMm ? `A variant at this length: <b>${esc(pnOf(h, cab))}</b>.` : 'Set it to use this harness at another length, as a variant part number.') +
-      `<div class="sys-actions">${h ? btn('open-harness', 'Open the harness', '', 'btn-primary') : ''}${routes}${btn('delete-cable', 'Remove from the system', '', 'btn-danger')}</div>`;
+      tags + foot;
   }
   // A cable made another kind (the panel's What it is): its plugged ends carry over in order, and so
   // does each kept route, under its new end. To a Loom harness, a new harness is made from the plugged
@@ -2795,7 +2811,7 @@
   }
 
   // ── The demo: the Smart Thermostat's two boards and its wall wiring ──
-  const DEMO_V = 5;
+  const DEMO_V = 6;
   async function demo(stay) {
     const s = blank('Smart Thermostat');
     s.id = 'sdemo1'; s.title = 'Smart Thermostat system'; s.demoVersion = DEMO_V;
@@ -2812,10 +2828,10 @@
     // generic connection, and the 24-pin, 0.5 mm FFC from Main PCBA J2 to the Display board's J1, bought.
     const disp = s.blocks.find(b => b.source && b.source.id === 'pdemo11');
     const j2 = main && main.conns.find(c => c.ref === 'J2'), d1 = disp && disp.conns.find(c => c.ref === 'J1');
-    if (j1) s.cables.push({ id: U.uid('k'), kind: 'link', name: 'Wall wires', ends: { a: { block: wall.id, conn: wall.conns[0].id }, b: { block: main.id, conn: j1.id } } });
+    if (j1) s.cables.push({ id: U.uid('k'), kind: 'link', name: 'Wall wires', tags: ['24 VAC'], ends: { a: { block: wall.id, conn: wall.conns[0].id }, b: { block: main.id, conn: j1.id } } });
     if (j2 && d1) {
       j2.used = true; j2.fn = 'Display'; d1.used = true; d1.fn = 'Main PCBA';
-      s.cables.push({ id: U.uid('k'), kind: 'bought', name: '24-pin FFC, 0.5 mm pitch', lengthMm: 100, ends: { a: { block: main.id, conn: j2.id }, b: { block: disp.id, conn: d1.id } } });
+      s.cables.push({ id: U.uid('k'), kind: 'bought', name: '24-pin FFC, 0.5 mm pitch', lengthMm: 100, tags: ['Low voltage'], ends: { a: { block: main.id, conn: j2.id }, b: { block: disp.id, conn: d1.id } } });
     }
     if (stay) persist(); else open(s.id);
     return s;
@@ -2901,7 +2917,7 @@
         const area = h ? h.wires.reduce((n, w) => n + (M.AWG[w.gauge] || 0), 0) : 0;
         cables.push({
           path, id: cab.id, system: s.id, kind: k, harness: cab.harness || null, title: titleOf(cab, h), pn: pnOf(h, cab), basePn: k === 'harness' ? (h && h.pn) || '' : k === 'bought' ? cab.pn || cab.mpn || '' : '',
-          lengthMm: cab.lengthMm || null, baseMm: k === 'bought' ? cab.lengthMm || null : null, areaMm2: Math.round(area * 100) / 100, color: colorOf(cab), group: group ? group.id : null,
+          lengthMm: cab.lengthMm || null, baseMm: k === 'bought' ? cab.lengthMm || null : null, tags: (cab.tags || []).slice(), areaMm2: Math.round(area * 100) / 100, color: colorOf(cab), group: group ? group.id : null,
           raw: Object.keys(cab.ends).map(key => ({ key, at: cab.ends[key], prefix })),
           devices: deviceEnds(h).map(n => ({ key: n.id, name: devLabel(n) })),
         });
@@ -2962,6 +2978,25 @@
     return was;
   }
 
+  // Tags written to placed cables (Formboard's cable panel and class renames): [{ system, cable, tags }] → what
+  // each was, for undo. Each system touched is stamped, as any edit is.
+  function setTags(list) {
+    const was = [], touched = new Set();
+    (list || []).forEach(x => {
+      const s = S.store[x.system], cab = s && cable(s, x.cable);
+      if (!cab) return;
+      was.push({ system: x.system, cable: x.cable, tags: (cab.tags || []).slice() });
+      const t = LM.tags.tidy(x.tags);
+      if (t.length) cab.tags = t; else delete cab.tags;
+      touched.add(s);
+    });
+    touched.forEach(s => { s.updated = now(); if (A && A.login()) s.updatedBy = A.login(); });
+    if (touched.size) persist();
+    return was;
+  }
+  // The panel's tag editor (assets/tags.js), on the open system: one undoable change.
+  if (LM.tags) LM.tags.handle('sys', (id, tags) => change(s => { const cab = cable(s, id); if (!cab) return; if (tags.length) cab.tags = tags; else delete cab.tags; }));
+
   function init(hooks) {
     A = hooks;
     const c = load();
@@ -2971,7 +3006,7 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending || (S.tab === 'formboard' && !!LM.formboard && LM.formboard.busy()), act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
+    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
     tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,
     canUndo: () => !locked() && S.past.length > 0, canRedo: () => !locked() && S.future.length > 0, discardTo, restore, saveFile, openDoc,
     // compare.js: a stored version made ready to draw (its placed systems' tabs resolved), the selection

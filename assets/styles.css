@@ -1411,3 +1411,21 @@ body.has-banner .fb-view { height: calc(100dvh - 56px - 33px); }
 .fb-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 4px 10px; font-size: 12px; font-family: var(--mono); pointer-events: none; }
 .fb-hint[hidden] { display: none; }
 @media (max-width: 860px) { .fb-main { grid-template-columns: 1fr; grid-template-rows: 1fr 40%; } .fb-panel { grid-area: 2 / 1; border-left: 0; border-top: 1px solid var(--hair); } }
+
+/* Tags on system cables (assets/tags.js, 2026-11-15): badges in the panels, pills on the drawing. Each carries
+   its name, so color is never the only cue. */
+.tag-ed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tag-badge { --tag: #8a8f98; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 4px 0 9px; border-radius: 12px; font-size: 12px; font-weight: 600; color: var(--text);
+  background: color-mix(in srgb, var(--tag) 16%, transparent); border: 1px solid color-mix(in srgb, var(--tag) 60%, transparent); }
+.tag-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tag); flex: none; }
+.tag-x { display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-2, var(--text)); font-size: 14px; line-height: 1; cursor: pointer; }
+.tag-x:hover, .tag-x:focus-visible { background: color-mix(in srgb, var(--tag) 30%, transparent); color: var(--text); }
+.tag-add { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border-radius: 12px; border: 1px dashed var(--border-strong, var(--border)); background: transparent; color: var(--text-2, var(--text)); font-size: 16px; line-height: 1; cursor: pointer; }
+.tag-add:hover, .tag-add:focus-visible { border-style: solid; border-color: var(--accent); color: var(--accent); }
+.tag-box .tag-in { height: 26px; width: 140px; padding: 2px 8px; font-size: 12px; }
+.tag-none { margin: 0; }
+.sys-open-h { margin-top: 10px; margin-bottom: 14px; }
+.tag-pill rect { fill: var(--bg-elev); stroke-width: 1.2; }
+.tag-pill text { font: 600 10px var(--font, sans-serif); fill: var(--text); pointer-events: none; }
+.tag-pill { pointer-events: none; }
+.sys-canvas .tag-pill.dim { opacity: 0.18; transition: opacity 0.2s; }

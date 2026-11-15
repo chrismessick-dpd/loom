@@ -22,6 +22,18 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Cable tags (2026-11-15, Chris: Formboard's classes on the system drawing; his choices: kept on the system
+  cable and shared with Formboard, the + offering every tag in Loom).** `cab.tags` (names; `assets/tags.js`,
+  `LM.tags`: `tidy`, `all`, `color`, `editorHtml`, `pillsSvg`, events delegated by scope `sys:<cable id>` or
+  `fb:<cable path>`). Every system cable's panel has Tags (badges with ×, a + box with a list of every tag used
+  on any system's cables or any formboard's classes) after Length here, with Reset route and Remove from the
+  system below; a Loom harness's *Open the harness* is now at the top. The drawing shows tags as pills after each
+  cable's label and a device harness's caption, also with Cable labels off; the hover card lists them.
+  Formboard routes by them (`classIds`: its classes named as a tag, without case), its cable panel edits them
+  (`LM.system.setTags`, one formboard undo step), and renaming a class renames the tag on its cables. Formboard's
+  own per-cable `classes` are gone. Demo systems `DEMO_V` 6 (Wall wires 24 VAC, FFC Low voltage), demo formboard
+  `DEMO_V` 3. See `docs/formboard.md`, *Constraints*. Tests 115.
+
 - **Device far ends drag, blocks fade, hover cards (2026-11-15, Chris).** A board system's device harnesses
   (`n.atDevice`) drag by any far end, dashed or flying leads, or by their lines (`cab.devAt`; see `docs/system.md`,
   *Device harnesses drawn*). One block selected fades every other block, connected ones too (`.sys-block.dim`), and

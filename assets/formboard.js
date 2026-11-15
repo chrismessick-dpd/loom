@@ -375,18 +375,21 @@
   }
 
   // ── Routing ──
+  // A cable's classes are its tags in the system (assets/tags.js, Chris, 2026-11-15): the ids of this
+  // formboard's classes named the same, without case.
+  const classIds = (f, tags) => f.classes.filter(k => LM.tags.has(tags, k.name)).map(k => k.id);
   function cableInputs(sc, f) {
     return sc.fl.cables.map(c => {
       const ends = c.ends.map(e => { const o = e.block && sc.blocks[e.block]; const p = o ? connPoint(o, e.conn) : null; return p ? { key: e.key, p, placed: o.placed } : null; }).filter(Boolean);
       const own = f.cables[c.path] || {};
-      return { c, own, input: { id: c.path, classes: own.classes || [], vias: own.vias || [], pinned: !!own.pinned, route: own.route || null, endMm: own.endMm || {}, areaMm2: c.areaMm2, ends } };
+      return { c, own, input: { id: c.path, classes: classIds(f, c.tags), vias: own.vias || [], pinned: !!own.pinned, route: own.route || null, endMm: own.endMm || {}, areaMm2: c.areaMm2, ends } };
     });
   }
   const endsKey = ends => ends.map(e => e.key + ':' + e.p.map(v => v.toFixed(1)).join(',')).join('|');
   // Everything else a route came from: the channels, the settings, the classes, and the cable's own classes,
   // vias, and end allowances. A route is stale when its ends or this have changed since Route.
   const fnv = str => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); };
-  const inKey = (f, own) => fnv(JSON.stringify([f.channels, f.settings, f.classes, own.classes || [], own.vias || [], own.endMm || {}]));
+  const inKey = (f, own, c) => fnv(JSON.stringify([f.channels, f.settings, f.classes, c ? classIds(f, c.tags) : [], own.vias || [], own.endMm || {}]));
   function routeAll() {
     const f = cur();
     if (!f) return;
@@ -399,7 +402,7 @@
         const own = x.cables[c.path] = Object.assign({}, x.cables[c.path] || {});
         if (input.pinned && own.route) { pinned++; return; }
         if (input.ends.length < 2) { delete own.route; return; }
-        own.route = { ok: r.ok, length: r.length, flags: r.flags, at: Date.now(), ends: endsKey(input.ends), from: inKey(x, own), provisional: input.ends.some(e => !e.placed),
+        own.route = { ok: r.ok, length: r.length, flags: r.flags, at: Date.now(), ends: endsKey(input.ends), from: inKey(x, own, c), provisional: input.ends.some(e => !e.placed),
           legs: r.legs.map(l => ({ from: l.from, to: l.to, ok: l.ok, pts: l.pts.map(p => p.map(r1)), length: l.length, straight: l.straight != null ? r1(l.straight) : undefined,
             path: l.path != null ? r1(l.path) : undefined, drops: l.drops != null ? r1(l.drops) : undefined, channels: l.channels ? Object.fromEntries(Object.entries(l.channels).map(([k, v]) => [k, r1(v)])) : undefined, parts: l.parts })) };
         if (r.ok) ok++; else bad++;
@@ -412,7 +415,7 @@
   function routeOf(f, x) {
     const own = f.cables[x.c.path], r = own && own.route;
     if (!r) return null;
-    const moved = x.input.ends.length >= 2 && r.ends !== endsKey(x.input.ends), changed = !own.pinned && r.from !== inKey(f, own);
+    const moved = x.input.ends.length >= 2 && r.ends !== endsKey(x.input.ends), changed = !own.pinned && r.from !== inKey(f, own, x.c);
     return Object.assign({}, r, { stale: moved || changed, moved, changed });
   }
 
@@ -449,6 +452,17 @@
     change(() => {}, { undo: () => { LM.system.setLengths(prev); }, redo: () => { LM.system.setLengths(list); } });
     A.toast(`Applied ${list.length} length${list.length === 1 ? '' : 's'} to the system's cables.`);
   }
+  // Tags written to the system's cables from here (the cable panel, a class renamed), with this formboard's own
+  // change (fn, or none), as one step of the formboard's undo, as Apply lengths does.
+  function tagsOutside(list, fn) {
+    const prev = LM.system.setTags(list);
+    A.refresh();
+    return change(fn || (() => {}), { undo: () => { LM.system.setTags(prev); }, redo: () => { LM.system.setTags(list); } });
+  }
+  LM.tags.handle('fb', (path, tags) => {
+    const c = S.flat && S.flat.cables.find(k => k.path === path);
+    if (c) tagsOutside([{ system: c.system, cable: c.id, tags }]);
+  });
   // Save to base part: the routed length into the part itself. A harness: its one segment between the two
   // ends; a purchased cable: its length (the placed cable's length is its own). The confirm names the
   // harness's other uses whose lengths differ.
@@ -554,7 +568,7 @@
       fld('Reference', ref ? `${esc(ref.name)} <span class="hint">(${ref.kind === 'step' ? (ref.format === 'stl' ? 'STL, ' : 'STEP, ') + (ref.tris || 0).toLocaleString() + ' triangles' : ref.kind === 'builtin' ? 'built in' : ref.kind === 'dxf' ? 'DXF' + (ref.calibrated ? '' : ', not calibrated') : 'picture' + (ref.calibrated ? '' : ', not calibrated')})</span>` : '<span class="hint">None yet: Reference… in the bar.</span>') +
       `<div class="fb-h">Cables</div><div class="fb-list">${rows || '<p class="hint">This system has no cables yet.</p>'}</div>` +
       (unplaced.length ? `<div class="fb-h">Not placed <span class="count">${unplaced.length}</span></div><p class="hint">Faded until moved. Lengths to them are provisional, and Apply skips them.</p><div class="fb-list">${unplaced.map(o => `<button class="fb-row" data-fb="sel" data-kind="block" data-id="${esc(o.b.path)}"><span class="fb-name">${esc(blockName(o.b))}</span></button>`).join('')}</div>` : '') +
-      `<div class="fb-h">Classes</div><p class="hint">A cable may use a channel when the channel isn’t exclusive, or when they share a class.</p>${classes}<button class="btn" data-fb="class-add">Add a class</button>` +
+      `<div class="fb-h">Classes</div><p class="hint">A cable may use a channel when the channel isn’t exclusive, or when one of the cable’s tags (set on it here or in the system) names one of the channel’s classes.</p>${classes}<button class="btn" data-fb="class-add">Add a class</button>` +
       `<div class="fb-h">Lengths</div><div class="field-row">${fld('Slack, %', num('set.slackPct', f.settings.slackPct, ' min="0" step="0.5"'))}${fld('Each end, mm', num('set.endMm', f.settings.endMm, ' min="0"'))}</div>` +
       `<div class="field-row">${fld('Long drop over, mm', num('set.dropMax', f.settings.dropMax, ' min="0"'))}${fld('Round up to, mm', num('set.roundMm', f.settings.roundMm, ' min="1"'))}</div>` +
       `<div class="sys-actions"><button class="btn btn-danger" data-fb="delete">Delete formboard</button></div></div>`;
@@ -594,6 +608,12 @@
       (fill ? fld('Fill', `${fill.pct}% <span class="hint">(${fill.cables.length} cable${fill.cables.length === 1 ? '' : 's'}, ${r1(fill.area)} mm² of ${Math.round(fill.section)} mm²)</span>`) : '') +
       `<div class="sys-actions"><button class="btn btn-danger" data-fb="ch-del">Delete channel</button></div></div>`;
   }
+  // Which of a cable's tags are this formboard's classes, and which aren't (they let it into nothing here).
+  function tagHint(f, tags) {
+    const none = (tags || []).filter(n => !f.classes.some(k => LM.tags.key(k.name) === LM.tags.key(n)));
+    return 'Kept on the cable in the system, and shown there. A channel lets it in when they share a class name.' +
+      (none.length ? ` No class here for ${none.map(esc).join(', ')}.` : '');
+  }
   function cablePanel(f, sc, x) {
     const c = x.c, own = f.cables[c.path] || {}, r = routeOf(f, x);
     const ends = c.ends.map(e => { const o = e.block && sc.blocks[e.block]; const cn = o && o.b.conns.find(k => k.id === e.conn); return `<li>${o ? esc(blockName(o.b) + (cn && cn.ref && !e.device ? ' ' + cn.ref : '')) : '<span class="hint">not plugged</span>'}${o && !o.placed ? ' <span class="hint">(not placed)</span>' : ''}</li>`; }).join('');
@@ -611,7 +631,7 @@
     const vias = f.channels.map(k => `<label class="fb-tick"><input type="checkbox" data-fbchk="cab.via.${esc(k.id)}"${(own.vias || []).includes(k.id) ? ' checked' : ''}>${esc(k.name || 'Channel')}</label>`).join('');
     return head(c.title, esc((c.pn || 'no part number') + ' · ' + ({ harness: 'Loom harness', bought: 'Purchased cable', link: 'Generic connection' }[c.kind] || ''))) + `<div class="rail-body">` +
       fld('Ends', `<ul class="fb-ends">${ends}</ul>`) +
-      fld('Classes', classTicks(f, own.classes || [], 'cab.class'), 'No classes: any channel that isn’t exclusive.') +
+      fld('Tags', LM.tags.editorHtml('fb:' + c.path, c.tags, { empty: 'No tags: any channel that isn’t exclusive.' }), tagHint(f, c.tags)) +
       `<label class="fb-tick"><input type="checkbox" data-fbchk="cab.pinned"${own.pinned ? ' checked' : ''}> Pinned: Route keeps its route</label>` +
       (f.channels.length ? fld('Must pass through', `<div class="fb-ticks">${vias}</div>`) : '') +
       `<div class="field-row">${c.ends.map(e => fld('End ' + esc(e.key.slice(0, 6)) + ', mm', num('cab.end.' + e.key, (own.endMm || {})[e.key] != null ? own.endMm[e.key] : '', ` min="0" placeholder="${f.settings.endMm}"`))).join('')}</div>` +
@@ -657,7 +677,7 @@
       case 'back': S.sel = null; refresh(); return;
       case 'sel': S.sel = { kind: t.dataset.kind, id: t.dataset.id }; refresh(); return;
       case 'class-add': change(x => { x.classes.push({ id: U.uid('k'), name: 'Class ' + (x.classes.length + 1), color: PALETTE[x.classes.length % PALETTE.length] }); }); return;
-      case 'class-del': change(x => { const id = t.dataset.id; x.classes = x.classes.filter(c => c.id !== id); x.channels.forEach(c => { c.classes = (c.classes || []).filter(k => k !== id); }); Object.values(x.cables).forEach(c => { if (c.classes) c.classes = c.classes.filter(k => k !== id); }); }); return;
+      case 'class-del': change(x => { const id = t.dataset.id; x.classes = x.classes.filter(c => c.id !== id); x.channels.forEach(c => { c.classes = (c.classes || []).filter(k => k !== id); }); }); return;
       case 'turn': if (S.sel && S.sel.kind === 'block' && sc.blocks[S.sel.id]) turnBlock(sc.blocks[S.sel.id], +t.dataset.axis, 90); return;
       case 'unplace': if (S.sel) change(x => { delete x.blocks[S.sel.id]; }); return;
       case 'keep': change(x => { x.keep[t.dataset.id] = true; }); S.sel = null; return;
@@ -671,7 +691,6 @@
     const own = () => { const x = cur(); return (x.cables[s.id] = x.cables[s.id] || {}); };
     if (name.startsWith('ch.class.')) { const id = name.slice(9); change(x => { const c = x.channels.find(k => k.id === s.id); c.classes = (c.classes || []).filter(k => k !== id).concat(on ? [id] : []); }); return; }
     if (name === 'ch.exclusive') { change(x => { x.channels.find(k => k.id === s.id).exclusive = on; }); return; }
-    if (name.startsWith('cab.class.')) { const id = name.slice(10); change(() => { const o = own(); o.classes = (o.classes || []).filter(k => k !== id).concat(on ? [id] : []); }); return; }
     if (name.startsWith('cab.via.')) { const id = name.slice(8); change(() => { const o = own(); o.vias = (o.vias || []).filter(k => k !== id).concat(on ? [id] : []); }); return; }
     if (name === 'cab.pinned') { change(() => { own().pinned = on; }); return; }
     if (f) refresh();
@@ -680,7 +699,17 @@
     const s = S.sel;
     if (name === 'title') return change(x => { x.title = String(v).trim() || 'Formboard'; });
     if (name.startsWith('set.')) return change(x => { x.settings[name.slice(4)] = Math.max(0, +v || 0); });
-    if (name.startsWith('class.')) { const [, what, id] = name.split('.'); return change(x => { const c = x.classes.find(k => k.id === id); if (c) c[what] = what === 'name' ? String(v).trim() || c.name : v; }); }
+    if (name.startsWith('class.')) {
+      const [, what, id] = name.split('.'), f = cur(), was = f && f.classes.find(k => k.id === id);
+      if (!was) return;
+      const to = what === 'name' ? String(v).trim() || was.name : v;
+      // A class renamed renames that tag on this formboard's cables in the system, so they keep their way in.
+      if (what === 'name' && LM.tags.key(to) !== LM.tags.key(was.name) && S.flat) {
+        const list = S.flat.cables.filter(c => LM.tags.has(c.tags, was.name)).map(c => ({ system: c.system, cable: c.id, tags: c.tags.map(n => (LM.tags.key(n) === LM.tags.key(was.name) ? to : n)) }));
+        if (list.length) return tagsOutside(list, x => { x.classes.find(k => k.id === id).name = to; });
+      }
+      return change(x => { const c = x.classes.find(k => k.id === id); if (c) c[what] = to; });
+    }
     if (name === 'draft.w' || name === 'draft.h') { S.draft = S.draft || { pts: [] }; S.draft[name.slice(6)] = Math.max(1, +v || 1); return; }
     if (name.startsWith('pos.') && s && s.kind === 'block') {
       const o = S.sc.blocks[s.id];
@@ -931,12 +960,12 @@
       f.blocks[b.path] = { at: [x + w / 2, 125, t / 2], rot: [0, 0, 0] };
       x += w + 20;
     });
-    // The wall wiring is 24 VAC: it may use the raceway (exclusive) as well as the plate channel.
-    (fl ? fl.cables : []).forEach(c => { if (/wall/i.test(c.title)) f.cables[c.path] = { classes: ['kcls2'] }; });
+    // The wall wiring is tagged 24 VAC in the demo system, so it may use the raceway (exclusive) as well as the
+    // plate channel.
     f.demo = true; f.demoV = DEMO_V;
     return f;
   }
-  const DEMO_V = 2;   // bump to rebuild the demo formboard in browsers that have an older one
+  const DEMO_V = 3;   // bump to rebuild the demo formboard in browsers that have an older one
   function ensureDemo(systemId) {
     if (!DEMO) return;
     live().filter(f => f.demo && f.demoV !== DEMO_V).forEach(f => { delete S.store[f.id]; if (S.cur === f.id) S.cur = null; });
