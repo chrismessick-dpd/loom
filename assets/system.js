@@ -140,8 +140,7 @@
         const { e, t, w, side } = q, at = pos.get(q);
         const x = +(side === 'left' ? -w : side === 'right' ? b.w : at - w / 2).toFixed(2), y = +(side === 'top' ? -TAB.h : side === 'bottom' ? b.h : at - TAB.h / 2).toFixed(2);
         const c = { id: e.id, ref: e.ref, pins: e.pins, fn: t.fn != null ? t.fn : e.fn, fn0: e.fn, used: true, fitted: true, placed: 'link', link: true,
-          x, y, ax: x, ay: y, exit: t.exit || undefined, external: !!t.external, upAt: t.upAt || undefined, side: 'top', mpn: e.mpn, mfr: e.mfr, desc: e.desc, tw: w, leaf: e.leaf, inside: e.inside };
-        if (!c.exit) delete c.exit;
+          x, y, ax: x, ay: y, external: !!t.external, upAt: t.upAt || undefined, side: 'top', mpn: e.mpn, mfr: e.mfr, desc: e.desc, tw: w, leaf: e.leaf, inside: e.inside };
         if (!c.upAt) delete c.upAt;
         if (q.hand) c.edge = q.hand;
         Object.defineProperty(c, 'exit0', { value: side, enumerable: false, writable: true, configurable: true });
@@ -236,9 +235,10 @@
       b.conns.forEach(c => {
         const o = {}, was = t[c.id] || {};
         // A mini view places the tabs itself; a spot the parent set by hand before stays stored as it was.
+        // An edge tab's cables always leave straight out from the edge it sits on, so no exit is kept.
         if (b.mini) { if (c.edge) o.edge = c.edge; }
         else if (Math.abs(c.x - c.ax) > 1e-6 || Math.abs(c.y - c.ay) > 1e-6) { o.x = c.x; o.y = c.y; }
-        if (c.exit) o.exit = c.exit;
+        if (c.exit && !c.inner) o.exit = c.exit;
         if (c.external) o.external = true;
         if (c.upAt) o.upAt = c.upAt;
         if (c.fn !== c.fn0) o.fn = c.fn;
@@ -376,6 +376,8 @@
   // A cable's own color (Chris, 2026-11-12): cab.color, one of Loom's wire color codes (M.COLORS) or a custom
   // #rrggbb. Set, the cable draws in it whatever its state (its glyph and dashes still show that).
   const HEX = /^#[0-9a-f]{6}$/i;
+  // The color a cable is drawn in: its own, else by its status.
+  const cabColor = (cab, h, st) => { st = st || statusOf(cab, h); return colorOf(cab) || (st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)'); };
   const colorOf = cab => { const c = cab && cab.color; return !c ? '' : HEX.test(c) ? c : M.COLORS[c] ? M.COLORS[c][1] : ''; };
   const titleOf = (cab, h) => { const k = kindOf(cab); return k === 'harness' ? (h ? h.title : 'Missing harness') : cab.name || KINDS[k]; };
   function status(h) {
@@ -743,6 +745,8 @@
   // (c.exit0), or the nearest board edge, either unless it faces away from where its cable goes (autoExit, set
   // by layout).
   function exitSide(b, c) {
+    // A placed system's edge tab (Chris, 2026-11-15): straight out from the edge it sits on, always.
+    if (c.inner && SIDES[c.exit0]) return turnSide(c.exit0, rotOf(b));
     if (c.exit && SIDES[c.exit]) return turnSide(c.exit, rotOf(b));
     return autoExit.get(c) || plainExit(b, c);
   }
@@ -1268,7 +1272,7 @@
     const f1 = v => v.toFixed(1);
     upStubs(s).forEach(({ b, c, E, u, pts, cabs }) => {
       const cab = cabs[0], h = harnessOf(cab), st = statusOf(cab, h);
-      const color = colorOf(cab) || (st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)');
+      const color = cabColor(cab, h, st);
       const p = [-u[1], u[0]], z = UP.zig, d = 'M' + pts.map(q => f1(q.x) + ' ' + f1(q.y)).join('L');
       // The break: a zigzag across the cable's end.
       const zz = [[-1.2, 0], [-0.55, 0.45], [0.05, -0.45], [0.6, 0.45], [1.2, 0]].map(([a, k]) => ({ x: E.x + p[0] * a * z + u[0] * k * z, y: E.y + p[1] * a * z + u[1] * k * z }));
@@ -1339,7 +1343,9 @@
             // Its name large and upright over the drawing, whatever the block's turn (Chris, 2026-11-14): the
             // board's when it holds just one; the ref alone stays in the header.
             const L = fitName(blockLabel(b), W - 24);
-            const leads = b.conns.map(c => { const L = leadPath(b, c); return L ? `<path class="sys-lead" d="${L.d}"/><circle class="sys-lead-dot" cx="${((b.x + L.end.x) * K).toFixed(1)}" cy="${((b.y + L.end.y) * K).toFixed(1)}" r="3"/>` : ''; }).join('');
+            // Each lead in the color of the cable plugged into its tab (Chris, 2026-11-15).
+            const leadCol = c => { const cab = s.cables.find(x => Object.values(x.ends || {}).some(e => e && e.block === b.id && e.conn === c.id)); return cab ? cabColor(cab, harnessOf(cab)) : 'var(--text-3)'; };
+            const leads = b.conns.map(c => { const L = leadPath(b, c), col = leadCol(c); return L ? `<path class="sys-lead" style="stroke:${col}" d="${L.d}"/><circle class="sys-lead-dot" style="fill:${col}" cx="${((b.x + L.end.x) * K).toFixed(1)}" cy="${((b.y + L.end.y) * K).toFixed(1)}" r="3"/>` : ''; }).join('');
             return `<g class="sys-mini" transform="${miniXf(b)}">${miniSvg(childOf(b), 1, true)}</g>` + leads +
               (L.text ? `<text class="sys-bname" x="${X + W / 2}" y="${Y + hd + (Hh - hd) / 2}" style="font-size:${L.fs.toFixed(1)}px"><title>${esc(blockLabel(b))}</title>${esc(L.text)}</text>` : '');
           }
@@ -1366,7 +1372,7 @@
       const linked = !on && !!sel && sel.kind === 'block' && Object.values(cab.ends).some(e => e && e.block === sel.block);
       // Cables alone selected together (a harness used more than once, picked in the menu) stand out as one does.
       const cablesOnly = !!sel && sel.kind === 'multi' && !sel.blocks.length;
-      const color = colorOf(cab) || (st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)');
+      const color = cabColor(cab, h, st);
       const wire = (d, extra) => `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
         (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : linked ? `<path class="w-pulse soft" pathLength="1" d="${d}"/>` : '');
       // While a cable is selected, however it was picked, the others fade (Chris, 2026-11-12).
@@ -1555,7 +1561,7 @@
       (at.length ? `<div class="sys-list">${at.map(x => { const h = harnessOf(x.cable), n = endsOf(x.cable, h).find(e => e.id === x.node), st = statusOf(x.cable, h); return `<button class="sys-row" data-ssel="cable:${x.cable.id}"><span class="sys-st st-${st.key}" title="${esc(st.text)}">${st.glyph}</span><span>${esc(titleOf(x.cable, h))}<small>${esc(n ? 'its end ' + n.ref : '')}</small></span></button>`; }).join('')}</div>` : '<p class="hint">Nothing yet.</p>') +
       (pick ? pickHtml(s, b, c) : `<div class="sys-actions">${btn('new-harness', 'New harness here', '', 'btn-primary')}${btn('pick-harness', 'Plug in a harness…')}</div>`) +
       (S.pair && S.pair.block !== b.id || S.pair && S.pair.conn !== c.id ? '' : '') +
-      fld('Cables leave from', `<select class="input" data-sexit="${c.id}">${[['', 'Automatic (' + (c.exit ? plainExit(b, c) : exitSide(b, c)) + (autoExit.has(c) && !c.exit ? ', facing its cable' : c.exit0 ? ', as it leaves inside' : ', the nearest board edge') + ')'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']].map(([v, l]) => `<option value="${v}"${(c.exit ? turnSide(c.exit, rotOf(b)) : '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`) +
+      (c.inner ? fld('Cables leave from', `<p class="hint">Straight out from the block's ${esc(exitSide(b, c))} edge. Drag the tab round the edge to move it.</p>`) : fld('Cables leave from', `<select class="input" data-sexit="${c.id}">${[['', 'Automatic (' + (c.exit ? plainExit(b, c) : exitSide(b, c)) + (autoExit.has(c) && !c.exit ? ', facing its cable' : c.exit0 ? ', as it leaves inside' : ', the nearest board edge') + ')'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']].map(([v, l]) => `<option value="${v}"${(c.exit ? turnSide(c.exit, rotOf(b)) : '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`)) +
       pinoutHtml(b, c) +
       (b.source || linkTab ? '' : `<div class="sys-actions">${btn('delete-conn', 'Delete connector', '', 'btn-danger')}</div>`);
   }
@@ -1986,7 +1992,8 @@
     if (!L) return out;
     [['A', L.at[0]], ['B', L.at.find(x => x.n.id === R0.end)]].forEach(([end, x]) => {
       const b = x && block(cur(), x.b.id), c = b && conn(b, x.c.id);
-      if (c) out.push({ end, b, c, exit0: c.exit });
+      // An edge tab's exit is its edge (Chris, 2026-11-15: a drag swung a top tab's cable out sideways).
+      if (c && !c.inner) out.push({ end, b, c, exit0: c.exit });
     });
     return out;
   }

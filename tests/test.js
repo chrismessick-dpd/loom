@@ -1458,6 +1458,9 @@
       eq([c1.y, Math.round(c1.x + c1.tw / 2), c1.exit0], [-Y.TAB.h, 75, 'top'], 'on the top edge, in the middle, leaving up');
       j1.y += 10; Y.resolve();
       eq(Math.round(sb.conns[0].x + sb.conns[0].tw / 2), 75, 'and stays put when the child changes');
+      // An exit picked before (or set by a run drag) doesn't swing an edge tab's cable sideways.
+      sb.tabs[c0.id].exit = 'right'; Y.resolve();
+      eq([sb.conns[0].exit, Y.exitSide(sb, sb.conns[0])], [undefined, 'top'], 'an edge tab ignores an old exit and leaves straight up');
       ok(!/"mini"|"exit0"|"inner"/.test(JSON.stringify(sb)), 'the stored block keeps no mini view');
       void pump; void j2;
     } finally { done(); }
