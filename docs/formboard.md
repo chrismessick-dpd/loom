@@ -66,6 +66,16 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   reference, conflict copy and an unedited stale copy). Not tried signed in: the first real sync creates
   `formboards/` in `loom_data`.
 
+- **Reference size (measured 2026-11-15, Chris: a 53 MB machine assembly loaded nothing).** A STEP is read in
+  the browser by OpenCascade (occt-import-js 0.0.23, PL's mesh settings), in a worker: a 1.9 MB part took 1.9 s,
+  a 5.8 MB part 1.3 s, an 11 MB board assembly 21 s, a 23 MB assembly 62 s, and the 53 MB assembly (2,468 parts)
+  about 4 minutes, after which every part came back with no geometry at all (coarser meshing didn't help; the
+  time goes into reading). So: **about 25 MB of STEP is the practical limit.** Over 25 MB Formboard asks first and
+  suggests an STL; a STEP whose parts come back empty says so instead of loading nothing. **STL** (binary or
+  ASCII, read as mm) needs no CAD kernel: a 9.5 MB, 200,000-triangle STL imports in 2.4 s. Every 3D reference is
+  simplified to 80,000 triangles at most. Only one reference is read at a time in a tab; the bar shows the
+  seconds so far.
+
 **Not built yet:**
 - Dragging a channel's side edge to change its width (the Width field does it), PL's turn ring (R and the
   Turn buttons do it), a linked library part's size for a device end, fill kept after a reload, and caching

@@ -303,18 +303,58 @@
     // World: the drawing's own coordinates (scaled), its lower left at the pad.
     return { mesh: M3().slab(W, H, 0.4), tex: { 1: texFromCanvas(c), 2: null }, T: [(x0 - pad) * k + W / 2, (y0 - pad) * k + H / 2, -0.2], segs: d.segs.map(s => s.map(v => v * k)), known: d.known };
   }
+  // An STL (binary or ASCII), as model3d's mesh: one gray, no CAD faces. Read in mm.
+  function readStl(bytes) {
+    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), dv = new DataView(buf);
+    const n = buf.byteLength >= 84 ? dv.getUint32(80, true) : 0;
+    let pos;
+    if (n && 84 + n * 50 === buf.byteLength) {
+      pos = new Float32Array(n * 9);
+      for (let t = 0; t < n; t++) for (let k = 0; k < 9; k++) pos[t * 9 + k] = dv.getFloat32(84 + t * 50 + 12 + k * 4, true);
+    } else if (/^\s*solid/i.test(new TextDecoder().decode(bytes.subarray(0, 512)))) {
+      const nums = [], re = /vertex\s+(\S+)\s+(\S+)\s+(\S+)/g, txt = new TextDecoder().decode(bytes);
+      let m;
+      while ((m = re.exec(txt))) nums.push(+m[1], +m[2], +m[3]);
+      pos = Float32Array.from(nums);
+    } else throw new Error('This doesn’t read as an STL file.');
+    const nt = Math.floor(pos.length / 9);
+    if (!nt) throw new Error('The STL has no triangles.');
+    const idx = new Uint32Array(nt * 3);
+    for (let i = 0; i < idx.length; i++) idx[i] = i;
+    const col = new Uint8Array(nt * 3).fill(196), fid = new Uint32Array(nt);
+    return { pos, idx, col, fid };
+  }
+  // A STEP is read in the browser by OpenCascade, which slows down sharply with size (measured 2026-11-15, see
+  // docs/formboard.md, *Reference size*): over STEP_WARN, ask first and suggest an STL, which reads at once.
+  const STEP_WARN = 25 * 1048576;
   async function importRef(file) {
     const f = cur();
     if (!f || !file) return;
-    const name = file.name, ext = (name.split('.').pop() || '').toLowerCase(), bytes = new Uint8Array(await file.arrayBuffer());
+    if (S.busy) { A.toast('A reference is still being read. Wait for it, or reload the page to stop it.'); return; }
+    const name = file.name, ext = (name.split('.').pop() || '').toLowerCase();
+    const mb = (file.size / 1048576).toFixed(1);
+    if (/^(step|stp)$/.test(ext) && file.size > STEP_WARN && !confirm(`This STEP is ${mb} MB. Reading a STEP this big in the browser can take many minutes or not finish at all.\n\nFaster: export an STL from your CAD (coarse is fine) and use that, or a STEP of just the frame.\n\nRead the STEP anyway?`)) return;
+    const bytes = new Uint8Array(await file.arrayBuffer());
     const id = await sha(bytes);
-    let ref = null;
+    let ref = null, tick = 0;
+    const busy = label => { const t0 = Date.now(); S.busy = label; refresh(); tick = setInterval(() => { S.busy = label + ' ' + Math.round((Date.now() - t0) / 1000) + ' s'; const el = document.querySelector('.fb-busy'); if (el) el.lastChild.textContent = S.busy; }, 1000); };
     try {
       if (/^(step|stp)$/.test(ext)) {
-        S.busy = 'Reading the STEP…'; refresh();
-        const raw = await M3().readStep(bytes), mesh = M3().simplify(raw, 80000), gz = await M3().encode(mesh);
+        busy(`Reading the STEP (${mb} MB)…`);
+        const raw = await M3().readStep(bytes);
+        // Too big for the browser's reader: it can report success with every part empty (a 53 MB assembly,
+        // 2,468 parts, 2026-11-15).
+        if (!raw.idx.length) throw new Error('The STEP reader found its parts but couldn’t make any geometry from them, which happens when a file is too big for the browser. Export an STL from your CAD instead (coarse is fine), or a STEP of just the frame.');
+        const mesh = M3().simplify(raw, 80000), gz = await M3().encode(mesh);
         await putRef(id, { mesh: gz });
         ref = { kind: 'step', name, sha: id, tris: mesh.idx.length / 3, scale: 1 };
+      } else if (ext === 'stl') {
+        busy(`Reading the STL (${mb} MB)…`);
+        await new Promise(r => setTimeout(r, 30));
+        const raw = readStl(bytes), mesh = M3().simplify(raw, 80000), gz = await M3().encode(mesh);
+        await putRef(id, { mesh: gz });
+        ref = { kind: 'step', format: 'stl', name, sha: id, tris: mesh.idx.length / 3, scale: 1 };
+        A.toast('The STL is read in mm. Export it in millimeters from your CAD.');
       } else if (ext === 'dxf') {
         const text = new TextDecoder().decode(bytes), d = readDxf(text);
         if (!d.segs.length) throw new Error('No lines, arcs, circles, or polylines found.');
@@ -326,8 +366,9 @@
         const img = await createImageBitmap(new Blob([bytes]));
         ref = { kind: 'image', name, sha: id, px: [img.width, img.height], mmPerPx: 1, scale: 1, calibrated: false };
         A.toast('A picture has no scale: use Calibrate, click two points, and type the distance between them.');
-      } else throw new Error('Formboard reads STEP, DXF, PNG, or JPEG.');
-    } catch (e) { S.busy = ''; A.toast('Couldn’t read ' + name + ': ' + e.message, 'error'); refresh(); return; }
+      } else throw new Error('Formboard reads STEP, STL, DXF, PNG, or JPEG.');
+    } catch (e) { clearInterval(tick); S.busy = ''; A.toast('Couldn’t read ' + name + ': ' + e.message, 'error'); refresh(); return; }
+    clearInterval(tick);
     S.busy = '';
     change(x => { x.reference = ref; });
     if (S.st) { S.fitNext = true; }
@@ -474,7 +515,7 @@
   function barHtml(f, list) {
     const st = S.st || {};
     return `<select data-fbsel="pick" aria-label="Formboard">${list.map(x => `<option value="${esc(x.id)}"${x.id === f.id ? ' selected' : ''}>${esc(x.title)}</option>`).join('')}<option value="+new">New formboard…</option></select>` +
-      `<span class="fb-sep"></span><label class="btn" title="A STEP model, a DXF, or a picture (PNG or JPEG) to place the system on">Reference…<input type="file" accept=".step,.stp,.dxf,.png,.jpg,.jpeg,.webp" data-fbfile hidden></label>` +
+      `<span class="fb-sep"></span><label class="btn" title="A 3D model (STEP, or STL for a big assembly), a DXF, or a picture (PNG or JPEG) to place the system on">Reference…<input type="file" accept=".step,.stp,.stl,.dxf,.png,.jpg,.jpeg,.webp" data-fbfile hidden></label>` +
       (f.reference && (f.reference.kind === 'dxf' || f.reference.kind === 'image') ? `<button class="btn${S.tool === 'calibrate' ? ' on' : ''}" data-fb="tool" data-tool="calibrate" title="Click two points on the reference, then type the distance between them">Calibrate</button>` : '') +
       `<span class="fb-sep"></span><div class="seg" role="group" aria-label="Tool">${toolBtn('select', 'Select', 'Select and move blocks (Esc)')}${toolBtn('channel', 'Draw channel', 'Click point to point along the path; double-click or Enter to finish, Esc to cancel')}${toolBtn('snap', 'Snap block', 'Pick a corner, edge, hole, or face on the selected block, then where it goes')}</div>` +
       `<span class="fb-sep"></span><button class="btn${st.quad ? ' on' : ''}" data-fb="quad" aria-pressed="${!!st.quad}" title="Top, Front, and Right beside the 3D view">Four views</button>` +
@@ -510,7 +551,7 @@
     const ref = f.reference;
     return head(f.title, esc((sc.fl.title || '') + ' · ' + sc.fl.blocks.length + ' blocks, ' + sc.fl.cables.length + ' cables')) + `<div class="rail-body">` +
       fld('Title', `<input type="text" data-fbin="title" value="${esc(f.title)}">`) +
-      fld('Reference', ref ? `${esc(ref.name)} <span class="hint">(${ref.kind === 'step' ? 'STEP, ' + (ref.tris || 0).toLocaleString() + ' triangles' : ref.kind === 'builtin' ? 'built in' : ref.kind === 'dxf' ? 'DXF' + (ref.calibrated ? '' : ', not calibrated') : 'picture' + (ref.calibrated ? '' : ', not calibrated')})</span>` : '<span class="hint">None yet: Reference… in the bar.</span>') +
+      fld('Reference', ref ? `${esc(ref.name)} <span class="hint">(${ref.kind === 'step' ? (ref.format === 'stl' ? 'STL, ' : 'STEP, ') + (ref.tris || 0).toLocaleString() + ' triangles' : ref.kind === 'builtin' ? 'built in' : ref.kind === 'dxf' ? 'DXF' + (ref.calibrated ? '' : ', not calibrated') : 'picture' + (ref.calibrated ? '' : ', not calibrated')})</span>` : '<span class="hint">None yet: Reference… in the bar.</span>') +
       `<div class="fb-h">Cables</div><div class="fb-list">${rows || '<p class="hint">This system has no cables yet.</p>'}</div>` +
       (unplaced.length ? `<div class="fb-h">Not placed <span class="count">${unplaced.length}</span></div><p class="hint">Faded until moved. Lengths to them are provisional, and Apply skips them.</p><div class="fb-list">${unplaced.map(o => `<button class="fb-row" data-fb="sel" data-kind="block" data-id="${esc(o.b.path)}"><span class="fb-name">${esc(blockName(o.b))}</span></button>`).join('')}</div>` : '') +
       `<div class="fb-h">Classes</div><p class="hint">A cable may use a channel when the channel isn’t exclusive, or when they share a class.</p>${classes}<button class="btn" data-fb="class-add">Add a class</button>` +
