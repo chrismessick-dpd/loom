@@ -22,6 +22,10 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **No Overview tab (2026-11-14, Chris: redundant).** A system's tabs are System (was Detail; tab value still
+  `detail`, the default) and List. System draws the open system whole when nothing is picked (its own row, or
+  *Placed in* back to it), and otherwise the system placing the pick with it selected. `overviewSel` is gone.
+  See `docs/system.md`, *System and List*.
 - **Part library, Device, and Flying leads (2026-11-14, Chris: a repo of parts, like a far-end part library, to
   place a device as a harness's far end).** Parts live in `loom_data/parts/<id>.json` (Chris chose a folder in the data
   repo over a new repo), read only at each sync (`assets/parts.js`, `LM.parts.syncLib`). Add has *Flying leads* and
@@ -84,7 +88,7 @@ links to it so far. Before every commit:
 - **System List like PL's (2026-11-14, Chris: the List was busy).** A Hierarchy | Cables switch: blocks,
   connectors, and cables folding (the default), or just the cables, each once. Name over part number, Type chip,
   Status (the › right of the chip), and a funnel menu for From / To, Length (both off to start), and Wires (`listHtml`, `listPrefs`, `<ns>sysList`). Harness
-  wires show only in a harness's own list (its ›). See `docs/system.md`, *Overview, Detail, and List*.
+  wires show only in a harness's own list (its ›). See `docs/system.md`, *System and List*.
 - **Exits face their cable (2026-11-13, Chris: hairpins, a tab leaving away from its cable and doubling back).** A
   tab with no exit picked leaves from the nearest edge that doesn't face away from its cable's other ends
   (`autoExits` in `layout`, a WeakMap read by `exitSide`; never stored). Picked exits and hand-shaped cables keep
@@ -130,13 +134,13 @@ links to it so far. Before every commit:
 - **System List (2026-11-12, Chris: the Wires tab renamed List; each item's type and part number beside it; a click
   shows it in the panel, with Open in Loom).** List sits beside the panel in the canvas's place; rows select
   (`data-ssel`, plus `wire:` and `end:` for a harness's own, `parseSel`), and a › lists a system or harness on its own.
-  See `docs/system.md`, *Overview, Detail, and List*.
+  See `docs/system.md`, *System and List*.
 
 - **System tabs: Overview, Detail, and Wires (2026-11-12, Chris: tabs over the system canvas, as the harness
   editor's; a pick in the menu highlights instead of jumping).** In the toolbar's `#view-seg` (`data-act="sys-tab"`).
   Rows under the open system pick (`data-sfocus`, `LM.system.setFocus`); Overview selects the pick in `S.root`
   (`overviewSel`), Detail draws the picked system (`show`, per-system undo and camera in `S.hist`), and Wires is a
-  read-only table (`wiresHtml`). See `docs/system.md`, *Overview, Detail, and Wires*. On branch
+  read-only table (`wiresHtml`). See `docs/system.md`, *System and List*. On branch
   `system-view-tabs` for review, not `main`. Tests 62.
 
 - **Menu width (2026-11-12, Chris).** The sidebar's right edge drags (`#side-resize`, `sideResize` in `app.js`),

@@ -85,23 +85,21 @@ harnesses between them, with board-to-board harnesses in the parent; in the side
   step to confirm with Chris), a parent's BOM rolling up its children's harnesses, and dragging a tab along its
   block (X and Y in the panel for now).
 
-## Overview, Detail, and List (2026-11-12, Chris)
+## System and List (2026-11-12, Chris; Overview removed 2026-11-14)
 
-A system has three tabs over its canvas, where a harness has Build, Drawing, and the rest (`#view-seg`,
+A system has two tabs over its canvas, **System** and **List** (Chris, 2026-11-14: Overview was redundant, so it
+went, and Detail was renamed System; its tab value is still `detail`), where a harness has Build, Drawing, and the rest (`#view-seg`,
 `data-act="sys-tab"`; not `data-view`, which is the harness's own). Inside the open system's tree in the menu,
 a click on a system or harness is a pick, not a jump (`data-sfocus="kind|id|path"`, `LM.system.setFocus`); the
 open system's own row clears it, and other systems and harnesses still open as before.
 
-- **Overview** draws the open system (`S.root`) and selects the pick: the block placing it (which lights that
-  block's cables), or a harness's cables there (several at once fade the rest as one does). A harness used only
-  deeper selects the block it's inside (`overviewSel`). The camera moves to the block if it's out of view.
-- **Detail** draws the system placing a picked system, with the pick's block selected, or the system holding a
+- **System** draws the open system (`S.root`) when nothing is picked, so clicking the open system's own row
+  (the top of the hierarchy) shows the whole top-level diagram. Otherwise it draws the system placing a picked system, with the pick's block selected, or the system holding a
   picked harness with its cables selected. Only **Open <system>** draws a system itself (`f.open`; `drawnPath`,
   `drawnSys`). It's the real system, editable; each system drawn keeps its own undo and camera (`show`, `S.hist`).
 
 A pick shows where it's placed (Chris, 2026-11-13): its block and that block's cables lit, and its panel open
-with **Open <system>**, never opened by itself. A pick placed in the open system goes to Overview, one deeper to
-Detail with its parent drawn (picking a system two levels down draws the one placing it, with it selected). List
+with **Open <system>**, never opened by itself. A pick placed in the open system shows in it, one deeper with its parent drawn (picking a system two levels down draws the one placing it, with it selected). List
 keeps listing the pick.
 - **List** (first called Wires; Chris renamed it) takes the canvas's place beside the panel. For a system it
   is laid out like Signoff PL's list (2026-11-14, Chris: the old one was busy): a **Hierarchy | Cables** switch
@@ -118,17 +116,17 @@ keeps listing the pick.
   A click on any row selects it and shows it in the panel: a block, connector, or cable gets its usual panel,
   editable as on the canvas; a harness's wire or end gets a read-only panel (`wirePanelHtml`, `endPanelHtml`;
   a system never edits a harness). **Open in Loom** under the panel's head opens a harness, wire, or end in the
-  harness editor with it selected (`openHarness(id, sel)`), a placed system on Detail, and anything else on
-  Detail, selected. The › beside a placed system or harness lists just it; a breadcrumb leads back.
+  harness editor with it selected (`openHarness(id, sel)`), a placed system on System, and anything else on
+  System, selected. The › beside a placed system or harness lists just it; a breadcrumb leads back.
 
-Overview always draws the open (top) system. A panel's **Open <system>** for a system inside its tree picks it
-and switches to Detail (`openSub`, `pathTo`), and *Placed in* back to the open system goes to Overview; only a
+A panel's **Open <system>** for a system inside its tree picks it and draws it on System (`openSub`, `pathTo`),
+and *Placed in* back to the open system clears the pick, drawing the top system whole; only a
 system outside the tree opens as the top one, as a click on it in the menu does (Chris, 2026-11-12: Open
-re-rooted, so Overview then showed the subsystem).
+re-rooted).
 
 A single placed system or harness cable selected on the canvas becomes the pick when the tab changes, unless
 it's the selection the tab made itself (`S.autoSel`). The tab and pick aren't stored; opening a system starts
-on Overview. List draws the listed system as the current one, so the panel edits it. Screenshots (the made-up nested demo): `docs/screens/system-tabs-*.jpg`.
+on System, drawing it whole. List draws the listed system as the current one, so the panel edits it. Screenshots (the made-up nested demo): `docs/screens/system-tabs-*.jpg`.
 
 ## Toolbar (2026-11-12, Chris)
 

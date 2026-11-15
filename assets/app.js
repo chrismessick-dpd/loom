@@ -458,8 +458,8 @@
     const list = live().filter(h => !T.used.has(h.id)).sort((a, b) => (b.updated || 0) - (a.updated || 0));
     const systems = roots.map(n => Object.assign({ kind: 'tree', project: n.sys.project }, { node: n }));
     // Does this tree node hold what's open (the system or harness), at any depth?
-    // Rows under the open system pick (data-sfocus) rather than open: Overview highlights the pick, Detail
-    // draws it, and Wires lists it (Chris, 2026-11-12). The pick's row is the active one, and stays in view.
+    // Rows under the open system pick (data-sfocus) rather than open: System draws where it's placed,
+    // selected, and List lists it (Chris, 2026-11-12). The pick's row is the active one, and stays in view.
     const root = LM.system.root(), fc = LM.system.focused();
     const holdsOpen = n => n.id === root || n.id === LM.system.current() || n.harnesses.includes(S.cur) || (!!fc && (fc.path === n.path || fc.path.startsWith(n.path + '>'))) || n.kids.some(holdsOpen);
     const inOpen = path => !!root && path.split('>')[0] === root;
@@ -629,12 +629,13 @@
   function renderToolbar() {
     const h = H();
     const seg = $('#view-seg');
-    // A system's tabs (Chris, 2026-11-12: as the harness's, over the canvas): Overview, Detail, and Wires.
+    // A system's tabs (Chris, 2026-11-12: as the harness's, over the canvas): System and List (Chris,
+    // 2026-11-14: Overview was redundant; Detail, renamed System, draws the open system at the top).
     // Not data-view, which is the harness's own.
     if (LM.system.current()) {
       const tab = LM.system.tab();
       seg.hidden = false;
-      seg.innerHTML = [['overview', 'Overview', 'The whole system; a pick in the menu is highlighted here'], ['detail', 'Detail', 'The system picked in the menu, or the one holding the harness picked'], ['list', 'List', 'What’s picked, and its connectors, cables, and wires, as a table; click one for its properties']]
+      seg.innerHTML = [['detail', 'System', 'The open system, or the one placing what’s picked in the menu (the pick selected)'], ['list', 'List', 'What’s picked, and its connectors, cables, and wires, as a table; click one for its properties']]
         .map(([v, l, tip]) => `<button class="${tab === v ? 'on' : ''}" data-act="sys-tab" data-tab="${v}" title="${tip}">${l}</button>`).join('');
       $('#toolbar-actions').innerHTML = sysToolbar(); return;
     }

@@ -1038,7 +1038,7 @@ button.input.cfg-ro { text-align: left; cursor: pointer; }
 #page.sys-on { display: flex; min-height: 0; }
 .sys-view { flex: 1; display: grid; grid-template-columns: 1fr 340px; height: calc(100dvh - 56px); min-height: 420px; }
 body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
-/* Overview, Detail, and Wires (2026-11-12): Wires is a page in place of the canvas. */
+/* System and List (2026-11-12; Overview removed 2026-11-14): List is a page in place of the canvas. */
 .sys-view[hidden], .sys-wires[hidden] { display: none; }
 .sys-canvas-wrap[hidden] { display: none; }
 /* List sits in the canvas's place, beside the panel (2026-11-12). */

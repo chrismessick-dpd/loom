@@ -13,11 +13,11 @@
   const NS = DEMO ? 'loom.demo.' : 'loom.v1.';
   const TAB = { w: 7, h: 4.5 };          // a connector tab on a block, mm
   const STUB = 14;                       // an unplugged cable end's stub, mm
-  // root: the system opened from the menu (Overview draws it); cur: the one drawn now, which Detail may
-  // set to a system it places. tab: overview, detail, or wires. focus: what the menu picked inside root's
+  // root: the system opened from the menu; cur: the one drawn now, which the System tab (tab 'detail') may
+  // set to a system it places. tab: detail (labeled System) or list. focus: what the menu picked inside root's
   // tree, { kind: 'system' | 'harness', id, path } (path: system ids from root, joined by '>'; for a
   // harness, the system holding it). hist: each system's undo and camera while another is drawn.
-  const S = { store: {}, cur: null, root: null, tab: 'overview', focus: null, hist: {}, sel: null, past: [], future: [], cam: null, boards: null, boardsErr: '', busy: '', adding: null, picking: null };
+  const S = { store: {}, cur: null, root: null, tab: 'detail', focus: null, hist: {}, sel: null, past: [], future: [], cam: null, boards: null, boardsErr: '', busy: '', adding: null, picking: null };
   let A = null;                          // the app's hooks
 
   // ── Model ──
@@ -491,13 +491,13 @@
     S.sel = selOf(bs, cs); S.pair = null; S.picking = null; S.adding = null;
   }
 
-  function open(id) { S.cur = id; S.root = id; S.tab = 'overview'; S.focus = null; S.hist = {}; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
+  function open(id) { S.cur = id; S.root = id; S.tab = 'detail'; S.focus = null; S.hist = {}; S.pending = null; S.pair = null; S.sel = null; S.past = []; S.future = []; S.cam = null; S.adding = null; S.picking = null; persist(); }
 
-  // ── Overview, Detail, and Wires (Chris, 2026-11-12) ──
+  // ── System and List (Chris, 2026-11-12; Overview removed 2026-11-14) ──
   // The tabs over the canvas. A pick in the menu inside the open system's tree is a focus, not a jump:
-  // Overview selects it in the open system (the block placing it, which lights its cables, or a
-  // harness's cables), Detail draws the system it is (a harness: the system holding it, its cables
-  // selected), and Wires lists it and what it holds. Each system drawn keeps its own undo and camera.
+  // System (tab 'detail') draws the system placing it, its block selected (a harness: the system holding
+  // it, its cables selected), and the open system itself when nothing is picked; List lists it and what it
+  // holds. Each system drawn keeps its own undo and camera.
   function show(id) {
     if (!id || !S.store[id] || id === S.cur) return;
     if (S.cur) S.hist[S.cur] = { past: S.past, future: S.future, cam: S.cam };
@@ -506,9 +506,9 @@
     S.sel = null; S.pending = null; S.pair = null; S.picking = null; S.adding = null;
   }
   const pathIds = f => (f && f.path ? String(f.path).split('>') : []);
-  // The system a focus is drawn in on Detail: a system itself, or the one holding a harness.
+  // The system a focus is drawn in on the System tab: a system itself, or the one holding a harness.
   const focusSys = f => { const ids = pathIds(f); return ids.length ? ids[ids.length - 1] : null; };
-  // What Detail draws for a focus (Chris, 2026-11-13): a system picked in the menu shows in the system placing
+  // What the System tab draws for a focus (Chris, 2026-11-13): a system picked in the menu shows in the system placing
   // it, selected, with its Open button in the panel; only Open (f.open) draws the system itself. A harness
   // shows in the system holding it (its path).
   const drawnPath = f => {
@@ -518,20 +518,10 @@
   };
   const drawnSys = f => focusSys({ path: drawnPath(f) });
   const harnessCables = (s, hid) => s.cables.filter(c => kindOf(c) === 'harness' && c.harness === hid).map(c => c.id);
-  // What Overview selects for a focus: in root, the block placing the first system on its path, or a
-  // harness's own cables there. A harness only used deeper selects the block it's inside.
-  function overviewSel(s, f) {
-    const ids = pathIds(f);
-    if (!s || !f || ids[0] !== s.id) return null;
-    if (f.kind === 'harness' && ids.length === 1) return selOf([], harnessCables(s, f.id));
-    if (ids.length < 2) return null;
-    const b = s.blocks.find(x => x.kind === 'system' && x.system === ids[1]);
-    return b ? { kind: 'block', block: b.id } : null;
-  }
   // The path of the system drawn now, from root.
   // The pick's own path when its system is the one drawn (List draws a system picked in the menu itself, not the
   // one placing it; Chris, 2026-11-14: Open from there skipped a level, so the menu lost where it was), else
-  // where Detail draws it.
+  // where the System tab draws it.
   const curPath = () => {
     if (S.cur === S.root) return S.root;
     const f = S.focus;
@@ -540,7 +530,7 @@
     return S.root;
   };
   // A single placed system or harness cable selected on the canvas becomes the focus when the tab changes,
-  // so a pick on the diagram carries to Detail and Wires as a pick in the menu does.
+  // so a pick on the diagram carries to System and List as a pick in the menu does.
   function focusFromSel() {
     const s = cur(), t = S.sel;
     // Not the selection a tab made for the focus itself (a harness inside a placed system selects its block).
@@ -561,8 +551,7 @@
   // redraw, so a click on the canvas afterwards is the user's own.
   function applyTab() {
     const f = S.focus;
-    if (S.tab === 'overview') { show(S.root); S.sel = overviewSel(cur(), f); reveal(cur(), S.sel); }
-    else if (S.tab === 'detail') {
+    if (S.tab === 'detail') {
       const id = f && S.store[drawnSys(f)] ? drawnSys(f) : S.root;
       show(id);
       const s = cur(), b = f && f.kind === 'system' && !f.open ? s.blocks.find(x => x.kind === 'system' && x.system === f.id) : null;
@@ -573,17 +562,17 @@
     S.autoSel = JSON.stringify(S.sel);
   }
   function setTab(tab) {
-    if (!['overview', 'detail', 'list'].includes(tab) || !S.root) return;
+    if (!['detail', 'list'].includes(tab) || !S.root) return;
     if (tab !== S.tab) focusFromSel();
     S.tab = tab; applyTab(); persist(); A.refresh();
   }
   // A pick in the menu (app.js, a row under the open system): kind system or harness, its id, and its
-  // path (a harness's: the system holding it). The open system itself clears the focus. Off the List tab, the
-  // pick shows where it's placed: Overview when that's the open system, else Detail (Chris, 2026-11-13).
+  // path (a harness's: the system holding it). The open system itself clears the focus, so System draws it
+  // whole. Off the List tab, the pick shows on System where it's placed (Chris, 2026-11-13).
   function setFocus(kind, id, path) {
     if (!S.root || pathIds({ path })[0] !== S.root) return;
     S.focus = kind === 'system' && id === S.root ? null : { kind, id, path };
-    if (S.tab !== 'list') S.tab = drawnSys(S.focus) === S.root ? 'overview' : 'detail';
+    if (S.tab !== 'list') S.tab = 'detail';
     applyTab(); A.refresh();
   }
   // The path from the open system to a system inside its tree: along the one drawn now first (its parents,
@@ -608,13 +597,13 @@
     };
     return walk(S.root, [S.root]);
   }
-  // Open <system> in a panel (Chris, 2026-11-12: Overview always shows the top system): a system inside the
-  // open one's tree becomes the pick and opens on Detail, and the open system itself goes back to Overview.
-  // Only a system outside the tree is opened as the top one.
+  // Open <system> in a panel: a system inside the open one's tree becomes the pick and opens on System, and
+  // the open system itself goes back to the top, drawn whole. Only a system outside the tree is opened as the
+  // top one.
   function openSub(id) {
     const p = pathTo(id);
     if (!p) { A.openSystem(id); return; }
-    if (id === S.root) { S.focus = null; S.tab = 'overview'; }
+    if (id === S.root) { S.focus = null; S.tab = 'detail'; }
     else { S.focus = { kind: 'system', id, path: p, open: true }; S.tab = 'detail'; }
     applyTab(); A.refresh();
   }
@@ -750,7 +739,7 @@
   // Every cable's routes: from its first plugged end to each other plugged end.
   // The layout is kept until the blocks, connectors, cables, or harness ends change, not redone for a
   // selection (a system the size of a machine has dozens of cables over a big drawing).
-  // One memo per system, so Overview and Detail switching back and forth don't re-route each other's.
+  // One memo per system, so moving between systems on the System tab doesn't re-route each other's.
   const memos = new Map();
   function layout(s, view) {
     autoExits(s);
@@ -1753,7 +1742,7 @@
       `<p class="hint">Set in the harness: Open in Loom opens it with this end selected.</p>`;
   }
   // Open in Loom, under the panel's head while the list shows: a harness's wire, end, or cable opens the
-  // harness with it selected; a placed system opens on Detail; anything else shows on Detail, selected.
+  // harness with it selected; a placed system opens on System; anything else shows on System, selected.
   function openInLoom() {
     const s = cur(), t = S.sel;
     if (!s || !t) return;
@@ -1766,7 +1755,7 @@
     reveal(s, t.kind === 'conn' ? { kind: 'block', block: t.block } : t);
     A.refresh();
   }
-  const openInLoomBtn = () => `<button class="btn btn-primary sys-open-loom" data-sact="open-in-loom" title="A harness, its wire, or its end opens in the harness editor; anything else on the Detail canvas">Open in Loom</button>`;
+  const openInLoomBtn = () => `<button class="btn btn-primary sys-open-loom" data-sact="open-in-loom" title="A harness, its wire, or its end opens in the harness editor; anything else on the System canvas">Open in Loom</button>`;
 
   // ── Render ──
   function render(page) {
@@ -2647,6 +2636,6 @@
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
     externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll,
-    tab: () => S.tab, setTab, setFocus, overviewSel, focused: () => S.focus, root: () => S.root,
+    tab: () => S.tab, setTab, setFocus, focused: () => S.focus, root: () => S.root,
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, restore, saveFile, openDoc };
 })(window.LM = window.LM || {});
