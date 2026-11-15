@@ -22,6 +22,30 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Version tags and Version comparison (2026-11-14, Chris: "view at version", across the suite, starting in Loom;
+  his choices: tags stored in the data file, the tagged side read-only plus Restore, called "version tags" so they
+  don't clash with EE's revision tags).** `assets/compare.js` (`LM.compare`).
+  - **Tags** live on the document, `h.tags` or `s.tags`: `[{ id, commit, stamp, note, at, by, made }]`. `stamp` is
+    the version's own `R.stampKey` (how History matches a tag to its row; a summary-only rewrite keeps it), `commit`
+    is how the version is fetched. Setting one (`LM.app.editTags`, `LM.system.editTags`) stamps the document so it
+    syncs, with no undo step; every version put back (undo, redo, History's Restore, the bar's Restore) keeps the
+    tags the document has now (`carry`). Duplicate drops them. Merging is whole-document as for any edit, so tagging
+    in one tab while another edits makes a conflict copy; a union of tags in `threeWay` would fix that if needed.
+  - **History** (`history.js`): a synced version has *Tag this version…* (a note by `prompt`); a tagged one shows its
+    tag with Compare, Edit note…, and Remove tag; tags show on rows and blocks; an *Every version / Tagged* switch.
+    A tag change reads as its own change ("tagged a version “EVT build”", `withTags`). Not in the demo (no git).
+  - **Compare** fetches the file at the tag's commit (contents API, or its blob over 1 MB), parses it as History does
+    (`R.unwrap`, `LM.system.prepare`), and shows the *Version comparison* bar (`#compare-bar`, under the demo's). Its
+    tabs, Current and the tag, swap what `H()` (app.js) and `cur()` (system.js) return; the view, tab, camera, and the
+    selection where it still exists stay. The tag side is striped and says "read-only" (not hue alone). It never
+    enters the store: `change`, `snapshot`, undo and redo, Discard, Delete, and Restore are refused (`locked()`,
+    `refuse`), and a drag into the copy is dropped at its `persist()` (`reset`). *Restore this version…* switches to
+    Current and calls `LM.app.restore` / `LM.system.restore`. Leaving the harness or system ends it (`check` in
+    `renderAll`). A system's placed systems and harnesses draw as they are now (the bar says so).
+  - Tests 91 (three new). Tried in the demo with GitHub stubbed in the page (a harness and a system: tag, Compare,
+    edits refused, store unchanged, tab and view kept, Restore with tags kept, undo, leaving ends it). Not tried
+    signed in against `loom_data`. Next: the same in Signoff EE, ME, FW, and PL (Chris: later).
+
 - **Right-click Open in the menu (2026-11-14, Chris).** A right-click on a system in the sidebar's tree offers
   *Open <system>*, which draws it itself on the System tab, by its tree path (`LM.system.openAt`; its tree's top
   system opens first when another is open); on a harness, *Open <harness>*, which opens it in the harness editor (`rowCtx` in `app.js`). A placed system's
@@ -1103,6 +1127,7 @@ the CSP in `index.html` allows just those.
 | `assets/configure.js` | The Configure window: ref, name, type, and a custom face from a 3D model or a sketch with assigned positions; Find a model. |
 | `assets/kicad-models.json`, `tools/kicad_index.py` | The KiCad library's connector and terminal block model names at one commit, for Find a model. |
 | `assets/step.js`, `occt-worker.js` | STEP, IGES, and STL to a mesh, and a view's visible edges as one path. |
+| `assets/history.js`, `assets/compare.js` | History (versions from git, Restore) and version tags with the Version comparison bar. |
 | `assets/sheet.js` | The paper sheet, a self-contained SVG with its own `.lm-sheet` styles. |
 | `assets/app.js` | The UI. |
 | `assets/demo.js` | The Smart Thermostat demo harness. |

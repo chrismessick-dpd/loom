@@ -427,6 +427,7 @@
     catch (e) { A.toast("Couldn't keep this in the browser: " + e.message, 'error'); }
   }
   function persist() {
+    if (locked()) LM.compare.reset();   // a drag into the tagged version goes back
     resolveAll();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(writeNow, 200);
@@ -434,10 +435,15 @@
   // Writes a save still waiting on its 200 ms timer, before a tool update's reload or the page closing.
   function flush() { if (saveTimer) { clearTimeout(saveTimer); writeNow(); } }
   const live = () => Object.values(S.store).filter(s => !s.deleted);
-  const cur = () => S.store[S.cur] || null;
+  // While the Version comparison bar shows a tagged version of this system (compare.js), that copy is what's
+  // drawn; it's read-only, and nothing written into it reaches the store or undo.
+  const cur = () => (LM.compare && LM.compare.view('system', S.cur)) || S.store[S.cur] || null;
+  const locked = () => !!(LM.compare && LM.compare.locked('system', S.cur));
+  function pushPast() { if (locked()) return; S.past.push(JSON.stringify(cur())); if (S.past.length > 120) S.past.shift(); S.future = []; }
 
   // ── Changes and undo (its own, apart from the harness editor's) ──
   function change(fn) {
+    if (locked()) { LM.compare.refuse(); return null; }
     const s = cur();
     if (!s) return null;
     S.past.push(JSON.stringify(s)); if (S.past.length > 120) S.past.shift(); S.future = [];
@@ -457,10 +463,11 @@
     return doc;
   }
   function swap(from, to) {
+    if (locked()) { LM.compare.refuse(); return; }
     if (!from.length) return;
     const was = cur();
     to.push(JSON.stringify(was));
-    S.store[S.cur] = keepBase(JSON.parse(from.pop()), was);
+    S.store[S.cur] = LM.compare.carry(keepBase(JSON.parse(from.pop()), was), was);
     if (S.sel && !selValid()) S.sel = null;
     persist(); A.refresh();
   }
@@ -2117,7 +2124,7 @@
       if (d.kind === 'up') {
         const c = conn(block(cur(), d.ub), d.uc);
         if (!c) { drag = null; return; }
-        if (!d.snap) { S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; svg.classList.add('dragging'); }
+        if (!d.snap) { pushPast(); d.snap = true; svg.classList.add('dragging'); }
         const any = e.ctrlKey || e.metaKey, r = v => (any ? Math.round(v * 10) / 10 : snap(v));
         c.upAt = { dx: r(d.a0.dx + (p.x - d.p.x) / K), dy: r(d.a0.dy + (p.y - d.p.y) / K) };
         if (!c.upAt.dx && !c.upAt.dy) delete c.upAt;
@@ -2127,7 +2134,7 @@
       if (d.kind === 'dev') {
         const cab = cable(cur(), d.cab);
         if (!cab) { drag = null; return; }
-        if (!d.snap) { S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; svg.classList.add('dragging'); }
+        if (!d.snap) { pushPast(); d.snap = true; svg.classList.add('dragging'); }
         const any = e.ctrlKey || e.metaKey, r = v => (any ? Math.round(v * 10) / 10 : snap(v));
         cab.devAt = { dx: r(d.a0.dx + (p.x - d.p.x) / K), dy: r(d.a0.dy + (p.y - d.p.y) / K) };
         if (!cab.devAt.dx && !cab.devAt.dy) delete cab.devAt;
@@ -2138,7 +2145,7 @@
         const cab = cable(cur(), d.cab), L = labInfo.get(d.cab);
         if (!cab || !L) { drag = null; return; }
         if (!d.snap) {
-          S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; S.slide = cab.id; svg.classList.add('dragging');
+          pushPast(); d.snap = true; S.slide = cab.id; svg.classList.add('dragging');
           // Fix the other half where it is: the dot's place, and the label's offset from it.
           if (cab.labelAt == null) cab.labelAt = Math.round(L.t * 1000) / 1000;
           if (cab.labelOff == null) cab.labelOff = L.rot ? { dx: 2, dy: -2.25 } : { dx: Math.round(L.off.dx * 10) / 10, dy: Math.round(L.off.dy * 10) / 10 };
@@ -2170,7 +2177,7 @@
         if (!d.snap) {
           const st = d.lead ? leadGrab(d.run.route, d.lead, d.p) : CN().grab(d.run, snapU, d.brk);
           if (!st) { drag = null; return; }
-          S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true;
+          pushPast(); d.snap = true;
           d.keep = { a: d.run.route.A.side, b: d.run.route.B.side, mode: d.cab.routes && d.cab.routes[d.end] && d.cab.routes[d.end].mode };
           Object.assign(d, st, { p0: toWorld(svg, { clientX: d.x, clientY: d.y }) });
           d.tabs = endTabs(d);
@@ -2206,7 +2213,7 @@
         return;
       }
       if (d.kind === 'block') {
-        if (!d.snap) { S.past.push(JSON.stringify(cur())); S.future = []; d.snap = true; svg.classList.add('dragging'); }
+        if (!d.snap) { pushPast(); d.snap = true; svg.classList.add('dragging'); }
         // As a harness part: only the cables whose ends move re-route until it's let go.
         // On the grid; Ctrl places it anywhere, as a harness part.
         const bx = d.bx + (p.x - d.p.x) / K, by = d.by + (p.y - d.p.y) / K, any = e.ctrlKey || e.metaKey;
@@ -2543,6 +2550,7 @@
       case 'open-harness': { const cab = cable(s, S.sel.id); A.openHarness(cab.harness); break; }
       case 'open-ee': { const b = block(s, S.sel.block); location.href = `../ee_design_review/index.html?project=${encodeURIComponent(b.source.id)}${DEMO ? '&demo' : ''}`; break; }
       case 'delete-system':
+        if (locked()) { LM.compare.refuse(); break; }
         if (!confirm(`Delete ${s.title}? Its harnesses stay.`)) break;
         s.deleted = true; s.updated = now(); S.cur = null; S.root = null; persist(); A.home(); break;
     }
@@ -2621,6 +2629,7 @@
   // Discard changes (Chris, 2026-11-12, as for a harness): the open system goes back to its last synced
   // copy (store.js sysBase), as one more undo step, so Ctrl+Z brings the changes back.
   function discardTo(base) {
+    if (locked()) { LM.compare.refuse(); return false; }
     const s = cur();
     if (!s || !base || base.id !== s.id) return false;
     S.past.push(JSON.stringify(s)); if (S.past.length > 120) S.past.shift(); S.future = [];
@@ -2632,10 +2641,11 @@
   // History's Restore (assets/history.js): an older version of the open system back as one change, by this
   // person, now, so it syncs like any edit; Ctrl+Z takes it back.
   function restore(older) {
+    if (locked()) { LM.compare.refuse(); return false; }
     const s = cur();
     if (!s || !older || older.id !== s.id) return false;
     S.past.push(JSON.stringify(s)); if (S.past.length > 120) S.past.shift(); S.future = [];
-    const c = keepBase(normalize(JSON.parse(JSON.stringify(older))), s);
+    const c = LM.compare.carry(keepBase(normalize(JSON.parse(JSON.stringify(older))), s), s);
     delete c.conflictOf;
     c.updated = now(); if (A.login()) c.updatedBy = A.login(); else delete c.updatedBy;
     S.store[S.cur] = c;
@@ -2671,5 +2681,19 @@
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
     externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll,
     tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,
-    canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, restore, saveFile, openDoc };
+    canUndo: () => !locked() && S.past.length > 0, canRedo: () => !locked() && S.future.length > 0, discardTo, restore, saveFile, openDoc,
+    // compare.js: a stored version made ready to draw (its placed systems' tabs resolved), the selection
+    // tidied after the drawn copy changes, and version tags set on the open system (no undo step; stamped,
+    // so they sync).
+    prepare: d => { normalize(d); d.blocks.forEach(b => { if (b.kind === 'system') resolveBlock(b, [d.id]); }); return d; },
+    tidy: () => { S.pending = null; S.pair = null; S.picking = null; S.adding = null; if (S.sel && !selValid()) S.sel = null; },
+    editTags: fn => {
+      const s = S.store[S.cur];
+      if (!s) return false;
+      const t = fn(LM.compare.tagsOf(s));
+      if (t.length) s.tags = t; else delete s.tags;
+      s.updated = now(); if (A.login()) s.updatedBy = A.login();
+      persist(); A.refresh();
+      return true;
+    } };
 })(window.LM = window.LM || {});

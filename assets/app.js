@@ -12,7 +12,10 @@
   const S = {
     store: {}, cur: null, view: 'build', sel: null, pending: null, cam: null, past: [], future: [],
   };
-  const H = () => S.store[S.cur] || null;
+  // While the Version comparison bar shows a tagged version of this harness (assets/compare.js), that copy is
+  // what's drawn; it's read-only (locked), and nothing written into it reaches the store, undo, or the sync.
+  const H = () => (LM.compare && LM.compare.view('harness', S.cur)) || S.store[S.cur] || null;
+  const locked = () => !!(LM.compare && LM.compare.locked('harness', S.cur));
   let linked = '';   // a harness ?project= asked for that this browser doesn't have yet
 
   // ── Theme: shared with the rest of Signoff (same key) ──
@@ -235,6 +238,7 @@
     } catch (e) { toast("Couldn't keep this in the browser: " + e.message, 'error'); }
   }
   function persist() {
+    if (locked()) LM.compare.reset();   // a drag into the tagged version goes back
     clearTimeout(saveTimer);
     saveTimer = setTimeout(writeNow, 200);
   }
@@ -247,8 +251,9 @@
   window.addEventListener('pagehide', flushSaves);
 
   // ── Changes and undo ──
-  function snapshot() { S.past.push(JSON.stringify(H())); if (S.past.length > 120) S.past.shift(); S.future = []; }
+  function snapshot() { if (locked()) return; S.past.push(JSON.stringify(H())); if (S.past.length > 120) S.past.shift(); S.future = []; }
   function change(fn) {
+    if (locked()) { LM.compare.refuse(); return null; }
     const h = H();
     if (!h) return null;
     snapshot();
@@ -261,10 +266,11 @@
     return r;
   }
   function swapHistory(from, to) {
+    if (locked()) { LM.compare.refuse(); return; }
     if (!from.length) return;
     const was = H();
     to.push(JSON.stringify(was));
-    S.store[S.cur] = keepBase(JSON.parse(from.pop()), was);
+    S.store[S.cur] = LM.compare.carry(keepBase(JSON.parse(from.pop()), was), was);   // version tags stay as they are now
     S.pending = null;
     tidySel();
     persist();
@@ -374,6 +380,8 @@
     selWas = k;
   }
   function renderAll() {
+    // Leaving the harness or system being compared ends the comparison.
+    if (LM.compare) LM.compare.check(LM.system.current() ? 'system' : 'harness', LM.system.current() || S.cur);
     if (LM.system.current()) {
       renderSidebar(); renderToolbar();
       $('#build-view').hidden = true; $('#page').hidden = false;
@@ -599,6 +607,7 @@
     let b = null;
     try { b = await R.discardCopy('harness', id); } catch (e) { toast("Couldn't read the last synced version from GitHub: " + e.message, 'error'); return; }
     if (!b || S.cur !== id) { if (!b) toast("There's no synced version of this harness to go back to.", 'error'); return; }
+    if (locked()) { LM.compare.refuse(); return; }
     snapshot();
     S.store[S.cur] = keepBase(b, H());
     S.sel = null; S.pending = null;
@@ -658,8 +667,8 @@
     seg.innerHTML = tabs.map(([v, l, n, dot]) => `<button class="${S.view === v ? 'on' : ''}" data-view="${v}">${l}${n ? ` <span class="count">${n}</span>` : ''}${dot ? `<span class="dot ${dot}"></span>` : ''}</button>`).join('');
     $('#toolbar-actions').innerHTML =
       (LM.resolve && LM.resolve.isCopy(h) ? `<button class="btn lm-resolve" data-act="resolve" title="Use this copy, delete it, or keep both">Resolve…</button>` : '') +
-      `<button class="icon-btn" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo"${S.past.length ? '' : ' disabled'}>${ICON.undo}</button>` +
-      `<button class="icon-btn" data-act="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${S.future.length ? '' : ' disabled'}>${ICON.redo}</button>` +
+      `<button class="icon-btn" data-act="undo" title="Undo (Ctrl+Z)" aria-label="Undo"${S.past.length && !locked() ? '' : ' disabled'}>${ICON.undo}</button>` +
+      `<button class="icon-btn" data-act="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"${S.future.length && !locked() ? '' : ' disabled'}>${ICON.redo}</button>` +
       (canDiscard(h) ? `<button class="btn" data-act="discard" title="Put this harness back as it was at the last sync (Ctrl+Z brings the changes back)">Discard changes</button>` : '') +
       `<button class="btn btn-primary" data-act="save" title="Download this harness as a .loom.json file${canSync() ? '' : ' (Ctrl+S)'}">${ICON.save}<span class="btn-label">Save file</span></button>`;
   }
@@ -2678,8 +2687,9 @@
       case 'bm-add': addBoardConnector(el.dataset.ref); break;
       case 'match-wire': wireMatches(el.dataset.a, el.dataset.b); break;
       case 'delete': deleteSel(); break;
-      case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); delete c.identAt; delete c.demoVersion; delete c.plPart; delete c.syncBase; delete c.conflictOf; S.store[c.id] = c; openHarness(c.id); break; }
+      case 'duplicate': { const c = JSON.parse(JSON.stringify(h)); c.id = U.uid('h'); c.title = h.title + ' (copy)'; c.updated = Date.now(); delete c.identAt; delete c.demoVersion; delete c.plPart; delete c.syncBase; delete c.conflictOf; delete c.tags; S.store[c.id] = c; openHarness(c.id); break; }
       case 'delete-harness': {
+        if (locked()) { LM.compare.refuse(); break; }
         // Once synced, a harness is kept as a tombstone, so the next sync deletes it everywhere (its file
         // stays in the repo, marked deleted, and its git history keeps every version).
         const kept = !DEMO && R && R.wasSynced(h.id);
@@ -3058,17 +3068,31 @@
   // History's Restore (assets/history.js): an older version of the open harness back as one change, by
   // this person, now, so it syncs like any edit; Undo takes it back.
   function restore(older) {
+    if (locked()) { LM.compare.refuse(); return false; }
     const h = H();
-    if (!h || !older || older.id !== h.id) return;
+    if (!h || !older || older.id !== h.id) return false;
     snapshot();
-    const c = keepBase(JSON.parse(JSON.stringify(older)), h);
+    const c = LM.compare.carry(keepBase(JSON.parse(JSON.stringify(older)), h), h);   // its tags stay as they are now
     delete c.conflictOf;
     c.updated = Date.now(); if (R && R.login()) c.updatedBy = R.login(); else delete c.updatedBy;
     S.store[h.id] = c;
     tidySel(); persist(); renderAll();
     toast('Restored the earlier version');
+    return true;
   }
-  LM.app = { state: S, renderAll, H, demo: DEMO, restore,
+  // Version tags on the open harness (assets/compare.js): set without an undo step, but stamped, so they sync.
+  function editTags(fn) {
+    const h = S.store[S.cur];
+    if (!h) return false;
+    const t = fn(LM.compare.tagsOf(h));
+    if (t.length) h.tags = t; else delete h.tags;
+    h.updated = Date.now(); if (R && R.login()) h.updatedBy = R.login();
+    persist(); renderAll();
+    return true;
+  }
+  // After the drawn copy changes (compare.js switching Current and the tag): drop what no longer exists.
+  function tidy() { S.pending = null; S.placing = null; tidySel(); if (LM.system.tidy) LM.system.tidy(); }
+  LM.app = { state: S, renderAll, H, demo: DEMO, restore, editTags, tidy, toast,
     guide: {
       // The demo harness, opened in Build (rebuilt if it was deleted).
       demo() { if (!S.store.hdemo1) S.store.hdemo1 = LM.demo.harness(); if (S.cur !== 'hdemo1') openHarness('hdemo1'); },
