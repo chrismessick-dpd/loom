@@ -1326,3 +1326,8 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .rs-opt .btn { justify-content: center; }
 @media (max-width: 600px) { .rs-opt { grid-template-columns: 1fr; gap: 4px; } }
 .btn.lm-resolve { border-color: var(--warn); }
+
+/* No harness panel off phones (2026-11-14): the harness's fields are Properties with nothing selected; the
+   rail is only the phone's sheet, and the HUD's panel button opens it. */
+@media (min-width: 861px) and (min-height: 501px) { .build-view .rail { display: none; } .board-hud .hud-sheet { display: none; } }
+.lm-overview { padding: 4px 4px 0; }

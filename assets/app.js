@@ -798,13 +798,12 @@
   const fold = (() => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { return {}; } })();
   // The demo always opens in the arranged view, Real proportions off (Chris).
   if (DEMO) fold.prop = false;
-  // The harness panel (the rail) starts folded (Chris, 2026-11-08); clicking a harness in the menu
-  // opens it. Once folded or opened by hand, that's kept.
-  if (fold.rail === undefined) fold.rail = true;
+  // No harness panel off phones (Chris, 2026-11-14): the harness's own fields are Properties with nothing
+  // selected. The rail stays only as the phone's sheet (styles.css), so fold-rail is always on.
   const FOLD_ICON = side => `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="${side === 'left' ? 'M8 3.5v13' : 'M12 3.5v13'}"/></svg>`;
   function applyFold() {
     const bv = $('#build-view');
-    bv.classList.toggle('fold-rail', !!fold.rail);
+    bv.classList.add('fold-rail');
     bv.classList.toggle('fold-parts', !!fold.parts);
   }
   function saveFold() { try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } }
@@ -860,7 +859,8 @@
     const h = H(), gs = gridOf(h), placed = h && (fold.prop ? h.propY && Object.keys(h.propY).length : (h.place && Object.keys(h.place).length) || (h.routes && Object.keys(h.routes).length) || h.wires.some(w => w.labelAt != null || w.labelOff != null) || h.sets.some(st => st.badgeAt != null || st.badgeOff != null));
     // Glass capsules, one per kind of control (docs/look-2026-11.md): the panel, the view, the grid.
     $('#hud-right').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-parts" title="${fold.parts ? 'Show' : 'Hide'} the parts pane" aria-label="${fold.parts ? 'Show' : 'Hide'} the parts pane">${FOLD_ICON('right')}</button></div>`;
-    $('#hud').innerHTML = `<div class="seg glass"><button class="hud-fold" data-act="fold-rail" title="${fold.rail ? 'Show' : 'Hide'} the harness panel" aria-label="${fold.rail ? 'Show' : 'Hide'} the harness panel">${FOLD_ICON('left')}</button></div>` +
+    // The panel button opens the phone's sheet; off phones there's no left panel (styles.css hides it).
+    $('#hud').innerHTML = `<div class="seg glass hud-sheet"><button class="hud-fold" data-act="fold-rail" title="Show the panel" aria-label="Show the panel">${FOLD_ICON('left')}</button></div>` +
       `<div class="seg glass"><button class="hud-ico" data-act="fit" title="Fit the diagram (F)">${ICON.fit}<span>Fit</span></button>` +
       (placed ? `<button class="hud-ico" data-act="auto-layout" title="Forget the positions you dragged and the wires you shaped, and lay the diagram out again">${ICON.relayout}<span>Auto layout</span></button>` : '') + `</div>` +
       `<label class="seg glass hud-grid" title="Parts snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${ICON.grid}<select data-hud="grid" aria-label="Grid"><optgroup label="Spacing">${GRIDS.map(g => `<option value="${g}"${g === gs ? ' selected' : ''}>${g ? 'Grid ' + g : 'Grid off'}</option>`).join('')}</optgroup>` +
@@ -1706,7 +1706,7 @@
     const tabs = `<div class="pane-tabs" role="tablist">${[['parts', 'Parts'], ['props', 'Properties']].map(([k, t]) =>
       `<button role="tab" class="pane-tab${k === tab ? ' on' : ''}" aria-selected="${k === tab}" data-act="pane-tab" data-tab="${k}">${t}</button>`).join('')}</div>`;
     const body = tab === 'props'
-      ? `<div class="pane-props">${propsHtml() || overviewHtml()}</div>`
+      ? `<div class="pane-props">${propsHtml() || railHarness(H(), M.analyze(H()), overviewHtml())}</div>`
       : `<div class="pane-body">${partsHtml()}</div>`;
     // How it works (Chris): a ? button in the pane's bottom-right corner pops this card up over the
     // bottom of the pane, in either tab. Open until closed, remembered in this browser (fold.help).
@@ -1732,7 +1732,8 @@
     if (sc2 && sc2.className === scKind) sc2.scrollTop = scroll;
     if (focus) { const f2 = el.querySelector(`[data-f="${focus}"]`); if (f2) f2.focus(); }
   }
-  // Properties with nothing selected: the splices, notes, and wire sets, each a row that selects it.
+  // Under the harness's fields in Properties with nothing selected: the splices, notes, and wire sets, each a
+  // row that selects it ('' when there are none).
   function overviewHtml() {
     const h = H();
     const sel = id => selHas(S.sel, 'node', id);
@@ -1752,7 +1753,7 @@
       o += `<div class="side-head"><span class="side-label">Wire sets</span><span class="side-count">${h.sets.length}</span></div>`;
       o += roots.map(r => setTree(h, r, new Set(selParts(S.sel).set), false)).join('');
     }
-    return o ? `<div class="pane-body">${o}</div>` : `<div class="pane-empty">Select a connector, splice, wire, or box on the canvas to see its properties here.</div>`;
+    return o ? `<div class="lm-overview">${o}</div>` : '';
   }
   // Parts: what can be added to the drawing.
   function partsHtml() {
@@ -2022,9 +2023,9 @@
     if (sel.kind === 'note' && one) return railNote(h, M.note(h, [...sel.ids][0]));
     return railMulti(h, A, P);
   }
-  // The left rail is the harness. On a phone (narrow, or short when held sideways; styles.css) the
-  // right pane is hidden and the rail is a sheet over the canvas showing the selection, else the
-  // harness. Like Signoff's detail panel it pops up for a new selection (not while wiring) and
+  // The rail is only the phone's sheet (Chris, 2026-11-14: no left panel on a wide screen). On a phone (narrow,
+  // or short when held sideways; styles.css) the right pane is hidden and the rail is a sheet over the canvas
+  // showing the selection, else the harness. Like Signoff's detail panel it pops up for a new selection (not while wiring) and
   // goes when the selection clears; the HUD's panel button and its close button toggle it.
   const PHONE = '(max-width: 860px), (max-height: 500px)';
   const narrow = () => window.matchMedia(PHONE).matches;
@@ -2032,7 +2033,7 @@
     const h = H(), sel = S.sel, key = sel ? sel.kind + ':' + [...sel.ids].sort().join(',') : '';
     if (key !== S.sheetKey && !(S.pending && key)) { S.sheetKey = key; S.sheet = !!key; }
     $('#build-view').classList.toggle('sheet-open', !!S.sheet);
-    paint($('#rail'), ((narrow() && propsHtml()) || railHarness(h, M.analyze(h))) +
+    paint($('#rail'), (propsHtml() || railHarness(h, M.analyze(h), overviewHtml())) +
       `<button class="sheet-close" data-act="sheet-close" title="Close" aria-label="Close">${ICON.close}</button>`);
   }
   const railHead = (eyebrow, title, extra) => `<div class="rail-head"><div class="eyebrow">${eyebrow}</div><div class="rail-title">${title}</div>${extra || ''}</div>`;
@@ -2066,7 +2067,9 @@
     return fld('Project', `<input class="input" data-f="h.project" list="lm-projects" value="${esc(h.project || '')}" placeholder="Client project">` +
       `<datalist id="lm-projects">${[...names].sort().map(n => `<option value="${esc(n)}">`).join('')}</datalist>`, hint) + placed + shared;
   }
-  function railHarness(h, A) {
+  // The harness's own fields: Properties with nothing selected (Chris, 2026-11-14: it was the left panel), and
+  // the phone's sheet. more: the splices, notes, and wire sets, between the fields and the checks.
+  function railHarness(h, A, more) {
     const c = M.checks(h, A);
     const total = h.wires.reduce((t, w) => t + (A.wireLen.get(w.id) || 0), 0);
     return railHead('Harness', esc(h.title), `<div class="chips"><span class="chip">${h.nodes.filter(M.isConn).length} ends</span><span class="chip">${h.wires.length} wires</span><span class="chip">${U.fmtMeters(total)} of wire</span></div>`) +
@@ -2078,7 +2081,7 @@
       <div class="row2">${fld('New wires', gaugeSelect('h.defaults.gauge', h.defaults.gauge))}${fld('&nbsp;', `<select class="input" data-f="h.defaults.color">${Object.entries(M.COLORS).map(([k, v]) => opt(k, v[0], h.defaults.color)).join('')}</select>`)}</div>
       ${fld('Wire allowance', inp('h.allowancePct', h.allowancePct, ' type="number" min="0" max="50" step="1"'), 'Percent added to every BOM length.')}
       ${fld('Notes', `<textarea class="input" rows="6" data-f="h.notes">${esc((h.notes || []).join('\n'))}</textarea>`, 'One note per line; the drawing numbers them.')}
-      </div><div class="cat-label">Checks</div>${checkRows(h, c)}
+      </div>${more || ''}<div class="cat-label">Checks</div>${checkRows(h, c)}
       <div class="rail-actions"><button class="btn" data-act="history" title="Who changed this harness, from its versions on GitHub">History</button><button class="btn" data-act="duplicate">Duplicate</button><button class="btn btn-danger" data-act="delete-harness">${ICON.trash}Delete harness</button></div></div>`;
   }
   function railConnector(h, A, n) {
@@ -2603,7 +2606,7 @@
       case 'zoom-in': zoomBy(1.25); break;
       case 'zoom-out': zoomBy(0.8); break;
       case 'zoom-reset': zoomBy(0); break;
-      case 'fold-rail': if (narrow()) { S.sheet = !S.sheet; $('#build-view').classList.toggle('sheet-open', S.sheet); } else toggleFold('rail'); break;
+      case 'fold-rail': if (narrow()) { S.sheet = !S.sheet; $('#build-view').classList.toggle('sheet-open', S.sheet); } break;
       case 'sheet-close': S.sheet = false; $('#build-view').classList.remove('sheet-open'); break;
       case 'nav': toggleSidebar(); break;
       case 'fold-parts': toggleFold('parts'); break;
@@ -2746,12 +2749,13 @@
     if (os) { if (os.dataset.openSys !== LM.system.root()) openSystem(os.dataset.openSys); return; }
     const o = t.closest('[data-open]');
     if (o) {
-      // A harness clicked in the menu opens its panel when it's folded away.
-      const unfold = fold.rail && !narrow();
-      if (unfold) { fold.rail = false; saveFold(); }
+      // A harness clicked in the menu shows its own fields: Properties, with the parts pane unfolded.
+      const unfold = fold.parts && !narrow();
+      if (unfold) { fold.parts = false; saveFold(); }
+      S.paneTab = 'props';
       if (o.dataset.open !== S.cur) openHarness(o.dataset.open);
       else if (S.view !== 'build') { S.view = 'build'; renderAll(); }
-      else if (unfold) { applyFold(); renderHud(); renderCanvas(); }
+      else if (unfold || S.sel) { S.sel = null; S.pending = null; renderAll(); }
       return;
     }
     const sf = t.closest('[data-setf]');
@@ -3031,24 +3035,13 @@
       view(v) { if (!H()) return; S.view = v; S.pending = null; S.placing = null; renderAll(); },
       // Select by kind and id (or clear, with no kind), in Build; Properties shows it.
       select(kind, ids) { if (!H()) return; S.view = 'build'; S.pending = null; S.placing = null; select(kind, ids); },
-      // Both panels shown off phones, so the guide can point into them.
-      // rail false: the harness panel is folded instead (Loom's guide keeps it out of the way; Chris,
-      // 2026-11-08), and the diagram refits once the fold has played.
-      panels(rail) {
-        const want = rail === false;
-        if (narrow() || (fold.rail === want && !fold.parts)) return;
-        const refit = fold.rail !== want;
-        fold.rail = want; fold.parts = false; saveFold();
-        if (S.view === 'build') { applyFold(); renderHud(); renderCanvas(); if (refit) setTimeout(() => { if (H() && S.view === 'build') fitGlide(); }, 350); }
-      },
-      menu() { if (narrow() || !fold.side) return; toggleSidebar(); },
-      // The harness panel folded away (Running a wire: it covered P1), then the diagram fits the wider
-      // canvas once the fold has played. The next step's build() brings it back.
-      rail(open) {
-        if (narrow() || !H() || !fold.rail === open) return;
-        fold.rail = !open; saveFold();
+      // The parts pane shown off phones, so the guide can point into it; the diagram refits once it has played.
+      panels() {
+        if (narrow() || !fold.parts) return;
+        fold.parts = false; saveFold();
         if (S.view === 'build') { applyFold(); renderHud(); renderCanvas(); setTimeout(() => { if (H() && S.view === 'build') fitGlide(); }, 350); }
       },
+      menu() { if (narrow() || !fold.side) return; toggleSidebar(); },
       // The suite tour's first Loom step (signoff/assets/tour.js): the menu and the parts pane fold
       // away and the diagram fits the bigger canvas. A selection brings the parts pane back.
       focus() {

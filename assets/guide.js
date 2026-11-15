@@ -29,11 +29,9 @@
   const box = label => { const s = set(label); return s ? `.cv-setarea[data-set="${s.id}"]` : null; };
   const pick = (kind, id) => G().select(kind, id ? [id] : []);
   const clear = () => G().select(null);
-  // The harness panel stays folded through the guide (Chris, 2026-11-08); The harness panel step opens it.
-  const build = () => { G().demo(); G().view('build'); G().panels(false); G().help(false); };
+  const build = () => { G().demo(); G().view('build'); G().panels(); G().help(false); };
   // Where Properties show on this screen: the parts pane, or the rail's sheet on a phone.
-  // The rail holds Properties only on a phone; on a wide screen it's the harness panel, which a step
-  // about a selection must never ring (Chris: the left panel glowed when a shift-click missed).
+  // The rail is only the phone's sheet; on a wide screen there's no left panel (Chris, 2026-11-14).
   const props = () => (G().narrow() ? ['#rail'] : ['#parts-pane .pane-props']);
 
   const CHAPTERS = [
@@ -66,7 +64,7 @@
         spot: () => [item('P2')] },
       { title: 'Grid and Auto layout',
         text: 'The {Grid} control sets the snap step (or turns it off) and draws the grid as dots or lines. Once anything has been dragged, {Auto layout} appears beside {Fit}: it forgets every position you dragged and lays the diagram out again.',
-        do: 'The panel buttons in the canvas’s top corners fold the harness panel (left) and the parts pane (right) away for more room.',
+        do: 'The panel button in the canvas’s top right folds the parts pane away for more room.',
         setup() { build(); clear(); },
         spot: () => ['#hud'] },
     ] },
@@ -78,7 +76,7 @@
         spot: () => [...props().map(s => s + ' .face-tile'), item('P1')] },
       // No Try it (Chris, 2026-11-08): the custom connector steps add the connector.
       { title: 'Adding parts',
-        text: '{Add › Connector} puts a new end on the canvas (or press {k:C}). {Splice} adds a splice, and {Note} pins a note to a part (more on notes later). With nothing selected, {Properties} lists the splices, notes, and wire sets; click one to select it.',
+        text: '{Add › Connector} puts a new end on the canvas (or press {k:C}). {Splice} adds a splice, and {Note} pins a note to a part (more on notes later). With nothing selected, {Properties} shows the harness itself, with its splices, notes, and wire sets listed; click one to select it.',
         phone: 'The parts pane needs a wider screen; on a phone, open Loom on a computer to add parts.',
         setup() { build(); clear(); },
         spot: () => ['#parts-pane .palette'] },
@@ -104,7 +102,7 @@
         spot: () => [`${CFG} [data-cfg="make-face"]`, `${CFG} #cfg-apply:not(:disabled)`, [`${CFG} .row2:has([data-cf="pins"])`, `${CFG} .cfg-assign-btn`],
           `${CFG} #cfg-drop [data-cfg="demo-model"]`, custom(), '#parts-pane .cfg-open'] },
       { title: 'Running a wire',
-        text: 'Click a pin, then a pin on another end or a splice: that’s a wire. While you’re wiring, the pins you can land on glow, the wire follows the pointer, and {k:Esc} cancels. New wires take the gauge and color set in the harness panel.',
+        text: 'Click a pin, then a pin on another end or a splice: that’s a wire. While you’re wiring, the pins you can land on glow, the wire follows the pointer, and {k:Esc} cancels. New wires take the gauge and color set in the harness’s Properties.',
         do: 'Run a few wires from the board connector you added (or P1’s free pin 6) to your custom connector. Then {k:Shift}-click them and try {Twist}, {Shield}, {Cable}, and {Bundle} in Properties.',
         setup() { build(); clear(); G().fit(); },
         spot: () => [custom(), item('P1')] },
@@ -155,11 +153,11 @@
         spot: () => ['#parts-pane [data-act="add-note"]'] },
     ] },
     { title: 'The drawing', steps: [
-      { title: 'The harness panel',
-        text: 'With nothing selected, the left panel is the harness: its title, part number, rev, drawn by, and date for the title block, the gauge and color new wires get, the allowance added to every BOM length, and numbered notes for the drawing. Its checks are listed under them.',
+      { title: 'The harness’s properties',
+        text: 'With nothing selected (click any empty spot on the canvas), Properties are the harness’s own: its title, part number, rev, drawn by, and date for the title block, the gauge and color new wires get, the allowance added to every BOM length, and numbered notes for the drawing. The splices, notes, and wire sets come next, then its checks.',
         do: 'Type a note in {Notes}, one per line. The drawing numbers them.',
         setup() { G().demo(); G().view('build'); G().panels(); G().help(false); clear(); },
-        spot: () => ['#rail'] },
+        spot: () => props() },
       { title: 'Checks',
         text: 'Checks look at the harness as drawn: pins with no wire, two wires on one pin, wires with no path, color, or gauge, loose ends, runs with no length, gauges a terminal won’t take, and sets that run past their wires.',
         do: 'Click a check to see it on the canvas.',

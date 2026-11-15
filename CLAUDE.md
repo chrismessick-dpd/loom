@@ -22,6 +22,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **No harness panel (2026-11-14, Chris).** The left rail is gone off phones: Properties with nothing selected is the
+  harness's own fields (`railHarness(h, A, overviewHtml())`: title, numbers, project, defaults, notes, then the
+  splices, notes, and wire sets, then checks), so a click on empty canvas shows the whole harness. A harness clicked
+  in the menu unfolds the parts pane on Properties. `fold.rail` is gone (`fold-rail` always on); on phones the rail
+  is still the sheet, and the HUD's panel button (`.hud-sheet`) opens it. The guide's step is *The harness's properties*.
 - **A system picked in the menu lights nothing (2026-11-14, Chris).** It still shows in the system placing it with
   its panel open, but its block doesn't glow and no cable lights or fades (`quiet` in `svgHtml`: the pick's own
   block selection, `S.autoSel`). A click on the canvas afterwards lights as before; harness picks still light.
