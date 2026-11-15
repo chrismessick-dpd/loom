@@ -185,6 +185,9 @@
         }
         // A block moves in the flat view's plane; in 3D, across the floor seen from above, else sideways and
         // up or down. 1 mm steps (0.5 for a fine grid); Alt for any spot.
+        // The host may have redrawn (a pick refreshes the page) and handed over new objects: follow it by id.
+        const live = st.objs.find(x => x.id === d.o.id);
+        if (live && live !== d.o) d.o = live;
         let m = mv;
         if (v.flat) m[v.flat.fixed] = 0;
         else if (Math.abs(st.cam.el) > 45 * DEG) m[2] = 0;
@@ -202,7 +205,8 @@
         if (d.kind === 'host') { if (d.h.up) d.h.up(info(v, e), e, d); return; }
         if (d.kind === 'move') {
           hint('');
-          if (d.moved) host.moved(d.o.id, d.o.T); else if (!d.picked) host.select(d.o.id);
+          const live = st.objs.find(x => x.id === d.o.id) || d.o;
+          if (d.moved) host.moved(live.id, d.o.T); else if (!d.picked) host.select(live.id);
           return;
         }
         save();
@@ -219,14 +223,14 @@
       // The host first (finishing a channel, adding a point), else a double-click on empty space fits the view.
       cv.addEventListener('dblclick', e => { const i = info(v, e); if (host.dbl && host.dbl(v, i, e)) return; if (!i.hit) fitView(v); });
       cv.addEventListener('keydown', e => {
-        if (host.key && host.key(e, v)) return;
+        if (host.key && host.key(e, v)) { e.stopPropagation(); return; }
         const id = host.selected && host.selected(), o = st.objs.find(x => x.id === id);
         if (!o || o.fixed) return;
         const step = e.shiftKey ? 10 : 1, f = v.flat;
         const mv = f ? { ArrowLeft: [f.h, -step], ArrowRight: [f.h, step], ArrowUp: [f.v, step], ArrowDown: [f.v, -step] }[e.key]
           : { ArrowLeft: [0, -step], ArrowRight: [0, step], ArrowUp: [1, step], ArrowDown: [1, -step], PageUp: [2, step], PageDown: [2, -step] }[e.key];
-        if (mv) { e.preventDefault(); const T = o.T.slice(); T[mv[0]] += mv[1]; host.moved(o.id, T); return; }
-        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); host.turned(o.id, f ? f.fixed : 2, e.shiftKey ? -90 : 90); }
+        if (mv) { e.preventDefault(); e.stopPropagation(); const T = o.T.slice(); T[mv[0]] += mv[1]; host.moved(o.id, T); return; }
+        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); e.stopPropagation(); host.turned(o.id, f ? f.fixed : 2, e.shiftKey ? -90 : 90); }
       });
     }
 

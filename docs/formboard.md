@@ -58,7 +58,13 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   step; its first signed-in run creates that folder, so it waits for Chris.
 - Dragging a channel's side edge to change its width (the Width field does it), PL's turn ring (R and the
   Turn buttons do it), a linked library part's size for a device end, fill kept after a reload, and caching
-  the reference's picture between camera moves (speed on a machine-sized STEP is unmeasured).
+  the reference's picture between camera moves (drawing speed with a machine-sized STEP is unmeasured).
+- **Measured (2026-11-15):** the made-up 30-board, 60-cable system (`tests/fixture-system.js`) flattens in
+  under 1 ms and routes through a 13-channel grid (42 junctions) in 9 ms, all 60 routed.
+- **A route goes stale** (dashed, *Route again*, skipped by Apply) when its ends move, or when the channels,
+  classes, settings, or the cable's own classes, vias, or end allowances change after it was routed.
+- **Apply lengths and Save to base part edit real systems and harnesses** (they sync on the next sync);
+  their undo is the formboard's history in this page only, gone after a reload. Persisting it is a follow-up.
 
 ## Verdict
 

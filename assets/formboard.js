@@ -321,6 +321,10 @@
     });
   }
   const endsKey = ends => ends.map(e => e.key + ':' + e.p.map(v => v.toFixed(1)).join(',')).join('|');
+  // Everything else a route came from: the channels, the settings, the classes, and the cable's own classes,
+  // vias, and end allowances. A route is stale when its ends or this have changed since Route.
+  const fnv = str => { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); };
+  const inKey = (f, own) => fnv(JSON.stringify([f.channels, f.settings, f.classes, own.classes || [], own.vias || [], own.endMm || {}]));
   function routeAll() {
     const f = cur();
     if (!f) return;
@@ -333,7 +337,7 @@
         const own = x.cables[c.path] = Object.assign({}, x.cables[c.path] || {});
         if (input.pinned && own.route) { pinned++; return; }
         if (input.ends.length < 2) { delete own.route; return; }
-        own.route = { ok: r.ok, length: r.length, flags: r.flags, at: Date.now(), ends: endsKey(input.ends), provisional: input.ends.some(e => !e.placed),
+        own.route = { ok: r.ok, length: r.length, flags: r.flags, at: Date.now(), ends: endsKey(input.ends), from: inKey(x, own), provisional: input.ends.some(e => !e.placed),
           legs: r.legs.map(l => ({ from: l.from, to: l.to, ok: l.ok, pts: l.pts.map(p => p.map(r1)), length: l.length, straight: l.straight != null ? r1(l.straight) : undefined,
             path: l.path != null ? r1(l.path) : undefined, drops: l.drops != null ? r1(l.drops) : undefined, channels: l.channels ? Object.fromEntries(Object.entries(l.channels).map(([k, v]) => [k, r1(v)])) : undefined, parts: l.parts })) };
         if (r.ok) ok++; else bad++;
@@ -346,7 +350,8 @@
   function routeOf(f, x) {
     const own = f.cables[x.c.path], r = own && own.route;
     if (!r) return null;
-    return Object.assign({}, r, { stale: x.input.ends.length >= 2 && r.ends !== endsKey(x.input.ends) });
+    const moved = x.input.ends.length >= 2 && r.ends !== endsKey(x.input.ends), changed = !own.pinned && r.from !== inKey(f, own);
+    return Object.assign({}, r, { stale: moved || changed, moved, changed });
   }
 
   // Apply lengths (Chris, 2026-11-15): the routed length as the placed cable's length, a variant only where it
@@ -477,7 +482,7 @@
   function boardPanel(f, sc) {
     const xs = cableInputs(sc, f), unplaced = Object.values(sc.blocks).filter(o => !o.placed);
     const rows = xs.map(x => {
-      const r = routeOf(f, x), st = !r ? '<span class="fb-st">Not routed yet</span>' : !r.ok ? '<span class="fb-st bad">Not routed</span>' : r.stale ? '<span class="fb-st">Ends moved</span>' : `<span class="fb-st ok">${fmt(r.length)}${r.provisional ? ' (provisional)' : ''}</span>`;
+      const r = routeOf(f, x), st = !r ? '<span class="fb-st">Not routed yet</span>' : !r.ok && !r.stale ? '<span class="fb-st bad">Not routed</span>' : r.stale ? '<span class="fb-st">Route again</span>' : `<span class="fb-st ok">${fmt(r.length)}${r.provisional ? ' (provisional)' : ''}</span>`;
       return `<button class="fb-row" data-fb="sel" data-kind="cable" data-id="${esc(x.c.path)}"><span class="fb-sw" style="background:${esc(x.c.color || '#7d8590')}"></span><span class="fb-name">${esc(x.c.title)}${x.c.pn ? ` <span class="fb-pn">${esc(x.c.pn)}</span>` : ''}</span>${st}</button>`;
     }).join('');
     const classes = f.classes.map(c => `<div class="fb-class"><input type="color" value="${esc(c.color)}" data-fbin="class.color.${esc(c.id)}" aria-label="Color of ${esc(c.name)}"><input type="text" value="${esc(c.name)}" data-fbin="class.name.${esc(c.id)}" aria-label="Class name"><button class="icon-btn" data-fb="class-del" data-id="${esc(c.id)}" title="Remove this class" aria-label="Remove">×</button></div>`).join('');
@@ -535,7 +540,8 @@
       if (!r.ok) res = `<p class="fb-st bad">Not routed</p><p class="hint">No path through the channels it may use. Straight: ${r.legs.map(l => fmt(l.straight)).join(', ')}.</p>`;
       else res = r.legs.map(l => { const p = l.parts || {}; return `<table class="fb-parts"><tr><td>Through the channels</td><td>${fmt(l.path)}</td></tr><tr><td>Drops at the ends</td><td>${fmt(l.drops)}</td></tr><tr><td>Slack</td><td>${fmt(p.slack)}</td></tr><tr><td>Channel extras</td><td>${fmt(p.extra)}</td></tr><tr><td>End allowances</td><td>${fmt(p.ends)}</td></tr><tr class="tot"><td>Build length</td><td>${fmt(l.length)}</td></tr></table>`; }).join('') +
         (r.flags && r.flags.includes('long-drop') ? `<p class="hint">An end is more than ${fmt(f.settings.dropMax)} from its nearest channel.</p>` : '');
-      if (r.stale) res += '<p class="hint">Its ends have moved since: Route again.</p>';
+      if (r.moved) res += '<p class="hint">Its ends have moved since: Route again.</p>';
+      else if (r.changed) res += '<p class="hint">Its channels, classes, or settings have changed since: Route again.</p>';
       if (r.provisional) res += '<p class="hint">An end isn’t placed yet, so this length is provisional.</p>';
     }
     const canApply = r && r.ok && r.length && !r.stale && !r.provisional;
@@ -809,6 +815,22 @@
     } else if (S.tool === 'channel' && S.hoverPt && S.hover && S.hover.v === v.key) {
       const q = P(S.hoverPt); g.save(); g.fillStyle = '#d4a514'; g.beginPath(); g.arc(q[0], q[1], 4 * k, 0, 7); g.fill(); g.restore();
     }
+    // Each channel's name, classes, and Exclusive at its middle (Chris is colorblind: never hue alone).
+    g.save(); g.font = `600 ${10.5 * k}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    f.channels.forEach(c => {
+      if (!c.pts || c.pts.length < 2) return;
+      const runs = []; let tot = 0;
+      for (let j = 0; j + 1 < c.pts.length; j++) { const l = dist(c.pts[j], c.pts[j + 1]); runs.push(l); tot += l; }
+      let half = tot / 2, j = 0;
+      while (j < runs.length - 1 && half > runs[j]) { half -= runs[j]; j++; }
+      const t = runs[j] ? half / runs[j] : 0, mid = c.pts[j].map((x0, n) => x0 + (c.pts[j + 1][n] - x0) * t), q = P(mid);
+      const cls = (c.classes || []).map(id => (f.classes.find(y => y.id === id) || {}).name).filter(Boolean).join(', ');
+      const text = (c.name || 'Channel') + (cls ? ' · ' + cls : '') + (c.exclusive ? ' · exclusive' : '');
+      const w = g.measureText(text).width + 10 * k;
+      g.fillStyle = 'rgba(20, 22, 26, 0.72)'; g.fillRect(q[0] - w / 2, q[1] - 8 * k, w, 16 * k);
+      g.fillStyle = '#fff'; g.fillText(text, q[0], q[1]);
+    });
+    g.restore();
     if (S.sel && S.sel.kind === 'channel') {
       const c = f.channels.find(x => x.id === S.sel.id);
       if (c) { g.save(); g.fillStyle = '#fff'; g.strokeStyle = '#00a3b4'; g.lineWidth = 2 * k; c.pts.forEach(p => { const q = P(p); g.beginPath(); g.arc(q[0], q[1], 5 * k, 0, 7); g.fill(); g.stroke(); }); g.restore(); }
