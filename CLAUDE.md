@@ -30,9 +30,8 @@ links to it so far. Before every commit:
   splices, notes, and wire sets, then checks), so a click on empty canvas shows the whole harness. A harness clicked
   in the menu unfolds the parts pane on Properties. `fold.rail` is gone (`fold-rail` always on); on phones the rail
   is still the sheet, and the HUD's panel button (`.hud-sheet`) opens it. The guide's step is *The harness's properties*.
-- **A system picked in the menu lights nothing (2026-11-14, Chris).** It still shows in the system placing it with
-  its panel open, but its block doesn't glow and no cable lights or fades (`quiet` in `svgHtml`: the pick's own
-  block selection, `S.autoSel`). A click on the canvas afterwards lights as before; harness picks still light.
+- **A system picked in the menu lights again (2026-11-14, Chris).** `6ea460f` made a picked system light nothing;
+  Chris wants its block and connections lit, so it's taken back: the pick's block and its cables light, the rest fade.
 - **Breadcrumb in the toolbar (2026-11-14, Chris).** A system's path (root › … › the system, each a link) sits right
   of the System and List tabs on both tabs (`#sys-crumbs`, `LM.system.crumbs`), no longer over List's title. List: the
   system listed, or a harness after the system holding it; System: the system drawn, then the pick in it as plain text.
