@@ -1281,6 +1281,33 @@
       ok(LM.tags.has(['24 VAC'], '24 vac') && !LM.tags.has(['24 VAC'], '24'), 'names match without case');
     } finally { done(); }
   });
+  test('system filter: tags include and exclude, names and numbers with wildcards, and a placed system lit by what it holds', () => {
+    const { Y, top, pump, psu, a, j1, j2, sb, done } = nestFixture();
+    try {
+      const p1 = psu.conns[0] || Y.mkConn(psu, 'TB1', 2, { x: 0, y: 5 });
+      top.cables.push({ id: 'kt', kind: 'bought', name: 'Mains lead', pn: 'RA-00378', tags: ['Low voltage'], ends: { a: { block: psu.id, conn: p1.id }, b: null } });
+      pump.cables.push({ id: 'kp', kind: 'link', name: 'Pump feed', tags: ['24 VAC'], ends: { a: { block: a.id, conn: j2.id }, b: null } });
+      const kt = top.cables.find(c => c.id === 'kt'), kp = pump.cables.find(c => c.id === 'kp');
+      const F = (tags, name, pn) => Y.filterMatch(top, { tags: tags || {}, name: name || '', pn: pn || '' });
+      eq(F(), null, 'nothing set: off');
+      let m = F({ '24 vac': 'in' });
+      ok(!m.cable(kt) && m.cable(kp), 'include: a cable with the tag, without case');
+      ok(!m.block(psu) && !m.block(sb) && m.inside(sb), 'blocks have no tags; the placed system holding it lights');
+      m = F({ 'Low voltage': 'out' });
+      ok(!m.cable(kt) && m.cable(kp), 'exclude: a cable without the tag');
+      ok(!m.block(psu), 'exclude alone lights no block by itself');
+      m = F(null, 'mains');
+      ok(m.cable(kt) && !m.cable(kp), 'a name with no wildcard matches anywhere in it');
+      m = F(null, 'Pump*');
+      ok(!m.cable(kt) && m.cable(kp) && m.block(sb), 'a wildcard name: the whole name, or the block’s name');
+      m = F(null, 'S?');
+      ok(m.block(sb) && !m.cable(kt), '? is one character, matched against the ref too');
+      m = F(null, '', 'RA-003*');
+      ok(m.cable(kt) && !m.cable(kp) && !m.block(sb) && !m.inside(sb), 'part number with a wildcard');
+      m = F({ 'Low voltage': 'in' }, 'pump');
+      ok(!m.cable(kt) && !m.cable(kp) && !m.block(sb), 'every part must hold, and an include keeps blocks from matching by name');
+    } finally { done(); }
+  });
   test('formboard flatten: a connector passed up two levels reaches its board', () => {
     const { Y, store, pump, top, a, j1, sb, done } = nestFixture();
     const plant = Y.blank('Gizmo'); plant.title = 'Plant';

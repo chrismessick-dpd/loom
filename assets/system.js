@@ -1343,7 +1343,99 @@
     }));
     return out;
   }
-  function upSvg(s) {
+  // ── The view's filter (Chris, 2026-11-15) ──
+  // One per open system, kept in this browser: each tag ignored, included, or excluded; a name and a part number,
+  // each with * and ? (without one, it matches anywhere in the text), without case. A cable matches when it has
+  // an included tag (if any are included), no excluded tag, and the name and number given. A block has no tags,
+  // so it matches by itself only on a name or number with nothing included; a placed system also lights when
+  // something inside it matches.
+  const FKEY = NS + 'sysFilter';
+  function filters() {
+    if (!S.filters) { try { S.filters = JSON.parse(localStorage.getItem(FKEY) || '{}') || {}; } catch (e) { S.filters = {}; } }
+    return S.filters;
+  }
+  function filterOf(root) {
+    const f = filters()[root || S.root] || {};
+    return { tags: Object.assign({}, f.tags || {}), name: f.name || '', pn: f.pn || '' };
+  }
+  const filterOn = f => !!(f.name.trim() || f.pn.trim() || Object.values(f.tags).some(Boolean));
+  function setFilter(f, root) {
+    const all = filters(), k = root || S.root;
+    if (filterOn(f)) all[k] = { tags: f.tags, name: f.name, pn: f.pn }; else delete all[k];
+    try { localStorage.setItem(FKEY, JSON.stringify(all)); } catch (e) { /* storage blocked */ }
+  }
+  function glob(p) {
+    p = String(p || '').trim();
+    if (!p) return null;
+    const q = p.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    return /[*?]/.test(p) ? new RegExp('^' + q.replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i') : new RegExp(q, 'i');
+  }
+  // { cable(cab), block(b), inside(b) } for a filter (the open system's unless given), or null when it's off.
+  function filterMatch(s, f) {
+    f = f || filterOf();
+    if (!filterOn(f)) return null;
+    const nm = glob(f.name), pn = glob(f.pn), names = Object.keys(f.tags);
+    const inc = names.filter(k => f.tags[k] === 'in'), exc = names.filter(k => f.tags[k] === 'out');
+    const ok = (re, xs) => !re || xs.some(x => x && re.test(x));
+    const cable = cab => {
+      const h = harnessOf(cab), tg = cab.tags || [];
+      if (inc.length && !inc.some(k => LM.tags.has(tg, k))) return false;
+      if (exc.some(k => LM.tags.has(tg, k))) return false;
+      return ok(nm, [titleOf(cab, h), cab.name, h && h.title]) && ok(pn, [pnOf(h, cab), cab.mpn]);
+    };
+    const direct = !!(nm || pn) && !inc.length;
+    const block = b => {
+      if (!direct) return false;
+      const ch = childOf(b), name = ch ? ch.title : b.name || '';
+      return ok(nm, [name, b.ref + ' ' + name, b.ref, b.source && b.source.name]) && ok(pn, [b.pn, ch && ch.pn]);
+    };
+    const memo = new Map();
+    const holds = (x, trail) => {
+      if (memo.has(x.id)) return memo.get(x.id);
+      memo.set(x.id, false);
+      const v = x.cables.some(cable) || x.blocks.some(b => { if (block(b)) return true; const c = childOf(b); return !!c && !trail.includes(c.id) && holds(c, trail.concat(c.id)); });
+      memo.set(x.id, v);
+      return v;
+    };
+    const inside = b => { const c = childOf(b); return !!c && c.id !== s.id && holds(c, [s.id, c.id]); };
+    return { cable, block, inside };
+  }
+  const fring = (X, Y, W, H) => `<rect class="sys-fring" x="${X - 6}" y="${Y - 6}" width="${W + 12}" height="${H + 12}" rx="12"/>`;
+  const FUNNEL_I = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 3h12l-4.6 5.4V13l-2.8-1.4V8.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+  const pageEl = () => document.querySelector('.sys-view') && document.querySelector('.sys-view').parentElement;
+  // The button and its menu, at the top right of the System and List views; the menu is drawn only when it opens
+  // or a tag changes, so typing in its boxes keeps focus.
+  function filterUi(pg, menuToo) {
+    const w = pg && pg.querySelector('#sys-filter');
+    if (!w) return;
+    const f = filterOf(), on = filterOn(f), s = cur();
+    const n = on ? Object.values(f.tags).filter(Boolean).length + (f.name.trim() ? 1 : 0) + (f.pn.trim() ? 1 : 0) : 0;
+    let b = w.querySelector('.sys-fbtn');
+    if (!b) { w.innerHTML = '<button class="icon-btn glass sys-fbtn" data-sact="filter" aria-haspopup="true" aria-label="Filter"></button><div class="sys-fmenu" role="dialog" aria-label="Filter" hidden></div>'; b = w.querySelector('.sys-fbtn'); }
+    b.classList.toggle('on', on || !!S.filterOpen);
+    b.setAttribute('aria-expanded', S.filterOpen ? 'true' : 'false');
+    b.title = on ? `Filter: ${n} set` : 'Filter by tag, name, or part number';
+    b.innerHTML = FUNNEL_I + (n ? `<span class="sys-fcount">${n}</span>` : '');
+    const m = w.querySelector('.sys-fmenu');
+    m.hidden = !S.filterOpen;
+    if (!S.filterOpen) return;
+    if (menuToo || !m.firstChild) {
+      const tags = LM.tags.all().slice().sort((a, b2) => a.localeCompare(b2, undefined, { sensitivity: 'base' }));
+      const stOf = k => { const hit = Object.keys(f.tags).find(x => LM.tags.key(x) === LM.tags.key(k)); return hit ? f.tags[hit] : ''; };
+      m.innerHTML = `<div class="sys-fhead"><b>Filter</b>${on ? '<button class="sys-fclear" data-sact="filter-clear">Clear</button>' : ''}</div>` +
+        `<div class="sys-fsec">Tags</div>` +
+        (tags.length ? `<div class="sys-ftags">${tags.map(k => { const v = stOf(k); return `<div class="sys-ftag"><span class="tag-badge sm" style="--tag:${esc(LM.tags.color(k))}"><span class="tag-dot"></span>${esc(k)}</span>` +
+          `<span class="seg sys-fseg">${[['', 'Any', 'Ignore this tag'], ['in', 'Include', 'Show cables with this tag'], ['out', 'Exclude', 'Hide cables with this tag']].map(([x, l, tip]) => `<button class="${v === x ? 'on' : ''}" data-sact="filter-tag" data-tag="${esc(k)}" data-v="${x}" title="${tip}">${l}</button>`).join('')}</span></div>`; }).join('')}</div>`
+          : '<p class="hint">No tags in Loom yet. Add them in a cable’s panel.</p>') +
+        `<label class="sys-fsec" for="sys-fname">Name</label><input class="input" id="sys-fname" data-sfilt="name" placeholder="Any name; * and ? are wildcards" autocomplete="off" spellcheck="false" value="${esc(f.name)}">` +
+        `<label class="sys-fsec" for="sys-fpn">Part number</label><input class="input" id="sys-fpn" data-sfilt="pn" placeholder="Any part number, like RA-003*" autocomplete="off" spellcheck="false" value="${esc(f.pn)}">` +
+        `<p class="sys-fnote" id="sys-fnote"></p>`;
+    }
+    const note = m.querySelector('#sys-fnote'), fm = s && filterMatch(s, f);
+    if (note) note.textContent = !fm ? 'Matching cables and blocks stay lit; the rest fade.'
+      : (() => { const c = s.cables.filter(fm.cable).length, k = s.blocks.filter(x => fm.block(x) || fm.inside(x)).length; return `${c} cable${c === 1 ? '' : 's'} and ${k} block${k === 1 ? '' : 's'} lit here.`; })();
+  }
+  function upSvg(s, fm) {
     let o = '';
     const f1 = v => v.toFixed(1);
     upStubs(s).forEach(({ b, c, E, u, pts, cabs }) => {
@@ -1358,7 +1450,7 @@
       const ly0 = horiz ? E.y + 4.5 - (lines.length - 1) * UP.line / 2 : u[1] > 0 ? E.y + gap + UP.font : E.y - gap - (lines.length - 1) * UP.line;
       const tw = Math.max(...lines.map(t => U.textW(t, UP.font))), bx = anchor === 'start' ? lx - 4 : anchor === 'end' ? lx - tw - 4 : lx - tw / 2 - 4;
       const tip = esc(`${b.ref} ${c.ref}: plugged from ${parentsOf(s.id).map(x => x.title).join(', ')} · drag the break to move it`);
-      o += `<g class="w sys-w sys-up st-${st.key}" data-upgrab="${b.id}|${esc(c.id)}"><title>${tip}</title>` +
+      o += `<g class="w sys-w sys-up st-${st.key}${fm ? (cabs.some(fm.cable) ? ' fhit' : ' fout') : ''}" data-upgrab="${b.id}|${esc(c.id)}"><title>${tip}</title>` +
         `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
         `<path class="sys-upzig" d="M${zz.map(q => f1(q.x) + ' ' + f1(q.y)).join('L')}"/>` +
         `<rect class="sys-upgrab" x="${f1(bx)}" y="${f1(ly0 - UP.font)}" width="${f1(tw + 8)}" height="${f1(lines.length * UP.line + 2)}" rx="5"/>` +
@@ -1369,6 +1461,9 @@
   }
   function svgHtml(s, Lo) {
     labInfo = new Map();
+    // The view's filter (Chris, 2026-11-15): what matches stays lit, a placed system holding a match too, and
+    // everything else fades.
+    const fm = filterMatch(s), fcls = lit => (!fm ? '' : lit ? ' fhit' : ' fout');
     // A system picked in the menu lights its block and that block's cables, the rest faded (Chris, 2026-11-14:
     // a short-lived change that lit nothing for a pick was taken back).
     const sel = S.sel;
@@ -1388,7 +1483,8 @@
       const bs = isSel('block', b.id) || (sel && sel.kind === 'conn' && sel.block === b.id);
       // One block selected: every other block fades, the connected ones too, so only it and its cables stand
       // out (Chris, 2026-11-15).
-      const bdim = !bs && !!sel && sel.kind === 'block' ? ' dim' : '';
+      const blit = fm && (fm.block(b) || fm.inside(b));
+      const bdim = (!bs && !!sel && sel.kind === 'block' ? ' dim' : '') + fcls(blit);
       const X = b.x * K, Y = b.y * K;
       // The harness editor's connector card (conn.js, with fx): paper card and shadow, a lit header,
       // the darker connector edge, and glass, so blocks stand off the stage as connectors do.
@@ -1399,13 +1495,13 @@
         const pic = picOf(b), fr = Math.max(14, Math.min(26, Hh / 8)), name = String(b.name || '');
         const lw = U.textW(b.ref, fr) + (pic && name ? 10 + U.textW(name, fr * 0.72) : 0) + 16;
         const fs = Math.max(7, Math.min(44, (W - 20) / Math.max(1, U.textW(name, 1)), Hh * 0.3));
-        html += `<g class="cv-conn sys-block board shaped${bs ? ' sel' : ''}${bdim}" data-block="${b.id}">` + shapeSvg(b, pic, 'sys-shape') +
+        html += `<g class="cv-conn sys-block board shaped${bs ? ' sel' : ''}${bdim}" data-block="${b.id}">` + (blit ? fring(X, Y, W, Hh) : '') + shapeSvg(b, pic, 'sys-shape') +
           `<rect class="sys-lab-bg" x="${X + 6}" y="${Y + 6}" width="${lw.toFixed(1)}" height="${(fr * 1.5).toFixed(1)}" rx="${(fr * 0.4).toFixed(1)}"/>` +
           `<text class="sys-ref" x="${X + 14}" y="${(Y + 6 + fr * 1.08).toFixed(1)}" style="font-size:${fr.toFixed(0)}px">${esc(b.ref)}</text>` +
           (pic && name ? `<text class="sys-hname" x="${(X + 14 + U.textW(b.ref, fr) + 10).toFixed(1)}" y="${(Y + 6 + fr * 1.05).toFixed(1)}" style="font-size:${(fr * 0.72).toFixed(1)}px">${esc(name)}</text>` : '') +
           (!pic && name ? `<text class="sys-center" x="${X + W / 2}" y="${Y + Hh / 2}" style="font-size:${fs.toFixed(1)}px">${esc(name)}</text>` : '');
       } else
-      html += `<g class="cv-conn sys-block ${b.kind}${bs ? ' sel' : ''}${bdim}" data-block="${b.id}">` +
+      html += `<g class="cv-conn sys-block ${b.kind}${bs ? ' sel' : ''}${bdim}" data-block="${b.id}">` + (blit ? fring(X, Y, W, Hh) : '') +
         `<rect class="cv-card" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/>` +
         `<path class="cv-headbg" d="M${X} ${Y + hd}V${Y + r}Q${X} ${Y} ${X + r} ${Y}H${X + W - r}Q${X + W} ${Y} ${X + W} ${Y + r}V${Y + hd}Z"/>` +
         `<line class="sys-headrule" x1="${X}" y1="${Y + hd}" x2="${X + W}" y2="${Y + hd}"/>` +
@@ -1445,7 +1541,7 @@
     html += '</g><g class="sys-cables">';
     let labels = '', handles = '';
     (Lo || layout(s)).forEach(({ cab, h, ends, at, routes, dev }) => {
-      const st = statusOf(cab, h), on = isSel('cable', cab.id);
+      const st = statusOf(cab, h), on = isSel('cable', cab.id), fc = fcls(fm && fm.cable(cab));
       // A selected block's cables glow and carry the harness's soft current (as a selected connector's
       // wires do), and the rest fade (Chris, 2026-11-12).
       const linked = !on && !!sel && sel.kind === 'block' && Object.values(cab.ends).some(e => e && e.block === sel.block);
@@ -1458,7 +1554,7 @@
       const dim = !on && !!sel && (sel.kind === 'cable' || cablesOnly || (sel.kind === 'block' && !linked));
       // The one selected cable, while the others fade, is drawn half again as wide with a glow (Chris).
       const solo = on && !!sel && (sel.kind === 'cable' || cablesOnly);
-      html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}${solo ? ' solo' : ''}${linked ? ' linked' : ''}${dim ? ' dim' : ''}" data-cable="${cab.id}">`;
+      html += `<g class="w sys-w st-${st.key}${on ? ' sel' : ''}${solo ? ' solo' : ''}${linked ? ' linked' : ''}${dim ? ' dim' : ''}${fc}" data-cable="${cab.id}">`;
       let mid = null, ring = null, lane = routes.length && routes[0].pts ? laneOfPts(routes[0].pts) : null;
       routes.forEach(r => { html += wire(r.d); });
       if (routes.length) mid = midOf(routes[0]);
@@ -1523,7 +1619,7 @@
         // An end-anchored label (text running left of x0) keeps its pills on the left of the text.
         const px = end ? x0 - tw0 : x0 + tx + (raw ? 6 : 0), pills = ctags.length ? LM.tags.pillsSvg(ctags, px, y0 - 0.5, dim ? 'dim' : '') : '';
         const gx = end ? x0 - tw0 - 5 : x0 - 5, body = `<rect class="sys-lgrab" x="${gx}" y="${y0 - 12}" width="${tw0 + 10}" height="16" rx="5"/>${raw ? `<text class="${cls}" x="${x0}" y="${y0}"${end ? ' style="text-anchor:end"' : ''}>${t}</text>` : ''}${pills}`;
-        labels += `<g class="sys-lab${on ? ' sel' : ''}${S.slide === cab.id ? ' slide' : ''}" data-clabel="${cab.id}">${lead}` +
+        labels += `<g class="sys-lab${on ? ' sel' : ''}${fc}${S.slide === cab.id ? ' slide' : ''}" data-clabel="${cab.id}">${lead}` +
           (rot ? `<g transform="rotate(${rot} ${x0} ${y0})">${body}</g>` : body) +
           (lane ? `<circle class="sys-ldot-hit" cx="${dot.x}" cy="${dot.y}" r="8" data-cldot="${cab.id}"/><circle class="sys-ldot${dim ? ' dim' : ''}" cx="${dot.x}" cy="${dot.y}" r="3"/>` : '') + '</g>';
       }
@@ -1534,7 +1630,7 @@
           `<rect class="cv-run-bar" x="${mx - (v ? 2.5 : 9)}" y="${my - (v ? 9 : 2.5)}" width="${v ? 5 : 18}" height="${v ? 18 : 5}" rx="2.5"/></g>`;
       }));
     });
-    html += upSvg(s);
+    html += upSvg(s, fm);
     return html + '</g><g class="sys-labels">' + labels + '</g><g class="sys-handles">' + handles + '</g><g id="sys-ghost"></g>';
   }
   // Drawing units per screen pixel (--u on the canvas), so the current's beads keep one size and speed on
@@ -1831,33 +1927,30 @@
     return k === 'cable' ? { kind: 'cable', id: x } : k === 'block' ? { kind: 'block', block: x } : k === 'conn' ? { kind: 'conn', block: x, conn: y }
       : k === 'wire' ? { kind: 'wire', harness: x, wire: y, cable: z || null } : k === 'end' ? { kind: 'end', harness: x, node: y } : null;
   }
-  const rowAttr = (key, cls) => ` class="sys-wr ${cls}${key === selKey(S.sel) ? ' on' : ''}" data-ssel="${esc(key)}"`;
+  const rowAttr = (key, cls, lit) => ` class="sys-wr ${cls}${key === selKey(S.sel) ? ' on' : ''}${lit == null ? '' : lit ? ' fhit' : ' fout'}" data-ssel="${esc(key)}"`;
   const item = (lvl, html) => `<td class="sys-wi" style="--lvl:${lvl}">${html}</td>`;
   // The system a list shows: the picked system, the one holding a picked harness, or the open system.
   const listSys = f => (f ? (f.kind === 'harness' ? focusSys(f) : f.id) : S.root);
   // The system List (2026-11-14, Chris: like Signoff PL's list): Hierarchy (blocks, their used connectors,
   // and the cables in each) or Cables (each cable once). Name over part number; Type and Status always;
-  // From / To, Length, and Wires from the filter menu. Mode and columns kept in this browser; folds per session.
+  // From / To, Length, and Wires always (Chris, 2026-11-15: the column menu went; the view's filter took its
+  // place). Mode kept in this browser; folds per session.
   const LIST_COLS = [['ends', 'From / To'], ['length', 'Length'], ['wires', 'Wires']];
-  const LIST_ON = { ends: false, length: false, wires: true };   // to start (Chris, 2026-11-14)
   function listPrefs() {
     let v = {};
     try { v = JSON.parse(localStorage.getItem(NS + 'sysList') || '{}') || {}; } catch (e) { /* storage blocked */ }
-    const cols = {};
-    LIST_COLS.forEach(([k]) => { cols[k] = v.cols && typeof v.cols[k] === 'boolean' ? v.cols[k] : LIST_ON[k]; });
-    return { mode: v.mode === 'flat' ? 'flat' : 'tree', cols };
+    return { mode: v.mode === 'flat' ? 'flat' : 'tree' };
   }
   const setListPrefs = p => { try { localStorage.setItem(NS + 'sysList', JSON.stringify(p)); } catch (e) { /* storage blocked */ } };
   const chip = (t, cls) => `<span class="sys-chip${cls ? ' ' + cls : ''}">${esc(t)}</span>`;
   const CAB_CHIP = { harness: 'Harness', bought: 'Purchased', link: 'Generic' };
-  const FUNNEL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 3h12l-4.6 5.4V13l-2.8-1.4V8.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
   const CHEV = '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   function listHtml() {
     const f = S.focus;
     if (f && f.kind === 'harness') return harnessListHtml(f);
     const s = S.store[listSys(f)];
     if (!s) return '';
-    const path = f ? f.path : S.root, pr = listPrefs(), cols = LIST_COLS.filter(([k]) => pr.cols[k]);
+    const path = f ? f.path : S.root, pr = listPrefs(), cols = LIST_COLS, fm = filterMatch(s);
     const closed = S.listClosed || (S.listClosed = new Set());
     const nameCell = (lvl, caret, title, sub) => `<td class="sys-wi" style="--lvl:${lvl}"><div class="sys-lname">${caret}<div class="sys-llabel">${title}${sub ? `<div class="sys-lsub">${sub}</div>` : ''}</div></div></td>`;
     const caret = key => `<button class="sys-caret${closed.has(key) ? ' closed' : ''}" data-sact="list-fold" data-key="${esc(key)}" aria-label="${closed.has(key) ? 'Expand' : 'Collapse'}">${CHEV}</button>`;
@@ -1872,7 +1965,7 @@
       const h = harnessOf(cab), st = statusOf(cab, h), k = kindOf(cab), pn = pnOf(h, cab);
       const title = `<b>${esc(titleOf(cab, h))}</b>${LM.tags.badgesHtml(cab.tags)}`;
       const cells = { ends: `<td>${esc(endsText(cab)) || '<span class="sys-none">—</span>'}</td>`, length: `<td class="num">${cab.lengthMm ? U.fmtLen(cab.lengthMm) : ''}</td>`, wires: `<td class="num">${h ? h.wires.length : ''}</td>` };
-      return `<tr${rowAttr('cable:' + cab.id, 'cab')}>${nameCell(lvl, lvl ? spacer : '', title, esc(pn || NOPN))}<td class="sys-ltype">${chip(CAB_CHIP[k] || k, 'k-' + k)}${h ? drill('harness', h.id, path, 'harness') : ''}</td>` +
+      return `<tr${rowAttr('cable:' + cab.id, 'cab', fm ? fm.cable(cab) : null)}>${nameCell(lvl, lvl ? spacer : '', title, esc(pn || NOPN))}<td class="sys-ltype">${chip(CAB_CHIP[k] || k, 'k-' + k)}${h ? drill('harness', h.id, path, 'harness') : ''}</td>` +
         `<td class="sys-lst"><span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}</td>${cols.map(([c]) => cells[c]).join('')}</tr>`;
     };
     let rows = '';
@@ -1885,7 +1978,8 @@
         const conns = b.conns.filter(c => pluggedAt(s, b.id, c.id).length || (fitted(c) && c.used)).sort((x, y) => natural(x.ref, y.ref));
         const name = `<b>${esc(b.ref)} ${esc(ch ? ch.title : b.name || '')}</b>`;
         const sub = `${conns.length} of ${b.conns.length} connector${b.conns.length === 1 ? '' : 's'} used${b.source ? ' · Signoff EE' : ''}`;
-        rows += `<tr${rowAttr('block:' + b.id, 'blk')}>${nameCell(0, conns.length ? caret(bk) : spacer, name, sub)}<td class="sys-ltype">${chip(b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board')}${ch ? drill('system', ch.id, path + '>' + ch.id, 'system') : ''}</td><td></td>${blank}</tr>`;
+        const blit = fm ? fm.block(b) || fm.inside(b) || conns.some(c => pluggedAt(s, b.id, c.id).some(x => fm.cable(x.cable))) : null;
+        rows += `<tr${rowAttr('block:' + b.id, 'blk', blit)}>${nameCell(0, conns.length ? caret(bk) : spacer, name, sub)}<td class="sys-ltype">${chip(b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board')}${ch ? drill('system', ch.id, path + '>' + ch.id, 'system') : ''}</td><td></td>${blank}</tr>`;
         if (closed.has(bk)) return;
         conns.forEach(c => {
           const at = pluggedAt(s, b.id, c.id), ck = `c:${b.id}:${c.id}`;
@@ -1903,7 +1997,8 @@
             kinds = [...new Set(above.map(cab => kindOf(cab)))].map(k => chip(CAB_CHIP[k] || k, 'k-' + k)).join('');
             stat = above.map(cab => { const st = statusOf(cab, harnessOf(cab)); return `<span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}`; }).join('<br>');
           } else if (!at.length) stat = '<span class="sys-none">No harness connected</span>';
-          rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn')}>${nameCell(1, at.length ? caret(ck) : spacer, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ' ' + esc(c.fn) : ''}`, sub)}<td class="sys-ltype">${chip(c.link ? 'External' : 'Connector')}${kinds}</td><td class="sys-lst">${stat}</td>${blank}</tr>`;
+          const clit = fm ? at.some(x => fm.cable(x.cable)) || above.some(cab => fm.cable(cab)) : null;
+          rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn', clit)}>${nameCell(1, at.length ? caret(ck) : spacer, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ' ' + esc(c.fn) : ''}`, sub)}<td class="sys-ltype">${chip(c.link ? 'External' : 'Connector')}${kinds}</td><td class="sys-lst">${stat}</td>${blank}</tr>`;
           if (!closed.has(ck)) at.forEach(x => { rows += cabRow(x.cable, 2); });
         });
       });
@@ -1915,9 +2010,7 @@
     }
     const nc = 3 + cols.length;
     const head = `<thead><tr><th>Name</th><th>Type</th><th>Status</th>${cols.map(([k, l]) => `<th${k === 'ends' ? '' : ' class="num"'}>${l}</th>`).join('')}</tr></thead>`;
-    const menu = S.listColsOpen ? `<div class="sys-lmenu" role="menu"><div class="sys-lmenu-h">Columns</div>${LIST_COLS.map(([k, l]) => `<label class="sys-lopt"><input type="checkbox" data-slcol="${k}"${pr.cols[k] ? ' checked' : ''}><span>${l}</span></label>`).join('')}<p class="sys-lmenu-note">Name, Type, and Status always show.</p></div>` : '';
-    const tools = `<div class="sys-ltools"><div class="seg" role="tablist">${[['tree', 'Hierarchy', 'Blocks, their connectors, and the cables in each'], ['flat', 'Cables', 'Just the cables and harnesses, each once']].map(([m, l, tip]) => `<button class="${pr.mode === m ? 'on' : ''}" data-sact="list-mode" data-mode="${m}" title="${tip}">${l}</button>`).join('')}</div>` +
-      `<div class="sys-lcols"><button class="icon-btn${S.listColsOpen ? ' on' : ''}" data-sact="list-cols" title="Choose columns" aria-label="Choose columns" aria-expanded="${S.listColsOpen ? 'true' : 'false'}">${FUNNEL}</button>${menu}</div></div>`;
+    const tools = `<div class="sys-ltools"><div class="seg" role="tablist">${[['tree', 'Hierarchy', 'Blocks, their connectors, and the cables in each'], ['flat', 'Cables', 'Just the cables and harnesses, each once']].map(([m, l, tip]) => `<button class="${pr.mode === m ? 'on' : ''}" data-sact="list-mode" data-mode="${m}" title="${tip}">${l}</button>`).join('')}</div></div>`;
     return `<div class="page wide sys-wpage">` + listHead('', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable${nCab === 1 ? '' : 's'}`, '') + tools +
       `<div class="card table-wrap"><table class="table compact sys-wtable sys-ltable">${head}<tbody>${rows || `<tr><td colspan="${nc}" class="pc-muted">${pr.mode === 'flat' ? 'No cables yet.' : 'Nothing placed yet.'}</td></tr>`}</tbody></table></div>` +
       `<p class="f-hint">Click a row to see it in the panel. ${pr.mode === 'flat' ? 'Each cable is listed once.' : 'A cable is listed under every connector it plugs into.'} The › beside a placed system or harness lists just it, a harness with its ends and wires.</p></div>`;
@@ -1991,10 +2084,10 @@
     if (!sv0) {
       if (page.querySelector('.fb-host')) page.querySelectorAll(':scope > :not(.fb-host)').forEach(x => x.remove());
       else page.innerHTML = '';
-      page.insertAdjacentHTML('afterbegin', `<div class="sys-view"><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+      page.insertAdjacentHTML('afterbegin', `<div class="sys-view"><div class="sys-main"><div class="sys-fwrap" id="sys-filter"></div><div class="sys-canvas-wrap canvas-wrap cv-paper"><svg class="lm-canvas sys-canvas" id="sys-canvas" xmlns="http://www.w3.org/2000/svg"></svg>
         <div class="board-hud glass sys-hud"><button class="icon-btn" data-sact="fit" title="Fit (F)">⤢</button><button class="icon-btn" data-sact="turn-all" title="Turn the system 90° clockwise (Shift-click: counterclockwise)" aria-label="Turn the system 90°">⟳</button><span id="sys-grid-menu"></span></div>
         <div class="hud-br"><label class="seg glass hud-check" title="Show each cable’s name and part number, on a dot you can slide along it"><input type="checkbox" data-slabels id="sys-labels"><span>Cable labels</span></label></div></div>
-        <div class="sys-wires" id="sys-wires" hidden></div>
+        <div class="sys-wires" id="sys-wires" hidden></div></div>
         <div class="sys-side"><aside class="rail sys-panel" id="sys-panel"></aside><div id="sys-help"></div></div></div>`);
       wire(page);
     }
@@ -2014,6 +2107,7 @@
         `<optgroup label="Style">${[['dots', 'Dots'], ['lines', 'Lines']].map(([k, t]) => `<option value="${k}">${style === k ? '● ' : '○ '}${t}</option>`).join('')}</optgroup></select></label>`;
       page.querySelector('#sys-labels').checked = labelsOn();
     }
+    filterUi(page);
     page.querySelector('#sys-help').innerHTML = listOn ? '' : helpHtml();
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'‹'} Back</button>` : '';
@@ -2547,7 +2641,7 @@
     page.sysWired = true;
     page.addEventListener('click', e => {
       const t = e.target;
-      if (S.listColsOpen && !t.closest('.sys-lcols')) { S.listColsOpen = false; A.refresh(); }
+      if (S.filterOpen && !t.closest('.sys-fwrap')) { S.filterOpen = false; filterUi(page); }
       const a = t.closest('[data-sact]');
       if (a && !a.disabled) { act(a.dataset.sact, a); return; }
       if (t.closest('[data-sfocus]')) return;   // a pick (app.js)
@@ -2559,9 +2653,18 @@
     // The blocks a panel's connector field edits: the selected block's (two placements of one system share
     // their tabs' ids), else every block.
     const mine = s => s.blocks.filter(b => !(S.sel && S.sel.block) || b.id === S.sel.block);
+    // The filter's name and part number boxes redraw the view as you type; the menu stays as it is.
+    page.addEventListener('input', e => {
+      const t = e.target, k = t.dataset && t.dataset.sfilt;
+      if (!k) return;
+      const f = filterOf(); f[k] = t.value; setFilter(f);
+      A.refresh();
+    });
+    page.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && S.filterOpen && e.target.closest && e.target.closest('.sys-fwrap')) { S.filterOpen = false; filterUi(page); page.querySelector('.sys-fbtn').focus(); e.stopPropagation(); }
+    });
     page.addEventListener('change', e => {
       const t = e.target;
-      if (t.dataset.slcol) { const p = listPrefs(); p.cols[t.dataset.slcol] = t.checked; setListPrefs(p); A.refresh(); return; }
       if (t.hasAttribute('data-slabels')) { try { localStorage.setItem(NS + 'sysLabels', t.checked ? 'on' : 'off'); } catch (err) { /* storage blocked */ } A.refresh(); return; }
       if (t.dataset.sext) { const id = t.dataset.sext, on = t.checked; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { c.external = on; if (on && !c.link) c.used = true; } })); }); return; }
       if (t.dataset.sfit) { const id = t.dataset.sfit, on = t.checked; change(s => { mine(s).forEach(b => b.conns.forEach(c => { if (c.id === id) { c.fitted = on; if (!on) c.used = false; } })); }); return; }
@@ -2641,7 +2744,9 @@
     switch (a) {
       case 'back': back(); break;
       case 'list-mode': { const p = listPrefs(); p.mode = el.dataset.mode === 'flat' ? 'flat' : 'tree'; setListPrefs(p); A.refresh(); break; }
-      case 'list-cols': S.listColsOpen = !S.listColsOpen; A.refresh(); break;
+      case 'filter': S.filterOpen = !S.filterOpen; filterUi(pageEl(), true); break;
+      case 'filter-tag': { const f = filterOf(), k = el.dataset.tag, v = el.dataset.v; Object.keys(f.tags).forEach(x => { if (LM.tags.key(x) === LM.tags.key(k)) delete f.tags[x]; }); if (v) f.tags[k] = v; setFilter(f); filterUi(pageEl(), true); A.refresh(); break; }
+      case 'filter-clear': setFilter({ tags: {}, name: '', pn: '' }); filterUi(pageEl(), true); A.refresh(); break;
       case 'list-fold': { const k = el.dataset.key, c = S.listClosed || (S.listClosed = new Set()); if (c.has(k)) c.delete(k); else c.add(k); A.refresh(); break; }
       case 'help': try { localStorage.setItem(NS + 'sysHelp', helpOpen() ? 'closed' : 'open'); } catch (e) { /* storage blocked */ } A.refresh(); break;
       case 'rotate-cw': case 'rotate-ccw': {
@@ -3026,7 +3131,7 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending || (S.tab === 'formboard' && !!LM.formboard && LM.formboard.busy()), act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
+    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
     tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,
     canUndo: () => !locked() && S.past.length > 0, canRedo: () => !locked() && S.future.length > 0, discardTo, restore, saveFile, openDoc,
     // compare.js: a stored version made ready to draw (its placed systems' tabs resolved), the selection

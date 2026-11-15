@@ -1102,15 +1102,32 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-chip.k-harness { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
 .sys-lst { font-size: 12.5px; color: var(--text-2); }
 .sys-ltools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
-.sys-lcols { position: relative; }
-.sys-lcols .icon-btn.on { background: var(--accent-soft); color: var(--accent); }
-.sys-lmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 200px; padding: 10px 12px; background: var(--bg-elev); border: 1px solid var(--hair); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); display: grid; gap: 6px; }
-.sys-lmenu-h { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
-.sys-lopt { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; color: var(--text); cursor: pointer; }
-.sys-lopt input { margin: 0; accent-color: var(--accent); }
-.sys-lmenu-note { margin: 2px 0 0; font-size: 11.5px; color: var(--text-3); }
+/* The view's filter (2026-11-15): a button at the top right of System and List, a menu under it; what doesn't
+   match fades, a match keeps full strength, and a lit block gets a dashed ring (no hue alone). */
+.sys-main { position: relative; display: grid; min-width: 0; min-height: 0; }
+.sys-main > .sys-canvas-wrap, .sys-main > .sys-wires { grid-area: 1 / 1; }
+.sys-fwrap { position: absolute; top: 12px; right: 16px; z-index: 25; }
+.sys-fbtn { position: relative; width: 34px; height: 34px; }
+.sys-fbtn.on { background: var(--accent-soft); color: var(--accent); }
+.sys-fcount { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent, #fff); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+.sys-fmenu { position: absolute; right: 0; top: calc(100% + 6px); width: min(340px, calc(100vw - 32px)); max-height: min(70vh, 560px); overflow: auto; padding: 12px 14px; background: var(--bg-elev); border: 1px solid var(--hair); border-radius: 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22); display: grid; gap: 6px; }
+.sys-fmenu[hidden] { display: none; }
+.sys-fhead { display: flex; justify-content: space-between; align-items: center; }
+.sys-fhead b { font-size: 14px; }
+.sys-fclear { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--accent); cursor: pointer; }
+.sys-fclear:hover { text-decoration: underline; }
+.sys-fsec { margin-top: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.sys-ftags { display: grid; gap: 6px; }
+.sys-ftag { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sys-ftag .tag-badge { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sys-fseg button { padding: 3px 8px; font-size: 11.5px; }
+.sys-fmenu .input { width: 100%; }
+.sys-fnote { margin: 4px 0 0; font-size: 11.5px; color: var(--text-3); }
+.sys-canvas .fout { opacity: 0.14; }
+.sys-canvas .sys-fring { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
+.sys-ltable tr.fout { opacity: 0.38; }
+.sys-ltable tr.fhit > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .sys-wsw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.55); }
-.sys-canvas-wrap { grid-area: auto; }
 .sys-canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
 /* A cable's Color field: a swatch, the menu, and for Custom a picker. */
 .sys-color { display: flex; align-items: center; gap: 8px; }

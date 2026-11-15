@@ -28,6 +28,14 @@ links to it so far. Before every commit:
   `sys-pulse` keyframes), brighter with a dark rim, and dark (`.ink`) on a light cable (`lightColor`, which reads a
   `var(--x)` color from the theme: a purchased cable's gray on a dark page). Device harness wires too.
 
+- **System filter (2026-11-15, Chris: the List's column menu removed, a filter at the top right of the view; his
+  choices: System and List, any included tag and no excluded one, * and ? over cables and blocks).** The List shows
+  every column. `#sys-filter` sits at the top right of `.sys-main` (holding the canvas and the List): each tag Any,
+  Include, or Exclude, a name box, and a part number box (`filterUi`; the menu redraws only on open or a tag change,
+  so typing keeps focus). `filterMatch(s, f)` (exported): a cable needs an included tag if any, no excluded tag, and
+  the name and number; a block matches by itself only on a name or number with nothing included; `inside(b)` lights
+  a placed system holding a match. Kept per open system in this browser (`sysFilter`). What doesn't match fades
+  (`fout`), a lit block gets a dashed ring (`sys-fring`), and List rows fade or get an accent edge (`fhit`).
 - **Harness crumb (2026-11-15, Chris: a harness in a hierarchy keeps the clickable hierarchy beside the tabs, as a
   system does).** `harnessCrumbs` in `app.js`: the systems holding it, from the menu row's tree path (`S.hpath`, set by
   `openHarness(id, path)`; from a system, the pick shown or the open system), else the first system holding it in
