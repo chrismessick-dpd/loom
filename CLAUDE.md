@@ -24,7 +24,8 @@ links to it so far. Before every commit:
 
 - **Right-click Open in the menu (2026-11-14, Chris).** A right-click on a system in the sidebar's tree offers
   *Open <system>*, which draws it itself on the System tab, by its tree path (`LM.system.openAt`; its tree's top
-  system opens first when another is open); on a harness, *Open <harness>*, which opens it in the harness editor (`rowCtx` in `app.js`).
+  system opens first when another is open); on a harness, *Open <harness>*, which opens it in the harness editor (`rowCtx` in `app.js`). A placed system's
+  block on the canvas has *Open <system>* at the top of its right-click menu too (`openBlockMenu`).
 - **History in the ⋯ menu (2026-11-14, Chris: in every tool's ⋯ menu, not a button).** *History…* for the open
   harness or system is the first entry of the ⋯ at the toolbar's right (`menuItems` in `app.js`, through the hub's
   `SignoffTickets.items`); the harness panel's and the system toolbar's History buttons are gone.

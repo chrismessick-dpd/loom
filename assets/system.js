@@ -1999,17 +1999,24 @@
     svg.querySelectorAll('.sys-block[data-block]').forEach(el => el.classList.toggle('mq', bs.has(el.dataset.block)));
     svg.querySelectorAll('.sys-w[data-cable]').forEach(el => el.classList.toggle('mq', cs.has(el.dataset.cable)));
   }
-  // A right click on a block: turn it (Chris, 2026-11-12).
+  // A right click on a block: turn it (Chris, 2026-11-12), and a placed system's, Open it (Chris, 2026-11-14:
+  // as the menu's right-click does), drawn itself on the System tab.
   function openBlockMenu(e, id) {
     closeMenu();
     S.sel = { kind: 'block', block: id }; A.refresh();
+    const bl = block(cur(), id), ch = bl && childOf(bl);
     const m = document.createElement('div');
     m.className = 'menu lm-ctx';
     m.setAttribute('role', 'menu');
-    m.innerHTML = '<button data-ctx="rotate-ccw" role="menuitem"><span>Rotate left</span><span class="lm-ctx-k">Shift+R</span></button>' +
+    m.innerHTML = (ch ? `<button data-ctx="open" role="menuitem"><span>Open ${esc(ch.title)}</span></button><hr>` : '') +
+      '<button data-ctx="rotate-ccw" role="menuitem"><span>Rotate left</span><span class="lm-ctx-k">Shift+R</span></button>' +
       '<button data-ctx="rotate-cw" role="menuitem"><span>Rotate right</span><span class="lm-ctx-k">R</span></button>';
     m.style.position = 'fixed'; m.style.left = e.clientX + 'px'; m.style.top = e.clientY + 'px'; m.style.zIndex = 90;
-    m.addEventListener('click', ev => { const b = ev.target.closest('[data-ctx]'); if (!b) return; closeMenu(); act(b.dataset.ctx, null, id); });
+    m.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-ctx]'); if (!b) return; closeMenu();
+      if (b.dataset.ctx === 'open') { S.focus = { kind: 'system', id: ch.id, path: curPath() + '>' + ch.id, open: true }; S.tab = 'detail'; applyTab(); A.refresh(); return; }
+      act(b.dataset.ctx, null, id);
+    });
     document.body.appendChild(m);
     menuEl = m;
     const off = ev => { if (!m.contains(ev.target)) { closeMenu(); document.removeEventListener('pointerdown', off, true); } };

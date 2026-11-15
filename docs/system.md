@@ -99,7 +99,8 @@ open system's own row clears it, and other systems and harnesses still open as b
   `drawnSys`). It's the real system, editable; each system drawn keeps its own undo and camera (`show`, `S.hist`).
 
 A right-click on a system in the menu offers **Open <system>**, which draws it itself on the System tab, as the
-panel's Open does; on a harness, **Open <harness>**, which opens it in the harness editor (Chris, 2026-11-14).
+panel's Open does; on a harness, **Open <harness>**, which opens it in the harness editor (Chris, 2026-11-14). A placed system's
+block on the canvas has **Open <system>** at the top of its right-click menu, over Rotate.
 
 A pick shows where it's placed (Chris, 2026-11-13): its block and that block's cables lit, the rest faded, and its
 panel open with **Open <system>**, never opened by itself (a change that lit nothing for a picked system was taken
