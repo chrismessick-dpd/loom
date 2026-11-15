@@ -22,6 +22,12 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **System cables' current shows (2026-11-15, Chris: no animation on a real system).** It was drawn, but white at
+  25% over a selected block's cyan glow, and by `pathLength`, so a long cable's bead was a streak. Now a system
+  cable's beads keep one size and speed on screen (`--u`, units per pixel, set by `zoomVar` with the viewBox; the
+  `sys-pulse` keyframes), brighter with a dark rim, and dark (`.ink`) on a light cable (`lightColor`, which reads a
+  `var(--x)` color from the theme: a purchased cable's gray on a dark page). Device harness wires too.
+
 - **Cable tags (2026-11-15, Chris: Formboard's classes on the system drawing; his choices: kept on the system
   cable and shared with Formboard, the + offering every tag in Loom).** `cab.tags` (names; `assets/tags.js`,
   `LM.tags`: `tidy`, `all`, `color`, `editorHtml`, `pillsSvg`, events delegated by scope `sys:<cable id>` or

@@ -390,6 +390,18 @@
   const HEX = /^#[0-9a-f]{6}$/i;
   // The color a cable is drawn in: its own, else by its status.
   const cabColor = (cab, h, st) => { st = st || statusOf(cab, h); return colorOf(cab) || (st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)'); };
+  // A light cable (a purchased one's gray on a dark page, white, yellow…: relative luminance over 0.3, as
+  // conn.js's wires) carries a dark bead (.ink), since a white one doesn't show on it. A var(--x) color is read
+  // from the page's theme as it is now.
+  function lightColor(c) {
+    let hex = String(c || '').trim();
+    const v = /^var\((--[\w-]+)\)$/.exec(hex);
+    if (v) hex = getComputedStyle(document.documentElement).getPropertyValue(v[1]).trim();
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+    if (!m) return false;
+    const n = parseInt(m[1], 16), ch = k => { const x = ((n >> k) & 255) / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+    return 0.2126 * ch(16) + 0.7152 * ch(8) + 0.0722 * ch(0) > 0.3;
+  }
   const colorOf = cab => { const c = cab && cab.color; return !c ? '' : HEX.test(c) ? c : M.COLORS[c] ? M.COLORS[c][1] : ''; };
   const titleOf = (cab, h) => { const k = kindOf(cab); return k === 'harness' ? (h ? h.title : 'Missing harness') : cab.name || KINDS[k]; };
   function status(h) {
@@ -1439,9 +1451,9 @@
       const linked = !on && !!sel && sel.kind === 'block' && Object.values(cab.ends).some(e => e && e.block === sel.block);
       // Cables alone selected together (a harness used more than once, picked in the menu) stand out as one does.
       const cablesOnly = !!sel && sel.kind === 'multi' && !sel.blocks.length;
-      const color = cabColor(cab, h, st);
+      const color = cabColor(cab, h, st), ink = (on || linked) && lightColor(color) ? ' ink' : '';
       const wire = (d, extra) => `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
-        (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse" pathLength="1" d="${d}"/>` : linked ? `<path class="w-pulse soft" pathLength="1" d="${d}"/>` : '');
+        (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse${ink}" d="${d}"/>` : linked ? `<path class="w-pulse soft${ink}" d="${d}"/>` : '');
       // While a cable is selected, however it was picked, the others fade (Chris, 2026-11-12).
       const dim = !on && !!sel && (sel.kind === 'cable' || cablesOnly || (sel.kind === 'block' && !linked));
       // The one selected cable, while the others fade, is drawn half again as wide with a glow (Chris).
@@ -1462,7 +1474,7 @@
           D.paths.map(p => `<path class="sys-dglow" d="${p.d}"/>`).join('') +
           D.paths.map(p => `<path class="sys-dedge" d="${p.d}"/><path class="sys-dwire${p.ghost ? ' ghost' : ''}"${p.color ? ` style="stroke:${p.color}"` : ''} d="${p.d}"/>` + (p.stripe ? `<path class="sys-dstripe" style="stroke:${p.stripe}" d="${p.d}"/>` : '') +
             // The current runs along it while it or its block is selected, as on any cable.
-            (on || linked ? `<path class="w-pulse${on ? '' : ' soft'}" pathLength="1" d="${p.d}"/>` : '')).join('') +
+            (on || linked ? `<path class="w-pulse${on ? '' : ' soft'}${lightColor(p.color) ? ' ink' : ''}" d="${p.d}"/>` : '')).join('') +
           D.juncs.map(j => `<circle class="sys-djunc" cx="${j.x}" cy="${j.y}" r="4.5"/>`).join('') +
           D.boxes.map(x => `<g class="sys-dend" data-devgrab="${cab.id}"><rect class="sys-dbox${x.ghost ? ' ghost' : ''}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="3"/><text class="sys-dtext" x="${x.cx}" y="${x.cy}">${esc(x.label)}</text></g>`).join('') +
           D.leads.map(l => `<g class="sys-dend" data-devgrab="${cab.id}">${l.dots.map(q => `<circle class="sys-ddot"${q.color ? ` style="fill:${q.color}"` : ''} cx="${q.x}" cy="${q.y}" r="4.2"/>`).join('')}<text class="sys-dtext lead" x="${l.lx}" y="${l.ly}" style="text-anchor:${l.anchor}">${esc(l.label)}</text></g>`).join('') +
@@ -1524,6 +1536,12 @@
     });
     html += upSvg(s);
     return html + '</g><g class="sys-labels">' + labels + '</g><g class="sys-handles">' + handles + '</g><g id="sys-ghost"></g>';
+  }
+  // Drawing units per screen pixel (--u on the canvas), so the current's beads keep one size and speed on
+  // screen however far out it's zoomed (Chris, 2026-11-15: on a big system they didn't show).
+  function zoomVar(svg) {
+    const w = svg.clientWidth || 1, h = svg.clientHeight || 1;
+    svg.style.setProperty('--u', String(Math.max(S.cam.w / w, S.cam.h / h) || 1));
   }
   function bounds(s) {
     if (!s.blocks.length) return { x: -80, y: -80, w: 800, h: 480 };
@@ -1988,6 +2006,7 @@
       const svg = page.querySelector('#sys-canvas');
       if (!S.cam) S.cam = bounds(s);
       svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`);
+      zoomVar(svg);
       redraw(svg);
       const gs = gridOf(s), style = A.gridStyle ? A.gridStyle() : 'dots';
       page.querySelector('#sys-grid-menu').innerHTML = `<label class="seg glass hud-grid" title="Blocks and cable runs snap to the grid as you drag them. Hold Ctrl to place one anywhere.">${A.gridIcon ? A.gridIcon() : ''}<select data-sgrid aria-label="Grid">` +
@@ -2522,6 +2541,7 @@
       const p = toWorld(svg, e), m = e.deltaY > 0 ? 1.15 : 1 / 1.15;
       S.cam = { x: p.x - (p.x - S.cam.x) * m, y: p.y - (p.y - S.cam.y) * m, w: S.cam.w * m, h: S.cam.h * m };
       svg.setAttribute('viewBox', `${S.cam.x} ${S.cam.y} ${S.cam.w} ${S.cam.h}`);
+      zoomVar(svg);
     }, { passive: false });
     if (page.sysWired) return;
     page.sysWired = true;
