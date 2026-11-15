@@ -1701,6 +1701,39 @@
     if (first) first.focus({ preventScroll: true });
   }
   document.addEventListener('pointerdown', e => { if (ctxEl && !ctxEl.contains(e.target)) closeCtx(); }, true);
+  // Right-click a system or harness in the menu (Chris, 2026-11-14): Open draws a system itself (on the System
+  // tab, where Open <system> in its panel goes), and opens a harness in the harness editor.
+  function rowCtx(e, row) {
+    const sf = row.dataset.sfocus ? row.dataset.sfocus.split('|') : null;
+    const kind = sf ? sf[0] : row.dataset.openSys ? 'system' : 'harness';
+    const id = sf ? sf[1] : row.dataset.openSys || row.dataset.open;
+    const path = sf ? sf[2] : row.dataset.tpath || (kind === 'system' ? id : '');
+    const item = kind === 'system' ? LM.system.get(id) : S.store[id];
+    if (!item) return;
+    e.preventDefault();
+    closeCtx();
+    const m = document.createElement('div');
+    m.className = 'menu lm-ctx';
+    m.setAttribute('role', 'menu');
+    m.innerHTML = `<button data-ctx="open" role="menuitem"><span>${kind === 'system' ? 'Open ' + esc(item.title) : 'Open in the harness editor'}</span></button>`;
+    m.addEventListener('click', ev => {
+      if (!ev.target.closest('[data-ctx]')) return;
+      closeCtx();
+      if (kind === 'system') { S.cur = null; S.sel = null; S.pending = null; LM.system.openAt(id, path); persist(); }
+      else openHarness(id);
+    });
+    m.addEventListener('contextmenu', ev => ev.preventDefault());
+    document.body.appendChild(m);
+    const r = m.getBoundingClientRect();
+    m.style.left = Math.max(8, Math.min(e.clientX, innerWidth - r.width - 8)) + 'px';
+    m.style.top = Math.max(8, Math.min(e.clientY, innerHeight - r.height - 8)) + 'px';
+    ctxEl = m;
+    m.querySelector('button').focus();
+  }
+  document.addEventListener('contextmenu', e => {
+    const row = e.target.closest && e.target.closest('#sidebar [data-sfocus], #sidebar [data-open-sys], #sidebar [data-open]');
+    if (row) rowCtx(e, row);
+  });
   window.addEventListener('blur', closeCtx);
   window.addEventListener('resize', closeCtx);
 

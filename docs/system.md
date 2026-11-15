@@ -98,6 +98,9 @@ open system's own row clears it, and other systems and harnesses still open as b
   picked harness with its cables selected. Only **Open <system>** draws a system itself (`f.open`; `drawnPath`,
   `drawnSys`). It's the real system, editable; each system drawn keeps its own undo and camera (`show`, `S.hist`).
 
+A right-click on a system in the menu offers **Open <system>**, which draws it itself on the System tab, as the
+panel's Open does; on a harness, **Open in the harness editor** (Chris, 2026-11-14).
+
 A pick shows where it's placed (Chris, 2026-11-13): its block and that block's cables lit, the rest faded, and its
 panel open with **Open <system>**, never opened by itself (a change that lit nothing for a picked system was taken
 back the same day, 2026-11-14, Chris). A pick placed in the open system shows in it, one deeper with its parent drawn (picking a system two levels down draws the one placing it, with it selected). List

@@ -607,6 +607,15 @@
     else { S.focus = { kind: 'system', id, path: p, open: true }; S.tab = 'detail'; }
     applyTab(); A.refresh();
   }
+  // Open from the menu's right-click (Chris, 2026-11-14): a system row by its tree path draws that system
+  // itself on the System tab, its tree's top system opened first when another is open.
+  function openAt(id, path) {
+    const ids = pathIds({ path }), top = ids[0] || id;
+    if (top !== S.root) A.openSystem(top);
+    S.focus = id === top ? null : { kind: 'system', id, path, open: true };
+    S.tab = 'detail';
+    applyTab(); A.refresh();
+  }
   // Back (Chris, 2026-11-12): from any panel straight to the system's own.
   function back() { S.sel = null; S.pair = null; S.picking = null; S.adding = null; S.pending = null; A.refresh(); }
 
@@ -2654,6 +2663,6 @@
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending, act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
     externals: s => externals(s), resolve: resolveAll, addSystem, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll,
-    tab: () => S.tab, setTab, setFocus, crumbs, focused: () => S.focus, root: () => S.root,
+    tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0, discardTo, restore, saveFile, openDoc };
 })(window.LM = window.LM || {});
