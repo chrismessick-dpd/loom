@@ -58,6 +58,11 @@ harnesses between them, with board-to-board harnesses in the parent; in the side
   (status glyph, name, part number; shown with Cable labels) takes the place of the floating cable label. A
   harness with no wires yet draws a dashed line to each device end. Not to scale (canvas units, `DW`). A click on
   a wire or far end selects the cable. Fit takes the drawings in (`drawnExtent`).
+  Since 2026-11-15 (Chris: they couldn't be dragged) the whole far end takes the pointer, a dashed one with no
+  wires too (it carried the shared `.ghost` class, whose rule turned the pointer off), a flying lead's name as well
+  as its dots, and dragging the harness's lines moves its far ends the same way (`data-devgrab` on `.sys-dhit`).
+  A selected one, or one on a selected block, carries the current. `devAt` stays when an import rebuilds harnesses, as long as it keeps
+  an existing cable and only re-plugs its `ends`.
 - **Mini views** (Chris, 2026-11-13): a placed system's block draws that system's whole drawing (its blocks, its
   cables, and its device harness drawings) shrunk to fit under the header (`miniFrame`, `miniXf`, `miniSvg`; three
   levels deep at most), nothing in it clickable, and its name moves into the header beside the ref. Each tab sits

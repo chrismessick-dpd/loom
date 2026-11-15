@@ -405,6 +405,47 @@
   };
   const endName = (s, e) => { const b = e && block(s, e.block), c = b && conn(b, e.conn); return b && c ? `${b.ref} ${c.ref}` : ''; };
 
+  // ── Hover card (Chris, 2026-11-15: hovering any cable or harness shows its details) ──
+  // One card in the page, next to the pointer, over a cable's line, its label, or a device harness's drawing.
+  let tipEl = null, tipFor = '', tipTimer = 0;
+  function cableTipHtml(s, cab, hint) {
+    const h = harnessOf(cab), k = kindOf(cab), st = statusOf(cab, h), pn = pnOf(h, cab);
+    const row = (a, b) => (b ? `<div class="sys-tip-r"><span>${esc(a)}</span><b>${esc(b)}</b></div>` : '');
+    const ends = endsOf(cab, h).map(n => {
+      const where = n.atDevice ? 'its device' : endName(s, cab.ends[n.id]) || (looseAt(cab, n.id) ? 'loose, not plugged in' : 'not plugged in');
+      return row(n.ref || 'End', (n.name && n.name !== n.ref ? n.name + ' → ' : '') + where);
+    }).join('') + deviceEnds(h).map(n => row(n.ref || 'Device', devLabel(n) + ' (its device)')).join('');
+    const sets = h ? (h.sets || []).length : 0, splices = h ? h.nodes.filter(n => n.kind === 'splice').length : 0;
+    return `<div class="sys-tip-h">${esc(titleOf(cab, h))}</div>` +
+      `<div class="sys-tip-s">${esc(st.glyph + ' ' + st.text)}</div>` +
+      row('Part number', pn) + row('Kind', KINDS[k]) +
+      (k === 'bought' ? row('Maker', [cab.mfr, cab.mpn].filter(Boolean).join(' ')) : '') +
+      ends +
+      (h ? row('Wires', String(h.wires.length)) : '') +
+      (splices ? row('Splices', String(splices)) : '') +
+      (sets ? row('Wire sets', String(sets)) : '') +
+      (cab.lengthMm ? row('Length here', `${Math.round(cab.lengthMm)} mm`) : '') +
+      (h && h.project ? row('Client project', h.project) : '') +
+      (hint ? `<div class="sys-tip-k">${esc(hint)}</div>` : '');
+  }
+  function hideTip() { clearTimeout(tipTimer); tipFor = ''; if (tipEl) tipEl.hidden = true; }
+  function hoverTip(e) {
+    const t = e.target, el = t && t.closest && t.closest('[data-cable], [data-devgrab], [data-clabel], [data-cldot]');
+    const id = el ? el.dataset.cable || el.dataset.devgrab || el.dataset.clabel || el.dataset.cldot : '';
+    const s = cur(), cab = id && s ? cable(s, id) : null;
+    const hint = !el ? '' : el.dataset.devgrab ? 'Drag it or its far ends to move them' : el.dataset.clabel || el.dataset.cldot ? 'Drag the label anywhere, or its dot along the cable' : '';
+    if (!cab) { hideTip(); return; }
+    if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'sys-tip'; tipEl.hidden = true; tipEl.setAttribute('role', 'tooltip'); document.body.appendChild(tipEl); }
+    const place = () => {
+      const r = tipEl.getBoundingClientRect(), x = Math.min(e.clientX + 16, innerWidth - r.width - 8), y = e.clientY + 18 + r.height > innerHeight - 8 ? e.clientY - r.height - 12 : e.clientY + 18;
+      tipEl.style.left = Math.max(8, x) + 'px'; tipEl.style.top = Math.max(8, y) + 'px';
+    };
+    if (tipFor === id && !tipEl.hidden) { place(); return; }
+    clearTimeout(tipTimer);
+    tipFor = id;
+    tipTimer = setTimeout(() => { if (tipFor !== id || drag) return; tipEl.innerHTML = cableTipHtml(cur(), cab, hint); tipEl.hidden = false; place(); }, 250);
+  }
+
   // own: only what the system's own file says, never the systems it places or that place it (the stored
   // summary: a first sync reads a parent before its children are here, and the summary must not change
   // with what this browser happens to hold).
@@ -1328,6 +1369,9 @@
       '</defs><g class="sys-blocks">';
     s.blocks.forEach(b => {
       const bs = isSel('block', b.id) || (sel && sel.kind === 'conn' && sel.block === b.id);
+      // One block selected: every other block fades, the connected ones too, so only it and its cables stand
+      // out (Chris, 2026-11-15).
+      const bdim = !bs && !!sel && sel.kind === 'block' ? ' dim' : '';
       const X = b.x * K, Y = b.y * K;
       // The harness editor's connector card (conn.js, with fx): paper card and shadow, a lit header,
       // the darker connector edge, and glass, so blocks stand off the stage as connectors do.
@@ -1338,13 +1382,13 @@
         const pic = picOf(b), fr = Math.max(14, Math.min(26, Hh / 8)), name = String(b.name || '');
         const lw = U.textW(b.ref, fr) + (pic && name ? 10 + U.textW(name, fr * 0.72) : 0) + 16;
         const fs = Math.max(7, Math.min(44, (W - 20) / Math.max(1, U.textW(name, 1)), Hh * 0.3));
-        html += `<g class="cv-conn sys-block board shaped${bs ? ' sel' : ''}" data-block="${b.id}">` + shapeSvg(b, pic, 'sys-shape') +
+        html += `<g class="cv-conn sys-block board shaped${bs ? ' sel' : ''}${bdim}" data-block="${b.id}">` + shapeSvg(b, pic, 'sys-shape') +
           `<rect class="sys-lab-bg" x="${X + 6}" y="${Y + 6}" width="${lw.toFixed(1)}" height="${(fr * 1.5).toFixed(1)}" rx="${(fr * 0.4).toFixed(1)}"/>` +
           `<text class="sys-ref" x="${X + 14}" y="${(Y + 6 + fr * 1.08).toFixed(1)}" style="font-size:${fr.toFixed(0)}px">${esc(b.ref)}</text>` +
           (pic && name ? `<text class="sys-hname" x="${(X + 14 + U.textW(b.ref, fr) + 10).toFixed(1)}" y="${(Y + 6 + fr * 1.05).toFixed(1)}" style="font-size:${(fr * 0.72).toFixed(1)}px">${esc(name)}</text>` : '') +
           (!pic && name ? `<text class="sys-center" x="${X + W / 2}" y="${Y + Hh / 2}" style="font-size:${fs.toFixed(1)}px">${esc(name)}</text>` : '');
       } else
-      html += `<g class="cv-conn sys-block ${b.kind}${bs ? ' sel' : ''}" data-block="${b.id}">` +
+      html += `<g class="cv-conn sys-block ${b.kind}${bs ? ' sel' : ''}${bdim}" data-block="${b.id}">` +
         `<rect class="cv-card" x="${X}" y="${Y}" width="${W}" height="${Hh}" rx="${r}"/>` +
         `<path class="cv-headbg" d="M${X} ${Y + hd}V${Y + r}Q${X} ${Y} ${X + r} ${Y}H${X + W - r}Q${X + W} ${Y} ${X + W} ${Y + r}V${Y + hd}Z"/>` +
         `<line class="sys-headrule" x1="${X}" y1="${Y + hd}" x2="${X + W}" y2="${Y + hd}"/>` +
@@ -1409,13 +1453,14 @@
         // A harness ending at its own device: drawn as itself (devLayout), its wires in their colors out to
         // its far ends; no route between its connectors (they meet at the device, not in the system). The far
         // ends drag (data-devgrab).
-        const tip = esc(`${titleOf(cab, h)} · ${dev.join(', ')} · drag the far ends to move them`);
-        html += `<g class="sys-dharn"><title>${tip}</title>` + D.paths.map(p => `<path class="sys-dhit" d="${p.d}"/>`).join('') +
+        html += '<g class="sys-dharn">' + D.paths.map(p => `<path class="sys-dhit" data-devgrab="${cab.id}" d="${p.d}"/>`).join('') +
           D.paths.map(p => `<path class="sys-dglow" d="${p.d}"/>`).join('') +
-          D.paths.map(p => `<path class="sys-dedge" d="${p.d}"/><path class="sys-dwire${p.ghost ? ' ghost' : ''}"${p.color ? ` style="stroke:${p.color}"` : ''} d="${p.d}"/>` + (p.stripe ? `<path class="sys-dstripe" style="stroke:${p.stripe}" d="${p.d}"/>` : '')).join('') +
-          D.juncs.map(j => `<circle class="sys-djunc" cx="${j.x}" cy="${j.y}" r="4.5"><title>${esc(j.ref)}</title></circle>`).join('') +
-          D.boxes.map(x => `<g class="sys-dend" data-devgrab="${cab.id}"><title>${esc(x.full)}</title><rect class="sys-dbox${x.ghost ? ' ghost' : ''}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="3"/><text class="sys-dtext" x="${x.cx}" y="${x.cy}">${esc(x.label)}</text></g>`).join('') +
-          D.leads.map(l => `<g class="sys-dend" data-devgrab="${cab.id}"><title>${esc(l.full)}</title>${l.dots.map(q => `<circle class="sys-ddot"${q.color ? ` style="fill:${q.color}"` : ''} cx="${q.x}" cy="${q.y}" r="4.2"/>`).join('')}<text class="sys-dtext lead" x="${l.lx}" y="${l.ly}" style="text-anchor:${l.anchor}">${esc(l.label)}</text></g>`).join('') +
+          D.paths.map(p => `<path class="sys-dedge" d="${p.d}"/><path class="sys-dwire${p.ghost ? ' ghost' : ''}"${p.color ? ` style="stroke:${p.color}"` : ''} d="${p.d}"/>` + (p.stripe ? `<path class="sys-dstripe" style="stroke:${p.stripe}" d="${p.d}"/>` : '') +
+            // The current runs along it while it or its block is selected, as on any cable.
+            (on || linked ? `<path class="w-pulse${on ? '' : ' soft'}" pathLength="1" d="${p.d}"/>` : '')).join('') +
+          D.juncs.map(j => `<circle class="sys-djunc" cx="${j.x}" cy="${j.y}" r="4.5"/>`).join('') +
+          D.boxes.map(x => `<g class="sys-dend" data-devgrab="${cab.id}"><rect class="sys-dbox${x.ghost ? ' ghost' : ''}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="3"/><text class="sys-dtext" x="${x.cx}" y="${x.cy}">${esc(x.label)}</text></g>`).join('') +
+          D.leads.map(l => `<g class="sys-dend" data-devgrab="${cab.id}">${l.dots.map(q => `<circle class="sys-ddot"${q.color ? ` style="fill:${q.color}"` : ''} cx="${q.x}" cy="${q.y}" r="4.2"/>`).join('')}<text class="sys-dtext lead" x="${l.lx}" y="${l.ly}" style="text-anchor:${l.anchor}">${esc(l.label)}</text></g>`).join('') +
           (D.cap ? `<g class="sys-dend" data-devgrab="${cab.id}"><text class="sys-dcap${on ? ' sel' : ''}" x="${D.cap.x}" y="${D.cap.y}">${esc(D.cap.text)}</text></g>` : '') + '</g>';
         // Its name is the caption over its far ends, not a floating label.
         lane = null; mid = null;
@@ -1455,7 +1500,7 @@
         labInfo.set(cab.id, { lane, t: t0, dot, off: { dx: (x0 - dot.x) / K, dy: (y0 - dot.y) / K }, rot });
         const ax = end ? x0 + 4 : x0 - 4, ay = y0 - 4, lead = !rot && Math.hypot(ax - dot.x, ay - dot.y) > 10 ? `<path class="sys-ldot-lead${dim ? ' dim' : ''}" d="M${dot.x} ${dot.y}L${ax} ${ay}"/>` : '';
         const gx = end ? x0 - tw0 - 5 : x0 - 5, body = `<rect class="sys-lgrab" x="${gx}" y="${y0 - 12}" width="${tw0 + 10}" height="16" rx="5"/><text class="${cls}" x="${x0}" y="${y0}"${end ? ' style="text-anchor:end"' : ''}>${t}</text>`;
-        labels += `<g class="sys-lab${on ? ' sel' : ''}${S.slide === cab.id ? ' slide' : ''}" data-clabel="${cab.id}"><title>Drag the label anywhere, or its dot along the cable</title>${lead}` +
+        labels += `<g class="sys-lab${on ? ' sel' : ''}${S.slide === cab.id ? ' slide' : ''}" data-clabel="${cab.id}">${lead}` +
           (rot ? `<g transform="rotate(${rot} ${x0} ${y0})">${body}</g>` : body) +
           (lane ? `<circle class="sys-ldot-hit" cx="${dot.x}" cy="${dot.y}" r="8" data-cldot="${cab.id}"/><circle class="sys-ldot${dim ? ' dim' : ''}" cx="${dot.x}" cy="${dot.y}" r="3"/>` : '') + '</g>';
       }
@@ -2187,7 +2232,9 @@
     // text selected before (a double-click, Ctrl+A) is cleared when a drag starts here, and the browser's
     // own drag of a selection never starts on the canvas.
     svg.addEventListener('dragstart', e => e.preventDefault());
+    svg.addEventListener('pointerleave', hideTip);
     svg.addEventListener('pointerdown', e => {
+      hideTip();
       if (e.button > 2) return;
       { const sel0 = getSelection && getSelection(); if (sel0 && !sel0.isCollapsed) sel0.removeAllRanges(); }
       const p = toWorld(svg, e), t = e.target, s = cur();
@@ -2235,7 +2282,7 @@
     });
     svg.addEventListener('pointermove', e => {
       const d = drag;
-      if (!d) { if (S.pending) ghostAt(svg, S.pending, e); return; }
+      if (!d) { if (S.pending) ghostAt(svg, S.pending, e); hoverTip(e); return; }
       if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
       d.moved = true;
       const p = toWorld(svg, e);
@@ -2390,13 +2437,13 @@
         return;
       }
       if (d.kind === 'dev') {
-        if (d.moved && d.snap) { cur().updated = now(); persist(); A.refresh(); return; }
+        if (d.moved && d.snap) { const s = cur(); s.updated = now(); if (A.login()) s.updatedBy = A.login(); persist(); A.refresh(); return; }
         if (!d.moved) { if (d.brk) toggleSel('cable', d.cab); else { S.sel = { kind: 'cable', id: d.cab }; S.pair = null; S.picking = null; } A.refresh(); }
         return;
       }
       if (d.kind === 'ldot' || d.kind === 'label') {
         S.slide = null;
-        if (d.moved && d.snap) { cur().updated = now(); persist(); A.refresh(); return; }
+        if (d.moved && d.snap) { const s = cur(); s.updated = now(); if (A.login()) s.updatedBy = A.login(); persist(); A.refresh(); return; }
         if (!d.moved) { if (d.brk) toggleSel('cable', d.cab); else { S.sel = { kind: 'cable', id: d.cab }; S.pair = null; S.picking = null; } A.refresh(); }
         return;
       }

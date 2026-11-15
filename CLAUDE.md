@@ -22,6 +22,12 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Device far ends drag, blocks fade, hover cards (2026-11-15, Chris).** A board system's device harnesses
+  (`n.atDevice`) drag by any far end, dashed or flying leads, or by their lines (`cab.devAt`; see `docs/system.md`,
+  *Device harnesses drawn*). One block selected fades every other block, connected ones too (`.sys-block.dim`), and
+  its cables, device harnesses included, carry the current. Hovering a cable, its label, or a device harness shows a
+  card with its name, state, part number, kind, ends and where each plugs, wires, splices, sets, and length here
+  (`hoverTip`, `cableTipHtml`, `.sys-tip`); the native titles it replaces are gone. Tests 114, golden unchanged.
 - **Formboard (2026-11-15, Chris: a tab placing a system on a drawing or STEP, channels, auto-routed lengths;
   his decisions are in `docs/formboard.md`).** A third system tab, Formboard: `assets/formboard.js` (the tab),
   `assets/stage.js` (the 3D stage and Four views, from PL's Exploded), `assets/fbroute.js` (the router, pure),

@@ -1206,6 +1206,22 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-dwire.ghost { stroke-dasharray: 7 5; }
 .sys-dstripe { fill: none; stroke-width: 3; stroke-dasharray: 5 7; pointer-events: none; }
 .sys-dend { cursor: move; }
+/* The whole far end takes the pointer (2026-11-15): a far end with no wires yet is drawn with the shared
+   .ghost class, whose rule turns the pointer off, and a flying lead's name is the only thing big enough to grab. */
+.lm-canvas .sys-dend .sys-dbox { pointer-events: all; }
+.lm-canvas .sys-dend .sys-dtext.lead { pointer-events: all; }
+.sys-canvas .sys-dhit { cursor: move; }
+/* The hover card over a cable or harness (Chris, 2026-11-15). */
+.sys-tip { position: fixed; z-index: 80; max-width: 340px; padding: 9px 12px; border-radius: 10px; background: var(--bg-elev); color: var(--text); border: 1px solid var(--hair-2); box-shadow: var(--shadow-lg); font-size: 12px; line-height: 1.35; pointer-events: none; }
+.sys-tip[hidden] { display: none; }
+.sys-tip-h { font-weight: 650; font-size: 13px; margin-bottom: 2px; }
+.sys-tip-s { color: var(--text-2); margin-bottom: 6px; }
+.sys-tip-r { display: flex; gap: 10px; justify-content: space-between; }
+.sys-tip-r span { color: var(--text-3); white-space: nowrap; }
+.sys-tip-r b { font-weight: 550; text-align: right; overflow-wrap: anywhere; }
+.sys-tip-k { margin-top: 6px; color: var(--text-3); font-size: 11px; }
+/* One block selected: the others fade (Chris, 2026-11-15). */
+.sys-canvas .sys-block.dim { opacity: 0.25; transition: opacity 0.2s; }
 .sys-dbox { fill: var(--cv-paper); stroke: var(--cv-conn-edge); stroke-width: 1.6; }
 .sys-dbox.ghost { stroke-dasharray: 3 2.5; }
 .sys-w.sel .sys-dbox, .sys-w.linked .sys-dbox { stroke: var(--accent); stroke-width: 2.4; }
