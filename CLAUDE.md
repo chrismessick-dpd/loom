@@ -22,6 +22,9 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **A system picked in the menu lights nothing (2026-11-14, Chris).** It still shows in the system placing it with
+  its panel open, but its block doesn't glow and no cable lights or fades (`quiet` in `svgHtml`: the pick's own
+  block selection, `S.autoSel`). A click on the canvas afterwards lights as before; harness picks still light.
 - **Breadcrumb in the toolbar (2026-11-14, Chris).** A system's path (root › … › the system, each a link) sits right
   of the System and List tabs on both tabs (`#sys-crumbs`, `LM.system.crumbs`), no longer over List's title. List: the
   system listed, or a harness after the system holding it; System: the system drawn, then the pick in it as plain text.

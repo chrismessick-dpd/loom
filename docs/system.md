@@ -98,8 +98,9 @@ open system's own row clears it, and other systems and harnesses still open as b
   picked harness with its cables selected. Only **Open <system>** draws a system itself (`f.open`; `drawnPath`,
   `drawnSys`). It's the real system, editable; each system drawn keeps its own undo and camera (`show`, `S.hist`).
 
-A pick shows where it's placed (Chris, 2026-11-13): its block and that block's cables lit, and its panel open
-with **Open <system>**, never opened by itself. A pick placed in the open system shows in it, one deeper with its parent drawn (picking a system two levels down draws the one placing it, with it selected). List
+A pick shows where it's placed (Chris, 2026-11-13): its panel open with **Open <system>**, never opened by
+itself. A picked system lights nothing on the canvas, neither its block nor its cables, and nothing fades (Chris,
+2026-11-14); a picked harness still lights its cables. A pick placed in the open system shows in it, one deeper with its parent drawn (picking a system two levels down draws the one placing it, with it selected). List
 keeps listing the pick.
 - **List** (first called Wires; Chris renamed it) takes the canvas's place beside the panel. For a system it
   is laid out like Signoff PL's list (2026-11-14, Chris: the old one was busy): a **Hierarchy | Cables** switch

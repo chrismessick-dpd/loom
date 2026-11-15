@@ -1202,7 +1202,11 @@
   }
   function svgHtml(s, Lo) {
     labInfo = new Map();
-    const sel = S.sel;
+    // A system picked in the menu is shown in the system placing it with its panel open, but nothing on the
+    // canvas lights or fades for it (Chris, 2026-11-14: the whole system is what's picked, so nothing stands
+    // out). A click on the canvas after that is a real selection and lights as ever.
+    const quiet = !!S.sel && S.sel.kind === 'block' && !!S.focus && S.focus.kind === 'system' && JSON.stringify(S.sel) === S.autoSel;
+    const sel = quiet ? null : S.sel;
     const isSel = (k, a, b2) => sel && (sel.kind === 'multi' ? (k === 'block' ? sel.blocks.includes(a) : k === 'cable' && sel.cables.includes(a))
       : sel.kind === k && (k === 'cable' ? sel.id === a : sel.block === a && (k === 'block' || sel.conn === b2)));
     // The editor's card gradients (app.js FX_DEFS), which these cards and the wires use.
