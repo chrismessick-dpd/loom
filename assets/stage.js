@@ -22,6 +22,13 @@
     front: { key: 'front', label: 'Front', axes: 'X Z', az: 0, el: 0, h: 0, v: 2, fixed: 1 },
     right: { key: 'right', label: 'Right', axes: 'Y Z', az: -90 * DEG, el: 0, h: 1, v: 2, fixed: 0 },
   };
+  // Each flat view seen from its other side (Chris, 2026-11-16: a button in each to flip it): the same axes and
+  // fixed axis, the camera turned round.
+  const FLIP = {
+    top: Object.assign({}, FLAT.top, { label: 'Bottom', el: -90 * DEG, flipped: true }),
+    front: Object.assign({}, FLAT.front, { label: 'Back', az: 180 * DEG, flipped: true }),
+    right: Object.assign({}, FLAT.right, { label: 'Left', az: 90 * DEG, flipped: true }),
+  };
   const ISO = { az: -35 * DEG, el: 30 * DEG };
   const featCache = new WeakMap();
   // A mesh with no CAD faces (an STL: every triangle one face id) would read as one smooth face with no edges or
@@ -46,20 +53,22 @@
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   function create(host) {
-    const st = { objs: [], cam: null, flatCams: null, quad: false, link: true, el: null, views: [], drag: null, raf: 0, idle: 0 };
+    const st = { objs: [], cam: null, flatCams: null, quad: false, link: true, flip: {}, el: null, views: [], drag: null, raf: 0, idle: 0 };
+    const flatOf = key => (FLAT[key] ? (st.flip[key] ? FLIP : FLAT)[key] : null);
 
     function mount(el) {
       st.el = el;
       const pane = key => {
-        const f = FLAT[key];
-        return `<div class="fb-pane"><canvas class="fb-cv" data-view="${key}" tabindex="0" aria-label="${f.label} view: drag a block to move it in ${f.axes}, drag empty space to pan, scroll to zoom"></canvas><canvas class="fb-over" aria-hidden="true"></canvas><div class="fb-tag">${f.label} <span>${f.axes}</span></div></div>`;
+        const f = flatOf(key), other = (st.flip[key] ? FLAT : FLIP)[key];
+        return `<div class="fb-pane"><canvas class="fb-cv" data-view="${key}" tabindex="0" aria-label="${f.label} view: drag a block to move it in ${f.axes}, drag empty space to pan, scroll to zoom"></canvas><canvas class="fb-over" aria-hidden="true"></canvas><div class="fb-tag">${f.label} <span>${f.axes}</span><button type="button" class="fb-flip" data-flip="${key}" title="Look from the other side: ${other.label}" aria-label="Look from the other side: ${other.label}">⇄ ${other.label}</button></div></div>`;
       };
       const main = `<div class="fb-pane fb-pane-3d"><canvas class="fb-cv" data-view="3d" tabindex="0" aria-label="3D view: drag to turn, Shift- or right-drag to pan, scroll to zoom, click a block to select it"></canvas><canvas class="fb-over" aria-hidden="true"></canvas>${st.quad ? '<div class="fb-tag">3D</div>' : ''}</div>`;
       el.innerHTML = `<div class="fb-stage${st.quad ? ' fb-quad' : ''}">${st.quad ? pane('top') + main + pane('front') + pane('right') : main}<div class="fb-hint glass" hidden></div></div>`;
       st.views = Array.from(el.querySelectorAll('canvas.fb-cv')).map(cv => {
         const key = cv.dataset.view;
-        return { key, flat: FLAT[key] || null, cv, over: cv.parentNode.querySelector('.fb-over'), res: null, scale: 1 };
+        return { key, flat: flatOf(key), cv, over: cv.parentNode.querySelector('.fb-over'), res: null, scale: 1 };
       });
+      el.querySelectorAll('.fb-flip').forEach(b => b.addEventListener('click', () => flip(b.dataset.flip)));
       st.views.forEach(bind);
       if (window.ResizeObserver) {
         if (st.ro) st.ro.disconnect();
@@ -68,6 +77,8 @@
       }
     }
     function setQuad(on) { st.quad = !!on; if (st.el) mount(st.el); save(); draw(true); }
+    // Turns a flat view round to its other side (Top and Bottom, Front and Back, Right and Left), keeping its camera.
+    function flip(key) { if (!FLAT[key]) return; st.flip[key] = !st.flip[key]; if (st.el) mount(st.el); save(); draw(true); }
     function hint(text) { const h = st.el && st.el.querySelector('.fb-hint'); if (h) { h.textContent = text || ''; h.hidden = !text; } if (host.hint) host.hint(text); }
 
     // ── Cameras ──
@@ -100,12 +111,12 @@
     function fitView(v) { if (v.flat) { const b = bounds(), f = v.flat; st.flatCams[v.key] = { c: b.c.slice(), zoom: 1, fit: Math.max(20, Math.max(b.hi[f.h] - b.lo[f.h], b.hi[f.v] - b.lo[f.v]) * 1.12) }; if (st.link) fitFlats(b); } else fit(true); draw(true); save(); }
     const camOf = v => (v.flat ? Object.assign({ az: v.flat.az, el: v.flat.el }, st.flatCams[v.key]) : st.cam);
     const linked = key => (st.link ? Object.keys(FLAT).map(k => st.flatCams[k]) : [st.flatCams[key]]);
-    function save() { if (host.saved) host.saved({ cam: st.cam, flatCams: st.flatCams, quad: st.quad, link: st.link }); }
+    function save() { if (host.saved) host.saved({ cam: st.cam, flatCams: st.flatCams, quad: st.quad, link: st.link, flip: st.flip }); }
     function load(s) {
       if (!s) return;
       if (s.cam && isFinite(s.cam.fit)) st.cam = s.cam;
       if (s.flatCams && s.flatCams.top) st.flatCams = s.flatCams;
-      st.quad = !!s.quad; st.link = s.link !== false;
+      st.quad = !!s.quad; st.link = s.link !== false; st.flip = s.flip && typeof s.flip === 'object' ? Object.assign({}, s.flip) : {};
     }
 
     // ── Drawing ──
@@ -388,7 +399,7 @@
     }
 
     Object.assign(st, {
-      mount, setQuad, fit, fitView, draw, later, overlays, load, save, hint, featureAt, drawFeature,
+      mount, setQuad, flip, fit, fitView, draw, later, overlays, load, save, hint, featureAt, drawFeature,
       setObjs: objs => { st.objs = objs || []; },
       setLink: on => { st.link = !!on; if (st.link) fitFlats(); save(); draw(true); },
       busy: () => !!st.drag,

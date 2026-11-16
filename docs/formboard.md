@@ -85,6 +85,10 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   axis toward the eye (Top Z, Front Y, Right X), 15° steps, Alt for any angle (`stage.js` `drawRing`, `axisTurn`,
   `eulerOf`, PL's own math), written as one change through `host.rotated` (degrees about X, then Y, then Z). Only
   with Select; R still turns 90°.
+- **Flip a flat view (2026-11-16, Chris: see the other side from each 2D view).** Each flat view's tag has a button
+  (⇄ and the other side's name) turning it round: Top and Bottom, Front and Back, Right and Left (`stage.js` `FLIP`,
+  `flip`; same axes and fixed axis, the camera turned round). Kept per formboard with its cameras (`flip` in the
+  saved stage state). Next, Chris: a way to slice through the depth.
 
 - **Sync (2026-11-15, Chris: "Build sync next").** `store.js` `syncFormboards` runs after the systems in every
   sync (on opening signed in, the Sync button, Ctrl+S). Each formboard is `loom_data/formboards/projects/<id>.json`

@@ -1491,6 +1491,8 @@ body.has-banner .fb-view { height: calc(100dvh - 56px - 33px); }
 .fb-over { pointer-events: none; }
 .fb-tag { position: absolute; left: 8px; top: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); pointer-events: none; }
 .fb-tag span { font-weight: 400; color: var(--text-3); }
+.fb-flip { pointer-events: auto; margin-left: 6px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--hair-2); background: var(--bg-elev); color: var(--text-2); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
+.fb-flip:hover { color: var(--text); border-color: var(--accent); }
 .fb-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 4px 10px; font-size: 12px; font-family: var(--mono); pointer-events: none; }
 .fb-hint[hidden] { display: none; }
 @media (max-width: 860px) { .fb-main { grid-template-columns: 1fr; grid-template-rows: 1fr 40%; } .fb-panel { grid-area: 2 / 1; border-left: 0; border-top: 1px solid var(--hair); } }
