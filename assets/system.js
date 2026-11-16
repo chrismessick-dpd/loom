@@ -1821,13 +1821,38 @@
   function donutSvg(counts, total, size, patterned) {
     const id = 'sd' + (++donutN);
     let at = 0;
-    const defs = patterned ? `<defs>${STATES.map(x => `<pattern id="${id}-${x.key}" class="sp-${x.key}" patternUnits="userSpaceOnUse" width="2.4" height="2.4" patternTransform="rotate(45)"><rect class="sp-bg" width="2.4" height="2.4"/>${x.key === 'fix' ? '<rect class="sp-mk" width="0.8" height="2.4"/>' : x.key === 'open' ? '<circle class="sp-mk" cx="1.2" cy="1.2" r="0.45"/>' : x.key === 'placeholder' ? '<circle class="sp-mk" cx="1.2" cy="1.2" r="0.3"/>' : ''}</pattern>`).join('')}</defs>` : '';
+    const defs = patterned ? `<defs>${STATES.map(x => `<pattern id="${id}-${x.key}" class="sp-${x.key}" patternUnits="userSpaceOnUse" width="2.4" height="2.4" patternTransform="rotate(45)">${patMarks(x.key)}</pattern>`).join('')}</defs>` : '';
+    // Slices a little apart, so two next to each other read as two (Chris, 2026-11-15: not clear which part is which),
+    // each with its glyph on it when it's big enough, and its count and percent on hover. A slice filters as its
+    // legend row does.
+    const gap = total && STATES.filter(x => counts[x.key]).length > 1 ? 0.8 : 0;
+    let glyphs = '';
     const slices = total ? STATES.filter(x => counts[x.key]).map(x => {
-      const p = counts[x.key] / total * 100, d = `<circle class="ds ds-${x.key}" r="15.9155" cx="21" cy="21" ${patterned ? `stroke="url(#${id}-${x.key})"` : ''} stroke-dasharray="${p.toFixed(3)} ${(100 - p).toFixed(3)}" stroke-dashoffset="${(25 - at).toFixed(3)}"><title>${esc(`${x.name}: ${counts[x.key]}`)}</title></circle>`;
+      const p = counts[x.key] / total * 100, len = Math.max(0.3, p - gap);
+      const d = `<circle class="ds ds-${x.key}" data-sstate="${x.key}" r="15.9155" cx="21" cy="21" ${patterned ? `stroke="url(#${id}-${x.key})"` : ''} stroke-dasharray="${len.toFixed(3)} ${(100 - len).toFixed(3)}" stroke-dashoffset="${(25 - at - gap / 2).toFixed(3)}"><title>${esc(`${x.name}: ${counts[x.key]} (${Math.round(p)}%)`)}</title></circle>`;
+      if (patterned && p >= 6) {
+        const a = (at + p / 2) / 100 * 2 * Math.PI - Math.PI / 2, gx = 21 + 15.9155 * Math.cos(a), gy = 21 + 15.9155 * Math.sin(a);
+        glyphs += `<g class="ds-glyph ds-g-${x.key}" data-sstate="${x.key}"><circle cx="${gx.toFixed(2)}" cy="${gy.toFixed(2)}" r="3.1"/><text x="${gx.toFixed(2)}" y="${(gy + 1.25).toFixed(2)}">${x.glyph}</text></g>`;
+      }
       at += p;
       return d;
     }).join('') : '<circle class="ds ds-none" r="15.9155" cx="21" cy="21"/>';
-    return `<svg class="sys-donut" viewBox="0 0 42 42" width="${size}" height="${size}" aria-hidden="true">${defs}${slices}</svg>`;
+    return `<svg class="sys-donut" viewBox="0 0 42 42" width="${size}" height="${size}" aria-hidden="true">${defs}${slices}${glyphs}</svg>`;
+  }
+  // A status's fill as marks on its ground, the same in the pie and the legend's swatches: Open dots, Placeholder
+  // small dots, Needs fixing stripes, Wired thin stripes the other way, Generic and Complete plain.
+  function patMarks(k) {
+    return `<rect class="sp-bg" width="2.4" height="2.4"/>` + (k === 'fix' ? '<rect class="sp-mk" width="0.8" height="2.4"/>'
+      : k === 'wired' ? '<rect class="sp-mk" width="2.4" height="0.45"/>'
+      : k === 'open' ? '<circle class="sp-mk" cx="1.2" cy="1.2" r="0.5"/>'
+      : k === 'placeholder' ? '<circle class="sp-mk" cx="1.2" cy="1.2" r="0.3"/>' : '');
+  }
+  // The legend's key: a swatch filled as the slice is, with the glyph on it.
+  let swatchN = 0;
+  function swatchSvg(k) {
+    const id = 'ss' + (++swatchN);
+    return `<svg class="sys-sswatch" viewBox="0 0 12 12" width="18" height="18" aria-hidden="true"><defs><pattern id="${id}" class="sp-${k}" patternUnits="userSpaceOnUse" width="2.4" height="2.4" patternTransform="rotate(45)">${patMarks(k)}</pattern></defs>` +
+      `<rect class="sw-${k}" x="0.5" y="0.5" width="11" height="11" rx="2.5" fill="url(#${id})"/></svg>`;
   }
   // The strip in the toolbar: the donut, a chip per status that has any, and the share complete; a click opens the
   // panel with the big pie and the legend, whose rows include a status in the filter (Shift: exclude).
@@ -1840,11 +1865,18 @@
     const panel = S.statsOpen ? `<div class="sys-spanel" role="dialog" aria-label="Status">${donutSvg(counts, total, 150, true)}<div class="sys-slegend">` +
       `<div class="sys-shead"><b>${total} spot${total === 1 ? '' : 's'}</b><span>${done}% complete</span></div>` +
       STATES.map(x => { const v = f.states[x.key] || '', n = counts[x.key]; return `<button class="sys-srow st-${x.key}${v ? ' f-' + v : ''}" data-sstate="${x.key}" title="${esc(x.text)}. Click to show only these; Shift-click to fade them; again to stop.">` +
-        `<span class="sys-sglyph">${x.glyph}</span><span class="sys-sname">${esc(x.name)}${v ? ` <em>${v === 'in' ? 'included' : 'excluded'}</em>` : ''}</span><span class="sys-sn">${n}</span><span class="sys-sp">${total ? Math.round(n / total * 100) : 0}%</span></button>`; }).join('') +
+        `<span class="sys-sglyph">${swatchSvg(x.key)}</span><span class="sys-sname">${x.glyph} ${esc(x.name)}${v ? ` <em>${v === 'in' ? 'included' : 'excluded'}</em>` : ''}</span><span class="sys-sn">${n}</span><span class="sys-sp">${total ? Math.round(n / total * 100) : 0}%</span></button>`; }).join('') +
       `<p class="sys-snote">Counts this system and every system placed in it, each once. A used connector with nothing plugged in is Open; each cable is counted by how finished it is.</p></div></div>` : '';
     return `<button class="sys-sbtn${S.statsOpen ? ' on' : ''}" data-sstats aria-expanded="${S.statsOpen ? 'true' : 'false'}" title="Status: ${done}% complete. Click for the pie and to filter by status.">${donutSvg(counts, total, 24, false)}<span class="sys-schips">${chips || '<span class="sys-schip">Nothing yet</span>'}</span><span class="sys-sdone">${done}%</span></button>${panel}`;
   }
   function redrawStrip() { const el = document.querySelector('#sys-stats'); if (el) { const h = S.cur ? statsStrip() : ''; el.innerHTML = h; el.hidden = !h; } }
+  // Hovering a slice or a legend row lights both, and fades the other slices and rows.
+  document.addEventListener('mouseover', e => {
+    const p = e.target.closest && e.target.closest('.sys-spanel');
+    if (!p) return;
+    const r = e.target.closest('[data-sstate]');
+    if (r) p.dataset.hot = r.dataset.sstate; else delete p.dataset.hot;
+  });
   // The strip's clicks (it sits in the app's toolbar, outside the page).
   document.addEventListener('click', e => {
     const t = e.target;
