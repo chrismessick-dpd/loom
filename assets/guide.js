@@ -49,6 +49,8 @@
   const fbq = q => `.fb-host:not([hidden]) ${q}`;
   const fbCur = () => LM.formboard && LM.formboard.current();
   const fbRef = () => { const f = fbCur(); return f && f.reference ? f.reference.name || f.reference.kind : null; };
+  // Back to Select, so a Draw channel left on in an earlier step doesn't turn the next step's clicks into points.
+  const fbSelect = () => { if (LM.formboard) LM.formboard.tool('select'); };
 
   const CHAPTERS = [
     { title: 'Welcome', steps: [
@@ -236,7 +238,7 @@
     { title: 'Connection statuses', steps: [
       { title: 'The status ladder',
         text: 'Every cable, and every used connector with nothing plugged in, has a status, from least to most finished: ○ {Open}, a used connector with no cable; ─ {Generic}; ◌ {Placeholder}, a harness with no wires yet or a purchased cable without its part number or length; ✕ {Needs fixing}, a harness with check errors; ◉ {Wired}, its wires drawn but some lengths unknown; and ✔ {Complete}, every length known too. A block’s pill is its least finished.',
-        do: 'The Main PCBA is Generic because of the wall wires, and the display board is Placeholder because the FFC has no part number yet. In the menu, each harness has its own pill.',
+        do: 'Look at the blocks’ pills. In the demo as it starts, the Main PCBA is Generic because of the wall wires, and the display board is Placeholder because the FFC has no part number yet. In the menu, each harness has its own pill.',
         setup() { sysOn(); },
         spot: () => [[sbq(MAIN), sbq(DISP)]] },
       { title: 'The status strip',
@@ -246,7 +248,7 @@
         spot: () => ['#sys-stats'] },
       { title: 'Moving up the ladder',
         text: 'A status moves as the work is done. A purchased cable is Complete once it has a part number and a length. A Loom harness goes from Placeholder to Wired once its wires are drawn with no errors, then to Complete when every wire has a length: typed in the harness, set as {Length here} on its cable in the system (a variant part number), or routed and applied on a formboard.',
-        do: 'The FFC is selected, already 100 mm long. Type a part number, such as FFC-24-100, and watch the strip and the display board’s pill. Then click the Main PCBA and tick {Used} on a connector with nothing in it: it counts as Open.',
+        do: 'The FFC is selected, and it already has a length. Type a part number, such as FFC-24-100 (if it has none yet), and watch the strip and the display board’s pill. Then click the Main PCBA and tick {Used} on a connector with nothing in it: it counts as Open.',
         setup() { sysOn(); const c = scable(FFC); if (c) G().ssel({ kind: 'cable', id: c.id }); },
         spot: () => [`${SP} [data-sf="cab.pn"]`, SP] },
     ] },
@@ -255,17 +257,17 @@
         text: '{Formboard} lays a system out as it’s really built, on a drawing (a DXF or a picture) or a 3D model (a STEP or an STL), so its cables get real lengths. Each system has its own formboards. Its boards and devices are boxes at their real sizes; you draw channels where the cables run, and {Route} takes each cable the shortest way through the channels it may use. The demo’s {Bracket} is one already made.',
         do: 'Pick {New formboard…} in the list at the top left and name it Layout board.',
         phone: 'Formboard needs a wider screen.',
-        setup() { sysOn('formboard'); },
+        setup() { sysOn('formboard'); fbSelect(); },
         spot: () => [fbq('[data-fbsel="pick"]')] },
       { title: 'A DXF as the reference',
         text: '{Reference…} reads a DXF, a picture, a STEP, or an STL to place the system on. A DXF that names its units, as this one does (mm), is drawn at its own scale. A picture, or a DXF without units, needs {Calibrate}: click two points on it and type how far apart they really are. The demo DXF is a made-up layout board: an outline for each board and the wall terminal, and guide lines with pegs for the cable runs.',
         do: 'In your new formboard, click {Demo DXF}, then {Fit}.',
-        setup() { G().formboard('Layout board', 'dxf', false); },
+        setup() { G().formboard('Layout board', 'dxf', false); fbSelect(); },
         spot: () => [fbRef() === 'formboard-demo.dxf' ? fbq('[data-fb="fit"]') : fbq('[data-fb="demo-ref"][data-ref="dxf"]')] },
       { title: 'Placing the blocks',
         text: 'The system’s boards and devices start beside the reference, faded, at their real sizes; a block stays faded until it’s moved, and lengths to it are provisional. Drag one onto the drawing, or select it and type its X, Y, and Z in the panel. {k:R} turns a selected block 90°, and {Snap block} puts a corner, edge, or hole of it onto one on the reference.',
         do: 'Click {Four views}, then drag the Main PCBA, the display board, and the wall wiring onto their outlines in the {Top} view. In the 3D view, click a block first, then drag it.',
-        setup() { G().formboard('Layout board', 'dxf'); },
+        setup() { G().formboard('Layout board', 'dxf'); fbSelect(); },
         spot: () => ['#fb-stage'] },
       { title: 'Drawing channels',
         text: 'A channel is where cables may run: a path drawn point to point, with a width and a height. Selected, its points drag, a double-click on a run adds a point, and its panel sets its name, size, classes, and {Exclusive}, which keeps out any cable without one of its classes as a tag. A channel that isn’t exclusive takes any cable.',
@@ -275,19 +277,19 @@
       { title: 'Route and Apply lengths',
         text: '{Route} takes each cable from its connector to the nearest channel it may use, through the channels, and out to its other end, adding slack, each channel’s extra, and an allowance at each end (set in the formboard’s panel). Click a cable in the panel for its breakdown. A route whose ends or channels change is drawn dashed until it’s routed again. {Apply lengths} writes each routed length into the system as its cable’s length; for a Loom harness, {Save to base part}, in its panel, sets the harness’s own length instead.',
         do: 'Click {Route}, then a cable in the panel to see its length, then {Apply lengths}. {k:Ctrl+Z} here undoes it.',
-        setup() { G().formboard('Layout board', 'dxf'); },
+        setup() { G().formboard('Layout board', 'dxf'); fbSelect(); },
         spot: () => [fbq('[data-fb="route"]')] },
     ] },
     { title: 'Formboard from an STL', steps: [
       { title: 'A 3D model as the reference',
         text: 'For a 3D layout, use a STEP or an STL of the frame or enclosure. A STEP is read in the browser, which gets slow past about 25 MB, while an STL reads at once, so export one from your CAD for a big assembly (in millimeters). Either way it’s simplified to 80,000 triangles, and its corners, edges, and faces snap.',
         do: 'A new formboard, Enclosure, is open. Click {Demo STL}: a made-up enclosure tray with standoffs for the boards. Drag to turn it, and try {Four views}.',
-        setup() { G().formboard('Enclosure', 'stl', false); },
+        setup() { G().formboard('Enclosure', 'stl', false); fbSelect(); },
         spot: () => [fbRef() === 'formboard-demo.stl' ? fbq('[data-fb="quad"]') : fbq('[data-fb="demo-ref"][data-ref="stl"]')] },
       { title: 'Placing blocks in 3D',
         text: 'In 3D a block drags in a flat view (Top, Front, or Right, in {Four views}), or in the 3D view once it’s selected. {Snap block} is the surest way onto a part: pick a corner, edge, hole, or face on the selected block, then where it goes on the model. {Turn 90°} about Z, X, or Y stands a board on its edge.',
-        do: 'Click the Main PCBA, then {Snap block}: pick a corner of the board, then the top of a standoff under it. Do the same for the display board.',
-        setup() { G().formboard('Enclosure', 'stl'); },
+        do: 'Click the Main PCBA, then {Snap block}: pick a bottom corner of the board, then the top corner of the standoff it sits on. Do the same for the display board.',
+        setup() { G().formboard('Enclosure', 'stl'); fbSelect(); },
         spot: () => [fbq('[data-tool="snap"]')] },
       { title: 'Channels on a model',
         text: 'On a model, each click of {Draw channel} snaps to the corner, edge, or face under the pointer, named beside it as you go, and a channel’s point goes exactly there. Channels are drawn as glass, so the model and the cables show through, with their edges dashed where the model is in front. {Route} and {Apply lengths} work as on a drawing.',

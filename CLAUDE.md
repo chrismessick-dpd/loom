@@ -38,6 +38,9 @@ links to it so far. Before every commit:
   140 mm tray with standoffs), made by `tools/make_formboard_demo.py`. Tried in the demo: every ring, a cable
   drawn between unused tabs, Wall wires made a harness and undone, Plug in a harness, Make external, the FFC
   turned Complete by a part number, both demo references, and Route and Apply lengths on the DXF board.
+  Not tried: dragging blocks, drawing channels, and Snap block by hand (Route and Apply ran on blocks and a channel
+  set in code), and phone widths (the new steps have no `phone` text). The preview pane was hidden, so the card's
+  place over the formboard stage and how legible the DXF's lines are weren't checked by eye.
 - **One run drag (2026-11-15, Chris: wires and cables drag alike).** `connect.js` `dragStart` and `dragTo` wrap the
   engine's grab and slide with the record's sides, mode, and split points kept; `dragRun` in `app.js` and the system's run
   drag both call them (a lead-in passes its own grab). A run drag no longer drops a moved split point, in either canvas.
