@@ -22,6 +22,11 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **List: Name · Ref, merged connector rows (2026-11-15, Chris).** Blocks and connectors read their label, then the ref
+  after a dot ("Unit of Use System · A1", "Power in · 24V · A1 J8"), under a *Name · Ref* header. A connector with exactly
+  one cable plugged in here is one row (Chris's choices): the cable's name and tags, then "<part number> · Connector <ref>
+  <function>", the cable's type and status, and a click selects the cable. None, two or more, or plugged from above: the
+  connector keeps its row.
 - **Guide: systems, statuses, and formboards (2026-11-15, Chris: check the guide's steps still work, then add
   cards on building a system, connection statuses, and a 2D DXF and a 3D STL formboard; his choices: demo
   buttons for the files, the visitor builds both formboards, a tour of the demo system).** 45 steps in eleven
