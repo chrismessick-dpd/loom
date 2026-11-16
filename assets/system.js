@@ -1022,7 +1022,14 @@
     autoExits(s);
     const key = JSON.stringify([s.id, s.blocks.map(b => [b.id, b.x, b.y, b.w, b.h, rotOf(b), b.conns.map(c => [c.id, c.x, c.y, c.exit || '', c.fitted, c.tw || 0])]), s.cables.map(c => [c.id, c.kind, c.harness, c.ends, c.routes, c.loose || null]), s.cables.map(c => { const h = harnessOf(c); return h ? [h.id, h.wires.length, harnessEnds(h).map(n => n.id), h.wires.length ? M.checks(h).filter(x => x.sev === 'error').length : 0] : null; })]);
     const memo = memos.get(s.id);
-    if (memo && memo.key === key && memo.lo) return memo.lo;
+    if (memo && memo.key === key && memo.lo) {
+      // The key leaves out what doesn't move a route (a cable's color, tags, label, a harness's title), so a kept
+      // layout points at the cables and harnesses as they are now, not the copies it was made from: a sync, undo,
+      // or redo swaps them, and a color set since drew in the state's color (Chris, 2026-11-15).
+      const now = new Map(s.cables.map(c => [c.id, c]));
+      memo.lo.forEach(e => { const c = now.get(e.cab.id); if (c) e.cab = c; e.h = harnessOf(e.cab); });
+      return memo.lo;
+    }
     const lo = layoutNow(s, view);
     memos.set(s.id, { key, lo });
     return lo;
@@ -3606,7 +3613,7 @@
   }
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending || (S.tab === 'formboard' && !!LM.formboard && LM.formboard.busy()), act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
-    layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
+    layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, keptLayout: layout, exitSide, cells: n => { CELLS = n; },
     externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, filterFlat, filterUi, clearUp, upLabel, systemStats, stateOf, statsStrip, STATES, statePill, worstMap, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
     // Tests: the app's hooks set for a while (the test page has no app); returns the ones there before.
     testHooks: x => { const was = A; A = x; return was; },

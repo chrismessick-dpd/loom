@@ -913,6 +913,21 @@
     const ends = D3.paths.map(p => p.d.match(/-?\d+(\.\d+)?/g).map(Number).slice(-2));
     ok(ends.every(([x, y]) => x >= D3.boxes[0].x - 1 && x <= D3.boxes[0].x + D3.boxes[0].w + 1 && y >= D3.boxes[0].y - 1 && y <= D3.boxes[0].y + D3.boxes[0].h + 1), 'every wire still ends at its box');
   });
+  test('system: a kept layout draws the cables as they are now, so a color set on a swapped copy shows', () => {
+    const Y = LM.system, s = Y.blank('Gizmo');
+    const a = Y.addDrawn(s, 'board', { x: 0, y: 0 }), b = Y.addDrawn(s, 'board', { x: 0, y: 200 });
+    [a, b].forEach(x => { x.w = 80; x.h = 40; x.conns.length = 0; });
+    const ar = Y.mkConn(a, 'J1', 2, { x: 80 - Y.TAB.w, y: 18 }), bt = Y.mkConn(b, 'J1', 2, { x: 40, y: 0 });
+    s.cables.push({ id: 'k1', kind: 'link', ends: { a: { block: a.id, conn: ar.id }, b: { block: b.id, conn: bt.id } } });
+    Y.normalize(s);
+    const lo = Y.keptLayout(s);
+    // A sync or an undo swaps the cable for a copy; then a color is set on the copy.
+    s.cables[0] = JSON.parse(JSON.stringify(s.cables[0]));
+    s.cables[0].color = 'RD';
+    const lo2 = Y.keptLayout(s);
+    ok(lo2 === lo, 'the routes are kept (nothing that moves them changed)');
+    ok(lo2.get('k1').cab === s.cables[0] && lo2.get('k1').cab.color === 'RD', 'but the entry is the cable as it is now, with its color');
+  });
   test('system: a turned block turns its connectors, their exits, and its size, and its cables still fit', () => {
     const Y = LM.system, s = Y.blank('Gizmo');
     const a = Y.addDrawn(s, 'board', { x: 0, y: 0 }), b = Y.addDrawn(s, 'board', { x: 0, y: 200 });
