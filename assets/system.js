@@ -1032,9 +1032,38 @@
   // connector's exit, spreading the drawings out of one side of a block so they don't overlap; dragging the far
   // ends or the caption moves them (cab.devAt, mm, kept with the system). A harness with no wires yet draws a
   // dashed line to each device end. Lengths are in canvas units (K per mm), not to scale.
-  const DW = { pitch: 5, trunk: 90, fan: 130, turn: 24, lead: 60, box: 34, gap: 16, font: 16, cap: 24, chars: 40 };
+  // wrapW, lines, lh: a far end's name wraps in its box (Chris, 2026-11-15: about 22 characters a line, up to 4);
+  // capW, capLines, capLh: the caption's name the same way, its part number on a line of its own.
+  const DW = { pitch: 5, trunk: 90, fan: 130, turn: 24, lead: 60, box: 34, gap: 16, font: 16, cap: 24, chars: 40, wrapW: 190, lines: 4, lh: 19, capW: 230, capLines: 3, capLh: 16 };
   const devMemo = new Map();
   const clip = (t, n) => (t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t);
+  // Text wrapped to lines at most maxW wide (words kept whole unless one alone is too wide), at most maxLines,
+  // the last ending in … when there's more.
+  function wrapText(text, font, maxW, maxLines) {
+    const lines = [];
+    let cur = '';
+    String(text || '').split(/\s+/).filter(Boolean).forEach(w0 => {
+      let w = w0;
+      while (U.textW(w, font) > maxW && w.length > 1) {
+        let k = w.length - 1;
+        while (k > 1 && U.textW(w.slice(0, k), font) > maxW) k--;
+        if (cur) { lines.push(cur); cur = ''; }
+        lines.push(w.slice(0, k)); w = w.slice(k);
+      }
+      const both = cur ? cur + ' ' + w : w;
+      if (U.textW(both, font) <= maxW) cur = both; else { if (cur) lines.push(cur); cur = w; }
+    });
+    if (cur) lines.push(cur);
+    if (!lines.length) return [''];
+    if (lines.length <= maxLines) return lines;
+    const keep = lines.slice(0, maxLines);
+    let last = keep[maxLines - 1] + '…';
+    while (U.textW(last, font) > maxW && last.length > 2) last = last.slice(0, -2) + '…';
+    keep[maxLines - 1] = last;
+    return keep;
+  }
+  // Lines of SVG text, centered on (x, y) as a block or starting at y, each lh apart.
+  const tspans = (lines, x, lh) => lines.map((l, i) => `<tspan x="${x}" dy="${i ? lh : 0}">${esc(l)}</tspan>`).join('');
   const devLabel = n => n.name || n.ref || (n.family === 'flying' ? 'Flying leads' : 'Device');
   const pinIdx = (n, pin) => { const l = M.pinList(n).map(String), i = l.indexOf(String(pin)); return i < 0 ? 999 : i; };
   function devKey(s, cabs, hOf) {
@@ -1087,18 +1116,27 @@
       const g = at[0].g, d = [g.dx, g.dy], pv = g.dx ? [0, 1] : [1, 0], horiz = !!g.dx;
       const tg = targets.map(T => {
         const into = segs.filter(o => o.T === T).sort((p, q) => keyOf(p) - keyOf(q) || p.tpin - q.tpin);
-        const nw = ghost ? 1 : into.length, leads = T.family === 'flying', full = devLabel(T), label = clip(full, DW.chars), tw0 = U.textW(label, DW.font);
-        const Lp = horiz ? Math.max(leads ? 20 : DW.box, nw * DW.pitch + 14) : Math.max(tw0 + (leads ? 12 : 20), nw * DW.pitch + 14);
-        const Ld = horiz ? (leads ? DW.lead + 10 + tw0 : tw0 + 20) : (leads ? DW.lead : DW.box);
-        return { T, into, nw, leads, label, full, Lp, Ld };
+        // A box at the end of its wires, its name wrapped onto lines (Chris, 2026-11-15: compact, not one long line);
+        // flying leads too, their wires ending in dots at the box.
+        const nw = ghost ? 1 : into.length, leads = T.family === 'flying', full = devLabel(T), lines = wrapText(full, DW.font, DW.wrapW, DW.lines), label = lines.join(' ');
+        const tw0 = Math.max(...lines.map(l => U.textW(l, DW.font))), th = lines.length * DW.lh;
+        const Lp = horiz ? Math.max(DW.box, nw * DW.pitch + 14, th + 14) : Math.max(tw0 + 24, nw * DW.pitch + 14);
+        const Ld = horiz ? tw0 + 24 : Math.max(DW.box, th + 14);
+        return { T, into, nw, leads, label, lines, full, Lp, Ld };
       });
       // Its tags ride after the caption, and show even with Cable labels off (Chris: always shown).
-      const st = status(h), tags = cab.tags || [], text = caps ? clip(`${st.glyph} ${h.title}${pnOf(h, cab) ? ' · ' + pnOf(h, cab) : ''}`, 64) : '';
-      const caption = text || tags.length ? { text, tags } : null, capW = caption ? (text ? U.textW(text, 13) : 0) + (tags.length ? (text ? 8 : 0) + LM.tags.pillsW(tags) : 0) : 0;
+      // Wrapped too (Chris, 2026-11-15), the part number on a line of its own, its tags after the last line.
+      const st = status(h), tags = cab.tags || [], pn = pnOf(h, cab);
+      const clines = caps ? wrapText(`${st.glyph} ${h.title}`, 13, DW.capW, DW.capLines).concat(pn ? [pn] : []) : [];
+      const text = clines.join(' ');
+      const lastW = clines.length ? U.textW(clines[clines.length - 1], 13) : 0;
+      const caption = clines.length || tags.length ? { text, lines: clines, tags, lastW } : null;
+      const capW = caption ? Math.max(0, ...clines.map(l => U.textW(l, 13)), lastW + (tags.length ? (clines.length ? 8 : 0) + LM.tags.pillsW(tags) : 0)) : 0;
+      const capH = caption ? Math.max(1, clines.length) * DW.capLh + 8 : 0;
       let span = tg.reduce((n, t) => n + t.Lp, 0) + DW.gap * Math.max(0, tg.length - 1);
-      const lane = caption && horiz ? DW.cap : 0;
+      const lane = caption && horiz ? capH : 0;
       if (caption && !horiz) span = Math.max(span, capW);
-      drafts.push({ cab, h, at, segs, tg, ghost, g, d, pv, horiz, span: span + lane, lane, caption, capW, st, keyOf, axis: horiz ? g.ey : g.ex, group: at[0].b.id + '|' + g.side });
+      drafts.push({ cab, h, at, segs, tg, ghost, g, d, pv, horiz, span: span + lane, lane, caption, capW, capH, st, keyOf, axis: horiz ? g.ey : g.ex, group: at[0].b.id + '|' + g.side });
     });
     // Drawings out of one side of a block, spread along it so none overlap, then shifted back so the spread
     // sits about the connectors it comes from.
@@ -1124,14 +1162,8 @@
         t.N = pt(B, 0, u + t.Lp / 2); u += t.Lp + DW.gap;
         const a = t.N, rect = horiz ? { x: d[0] > 0 ? a.x : a.x - t.Ld, y: a.y - t.Lp / 2, w: t.Ld, h: t.Lp } : { x: a.x - t.Lp / 2, y: d[1] > 0 ? a.y : a.y - t.Ld, w: t.Lp, h: t.Ld };
         { const p0 = { x: rect.x, y: rect.y }, p1 = { x: rect.x + rect.w, y: rect.y + rect.h }; pts.push(p0, p1); bare.add(p0); bare.add(p1); }
-        if (!t.leads) boxes.push(Object.assign({ label: t.label, full: t.full, cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, ghost, d, nw: t.nw }, rect));
-        else {
-          const e = pt(a, DW.lead, 0), lx = horiz ? e.x + d[0] * 10 : e.x, ly = horiz ? e.y + 5.5 : e.y + d[1] * 18 + (d[1] > 0 ? 5.5 : 0), w = U.textW(t.label, DW.font);
-          t.lead = { label: t.label, full: t.full, lx, ly, anchor: horiz ? (d[0] > 0 ? 'start' : 'end') : 'middle', dots: [], ghost };
-          leads.push(t.lead);
-          const q0 = { x: lx - (horiz ? (d[0] > 0 ? 0 : w) : w / 2), y: ly - 14 }, q1 = { x: lx + (horiz ? (d[0] > 0 ? w : 0) : w / 2), y: ly + 5 };
-          pts.push(q0, q1); bare.add(q0); bare.add(q1);
-        }
+        t.box = Object.assign({ label: t.label, lines: t.lines, full: t.full, cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, ghost, d, nw: t.nw, leads: t.leads, dots: [] }, rect);
+        boxes.push(t.box);
       });
       // A wire's slot at its far end: the k-th of the wires into it.
       const slot = o => { const t = tg.find(x => x.T === o.T), k = t.into.indexOf(o); return { t, Q: pt(t.N, 0, (k - (t.nw - 1) / 2) * DW.pitch) }; };
@@ -1153,7 +1185,7 @@
       const colorOfW = o => (o.w ? M.colorInfo(o.w.color) : null);
       const push = (o, path, Q, t) => {
         const ci = colorOfW(o), base = ci && ci.base ? ci.base : '';
-        if (t && t.leads) { const e = pt(Q, DW.lead, 0); path += `L${f1(e.x)} ${f1(e.y)}`; t.lead.dots.push({ x: e.x, y: e.y, color: base }); }
+        if (t && t.leads) t.box.dots.push({ x: Q.x, y: Q.y, color: base });
         paths.push({ d: path, color: base, stripe: ci && ci.stripe ? ci.stripe : '', ghost });
       };
       // Every wire runs at right angles with rounded corners, as system cables do (Chris, 2026-11-13: not wide
@@ -1194,8 +1226,10 @@
       let cap = null;
       if (D.caption) {
         const maxLd = Math.max(0, ...tg.map(t => t.Ld)), top = pt(B, 0, -D.span / 2);
-        cap = horiz ? { x: d[0] > 0 ? top.x : top.x - D.capW, y: top.y + 15, text: D.caption.text, tags: D.caption.tags } : { x: top.x, y: B.y + d[1] * (maxLd + 22) + (d[1] > 0 ? 4 : 0), text: D.caption.text, tags: D.caption.tags };
-        const c0 = { x: cap.x, y: cap.y - 14 }, c1 = { x: cap.x + D.capW, y: cap.y + 4 };
+        const nl = Math.max(1, D.caption.lines.length), up = !horiz && d[1] < 0 ? (nl - 1) * DW.capLh : 0;
+        cap = horiz ? { x: d[0] > 0 ? top.x : top.x - D.capW, y: top.y + 15 } : { x: top.x, y: B.y + d[1] * (maxLd + 22) + (d[1] > 0 ? 4 : 0) - up };
+        Object.assign(cap, { text: D.caption.text, lines: D.caption.lines, tags: D.caption.tags, lastW: D.caption.lastW, lh: DW.capLh });
+        const c0 = { x: cap.x, y: cap.y - 14 }, c1 = { x: cap.x + D.capW, y: cap.y + (nl - 1) * DW.capLh + 4 };
         pts.push(c0, c1); bare.add(c0); bare.add(c1);
       }
       const bounds = P => ({ x0: Math.min(...P.map(q => q.x)), y0: Math.min(...P.map(q => q.y)), x1: Math.max(...P.map(q => q.x)), y1: Math.max(...P.map(q => q.y)) });
@@ -1421,7 +1455,7 @@
   // with the cable's name and number past it, one line per cable (two placing systems may plug the same harness,
   // listed once). The break drags anywhere (c.upAt, mm from where it starts, kept with this system; a placed
   // system's tab keeps it in b.tabs). Drawn only here, never in a mini view: the parent draws the cable itself.
-  const UP = { reach: 140, out: 24, zig: 14, font: 13, line: 17 };
+  const UP = { reach: 140, out: 24, zig: 14, font: 13, line: 17, wrapW: 170 };
   function upStubs(s) {
     const out = [];
     s.blocks.forEach(b => (b.conns || []).forEach(c => {
@@ -1640,7 +1674,8 @@
       const p = [-u[1], u[0]], z = UP.zig, d = 'M' + pts.map(q => f1(q.x) + ' ' + f1(q.y)).join('L');
       // The break: a zigzag across the cable's end.
       const zz = [[-1.2, 0], [-0.55, 0.45], [0.05, -0.45], [0.6, 0.45], [1.2, 0]].map(([a, k]) => ({ x: E.x + p[0] * a * z + u[0] * k * z, y: E.y + p[1] * a * z + u[1] * k * z }));
-      const lines = cabs.map(x => { const hx = harnessOf(x), pn = pnOf(hx, x); return `${statusOf(x, hx).glyph} ${titleOf(x, hx)}${pn ? ' · ' + pn : ''}`; });
+      // Each cable's name wrapped, its number on a line of its own, all in one box (Chris, 2026-11-15).
+      const lines = cabs.flatMap(x => { const hx = harnessOf(x), pn = pnOf(hx, x); return wrapText(`${statusOf(x, hx).glyph} ${titleOf(x, hx)}`, UP.font, UP.wrapW, 3).concat(pn ? [pn] : []); });
       const horiz = Math.abs(u[0]) > 0.5, gap = 14;
       const lx = E.x + u[0] * gap, anchor = horiz ? (u[0] > 0 ? 'start' : 'end') : 'middle';
       const ly0 = horiz ? E.y + 4.5 - (lines.length - 1) * UP.line / 2 : u[1] > 0 ? E.y + gap + UP.font : E.y - gap - (lines.length - 1) * UP.line;
@@ -1649,7 +1684,7 @@
       o += `<g class="w sys-w sys-up st-${st.key}${fm ? (cabs.some(fm.cable) ? ' fhit' : ' fout') : ''}" data-upgrab="${b.id}|${esc(c.id)}"><title>${tip}</title>` +
         `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
         `<path class="sys-upzig" d="M${zz.map(q => f1(q.x) + ' ' + f1(q.y)).join('L')}"/>` +
-        `<rect class="sys-upgrab" x="${f1(bx)}" y="${f1(ly0 - UP.font)}" width="${f1(tw + 8)}" height="${f1(lines.length * UP.line + 2)}" rx="5"/>` +
+        `<rect class="sys-upgrab sys-upbox" x="${f1(bx - 4)}" y="${f1(ly0 - UP.font - 4)}" width="${f1(tw + 16)}" height="${f1(lines.length * UP.line + 10)}" rx="6"/>` +
         `<circle class="sys-upgrab" cx="${f1(E.x)}" cy="${f1(E.y)}" r="${z + 3}"/>` +
         lines.map((t, i) => `<text class="sys-uptext" x="${f1(lx)}" y="${f1(ly0 + i * UP.line)}" style="text-anchor:${anchor}">${esc(t)}</text>`).join('') + '</g>';
     });
@@ -1775,10 +1810,12 @@
             // The current runs along it while it or its block is selected, as on any cable.
             (on || linked ? `<path class="w-pulse${on ? '' : ' soft'}${lightColor(p.color) ? ' ink' : ''}" d="${p.d}"/>` : '')).join('') +
           D.juncs.map(j => `<circle class="sys-djunc" cx="${j.x}" cy="${j.y}" r="4.5"/>`).join('') +
-          D.boxes.map(x => `<g class="sys-dend" data-devgrab="${cab.id}"><rect class="sys-dbox${x.ghost ? ' ghost' : ''}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="3"/><text class="sys-dtext" x="${x.cx}" y="${x.cy}">${esc(x.label)}</text></g>`).join('') +
+          D.boxes.map(x => `<g class="sys-dend" data-devgrab="${cab.id}"><title>${esc(x.full)}</title><rect class="sys-dbox${x.ghost ? ' ghost' : ''}${x.leads ? ' leads' : ''}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="${x.leads ? 8 : 3}"/>` +
+            x.dots.map(q => `<circle class="sys-ddot"${q.color ? ` style="fill:${q.color}"` : ''} cx="${q.x}" cy="${q.y}" r="4.2"/>`).join('') +
+            `<text class="sys-dtext" x="${x.cx}" y="${(x.cy - ((x.lines || [x.label]).length - 1) * DW.lh / 2).toFixed(1)}">${tspans(x.lines || [x.label], x.cx, DW.lh)}</text></g>`).join('') +
           D.leads.map(l => `<g class="sys-dend" data-devgrab="${cab.id}">${l.dots.map(q => `<circle class="sys-ddot"${q.color ? ` style="fill:${q.color}"` : ''} cx="${q.x}" cy="${q.y}" r="4.2"/>`).join('')}<text class="sys-dtext lead" x="${l.lx}" y="${l.ly}" style="text-anchor:${l.anchor}">${esc(l.label)}</text></g>`).join('') +
-          (D.cap ? `<g class="sys-dend" data-devgrab="${cab.id}">${D.cap.text ? `<text class="sys-dcap${on ? ' sel' : ''}" x="${D.cap.x}" y="${D.cap.y}">${esc(D.cap.text)}</text>` : ''}` +
-            (D.cap.tags && D.cap.tags.length ? LM.tags.pillsSvg(D.cap.tags, D.cap.x + (D.cap.text ? U.textW(D.cap.text, 13) + 8 : 0), D.cap.y - 1) : '') + '</g>' : '') + '</g>';
+          (D.cap ? `<g class="sys-dend" data-devgrab="${cab.id}">${D.cap.lines.length ? `<text class="sys-dcap${on ? ' sel' : ''}" x="${D.cap.x}" y="${D.cap.y}">${tspans(D.cap.lines, D.cap.x, D.cap.lh)}</text>` : ''}` +
+            (D.cap.tags && D.cap.tags.length ? LM.tags.pillsSvg(D.cap.tags, D.cap.x + (D.cap.lines.length ? D.cap.lastW + 8 : 0), D.cap.y + Math.max(0, D.cap.lines.length - 1) * D.cap.lh - 1) : '') + '</g>' : '') + '</g>';
         // Its name is the caption over its far ends, not a floating label.
         lane = null; mid = null;
       } else if (at.length === 1 && !frees.length) {

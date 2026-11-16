@@ -1451,8 +1451,8 @@
     eq(D.paths.length, 3, 'a line per wire');
     eq(D.paths.map(p => p.color), ['#d8281c', '#1d1d1f', '#f4f4f4'], 'in their colors, the motor’s wires first');
     eq(D.paths[2].stripe, '#2563c9', 'a striped wire keeps its stripe');
-    eq(D.boxes.map(b => b.label), ['Fan motor'], 'the motor is a box with its name');
-    eq(D.leads.map(l => [l.label, l.dots.length]), [['Thermistor', 1]], 'flying leads end in a dot per wire');
+    eq(D.boxes.filter(x => !x.leads).map(x => [x.label, x.lines]), [['Fan motor', ['Fan motor']]], 'the motor is a box with its name');
+    eq(D.boxes.filter(x => x.leads).map(x => [x.label, x.dots.length]), [['Thermistor', 1]], 'flying leads are a box too, a dot per wire at it');
     ok(D.boxes[0].x > (a.x + a.w) * 4, 'out past the board, the way J1 leaves');
     const x0 = D.boxes[0].x;
     s.cables[0].devAt = { dx: 10, dy: -5 };

@@ -1351,6 +1351,8 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-canvas .sys-up .sys-hit { cursor: move; }
 .sys-canvas .sys-upzig { fill: none; stroke: var(--text); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
 .sys-canvas .sys-upgrab { fill: transparent; stroke: none; }
+.sys-canvas .sys-upgrab.sys-upbox { fill: var(--cv-paper, var(--bg-elev)); stroke: var(--cv-conn-edge, var(--hair)); stroke-width: 1.2; }
+.sys-dbox.leads { stroke-dasharray: 5 3; }
 .sys-canvas .sys-uptext { font: 600 13px var(--sans); fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
 .sys-canvas .sys-up:hover .sys-upzig { stroke: var(--accent); }
 .sys-canvas .sys-w.sel .sys-hit { cursor: move; }

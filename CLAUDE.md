@@ -28,6 +28,12 @@ links to it so far. Before every commit:
   `sys-pulse` keyframes), brighter with a dark rim, and dark (`.ink`) on a light cable (`lightColor`, which reads a
   `var(--x)` color from the theme: a purchased cable's gray on a dark page). Device harness wires too.
 
+- **Wrapped device ends, captions, and stubs (2026-11-15, Chris: long names made the system drawing sprawl).**
+  `wrapText(text, font, maxW, maxLines)`. A device-ended harness's far ends are all boxes, flying leads included
+  (dashed, a dot per wire at the box), their names wrapped to about 22 characters a line, at most 4 lines
+  (`DW.wrapW`, `lines`, `lh`). The caption wraps, with its part number on its own line (`DW.capW`, `capLines`). The
+  labels on cables from a placing system wrap the same way, in a box (`UP.wrapW`, `.sys-upbox`). `D.leads` stays
+  empty.
 - **Status statistics (2026-11-15, Chris: "start building" the plan).** Plan and what's built: `docs/status.md`.
   The ladder is Open, Generic, Placeholder, Needs fixing, Wired, and Complete (`STATES`, `stateOf`, `systemStats`). A
   strip and pie in the toolbar (`#sys-stats`, `statsStrip`), Status in the filter (`f.states`), board pills, and List
