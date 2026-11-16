@@ -50,7 +50,10 @@
   const fbCur = () => LM.formboard && LM.formboard.current();
   const fbRef = () => { const f = fbCur(); return f && f.reference ? f.reference.name || f.reference.kind : null; };
   // Back to Select, so a Draw channel left on in an earlier step doesn't turn the next step's clicks into points.
-  const fbSelect = () => { if (LM.formboard) LM.formboard.tool('select'); };
+  // With clear, nothing selected either, so the panel lists the cables (a channel just drawn stays selected).
+  // Four views first (the steps that drag blocks), then the stage.
+  const fbQuad = () => { const st = LM.formboard && LM.formboard.state().st; return st && st.quad ? '#fb-stage' : fbq('[data-fb="quad"]'); };
+  const fbSelect = clear => { if (!LM.formboard) return; LM.formboard.tool('select'); if (clear) LM.formboard.select(null); };
 
   const CHAPTERS = [
     { title: 'Welcome', steps: [
@@ -268,7 +271,7 @@
         text: 'The system’s boards and devices start beside the reference, faded, at their real sizes; a block stays faded until it’s moved, and lengths to it are provisional. Drag one onto the drawing, or select it and type its X, Y, and Z in the panel. {k:R} turns a selected block 90°, and {Snap block} puts a corner, edge, or hole of it onto one on the reference.',
         do: 'Click {Four views}, then drag the Main PCBA, the display board, and the wall wiring onto their outlines in the {Top} view. In the 3D view, click a block first, then drag it.',
         setup() { G().formboard('Layout board', 'dxf'); fbSelect(); },
-        spot: () => ['#fb-stage'] },
+        spot: () => [fbQuad()] },
       { title: 'Drawing channels',
         text: 'A channel is where cables may run: a path drawn point to point, with a width and a height. Selected, its points drag, a double-click on a run adds a point, and its panel sets its name, size, classes, and {Exclusive}, which keeps out any cable without one of its classes as a tag. A channel that isn’t exclusive takes any cable.',
         do: 'Click {Draw channel}, then click along a guide line from the wall terminal to the Main PCBA, and on to the display, and double-click (or press {k:Enter}) to finish. A click on another channel’s point joins them.',
@@ -277,7 +280,7 @@
       { title: 'Route and Apply lengths',
         text: '{Route} takes each cable from its connector to the nearest channel it may use, through the channels, and out to its other end, adding slack, each channel’s extra, and an allowance at each end (set in the formboard’s panel). Click a cable in the panel for its breakdown. A route whose ends or channels change is drawn dashed until it’s routed again. {Apply lengths} writes each routed length into the system as its cable’s length; for a Loom harness, {Save to base part}, in its panel, sets the harness’s own length instead.',
         do: 'Click {Route}, then a cable in the panel to see its length, then {Apply lengths}. {k:Ctrl+Z} here undoes it.',
-        setup() { G().formboard('Layout board', 'dxf'); fbSelect(); },
+        setup() { G().formboard('Layout board', 'dxf'); fbSelect(true); },
         spot: () => [fbq('[data-fb="route"]')] },
     ] },
     { title: 'Formboard from an STL', steps: [
@@ -287,10 +290,10 @@
         setup() { G().formboard('Enclosure', 'stl', false); fbSelect(); },
         spot: () => [fbRef() === 'formboard-demo.stl' ? fbq('[data-fb="quad"]') : fbq('[data-fb="demo-ref"][data-ref="stl"]')] },
       { title: 'Placing blocks in 3D',
-        text: 'In 3D a block drags in a flat view (Top, Front, or Right, in {Four views}), or in the 3D view once it’s selected. {Snap block} is the surest way onto a part: pick a corner, edge, hole, or face on the selected block, then where it goes on the model. {Turn 90°} about Z, X, or Y stands a board on its edge.',
-        do: 'Click the Main PCBA, then {Snap block}: pick a bottom corner of the board, then the top corner of the standoff it sits on. Do the same for the display board.',
+        text: 'In 3D a block drags in a flat view (Top, Front, or Right, in {Four views}), or in the 3D view once it’s selected, and its panel takes its X, Y, and Z (its middle). {Snap block} moves the selected block so a corner, edge, hole, or face of it lands on one of the model’s: pick the block’s, then the model’s. {Turn 90°} about Z, X, or Y stands a board on its edge.',
+        do: 'Click {Four views}. In the {Top} view, drag the Main PCBA over its four standoffs, then type 8.8 in its {Z}: the standoffs’ tops are 8 mm up, and the board’s middle is half its 1.6 mm above that. Do the same for the display board.',
         setup() { G().formboard('Enclosure', 'stl'); fbSelect(); },
-        spot: () => [fbq('[data-tool="snap"]')] },
+        spot: () => [fbQuad()] },
       { title: 'Channels on a model',
         text: 'On a model, each click of {Draw channel} snaps to the corner, edge, or face under the pointer, named beside it as you go, and a channel’s point goes exactly there. Channels are drawn as glass, so the model and the cables show through, with their edges dashed where the model is in front. {Route} and {Apply lengths} work as on a drawing.',
         do: 'Click {Draw channel} and click along the tray’s floor from one board to the other, double-click to finish, then {Route}.',

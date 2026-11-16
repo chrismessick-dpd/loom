@@ -693,7 +693,11 @@
   }
 
   // ── Interaction ──
+  // Once per host: render rewires it on every formboard switch, and a second set of listeners ran each click
+  // twice (Four views toggled straight back; New formboard made two).
   function wire(host) {
+    if (host.dataset.wired) return;
+    host.dataset.wired = '1';
     host.addEventListener('click', e => {
       const t = e.target.closest('[data-fb]');
       if (!t) return;

@@ -33,7 +33,8 @@ def dxf():
 open(os.path.join(out, 'formboard-demo.dxf'), 'w', newline='').write(dxf())
 
 # ---- STL (binary, mm): a tray 200 x 140 mm, 3 mm floor, 3 mm walls 35 mm tall, and 6 mm square standoffs
-# 5 mm tall under each board's corners. Separate closed boxes, as a quick CAD export might give.
+# 5 mm tall under each board's corners, flush with them, so a board placed over them sits with its corners on
+# theirs. Separate closed boxes, as a quick CAD export might give.
 tris = []
 def box(x0, y0, z0, x1, y1, z1):
     v = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
@@ -43,7 +44,7 @@ W, D, T, H = 200, 140, 3, 35
 box(0, 0, 0, W, D, T)
 box(0, 0, T, W, T, H); box(0, D - T, T, W, D, H); box(0, T, T, T, D - T, H); box(W - T, T, T, W, D - T, H)
 def standoffs(x, y, w, h):
-    for cx, cy in [(x + 4, y + 4), (x + w - 4, y + 4), (x + w - 4, y + h - 4), (x + 4, y + h - 4)]:
+    for cx, cy in [(x + 3, y + 3), (x + w - 3, y + 3), (x + w - 3, y + h - 3), (x + 3, y + h - 3)]:
         box(cx - 3, cy - 3, T, cx + 3, cy + 3, T + 5)
 standoffs(12, 75, 80, 50.7)     # Main PCBA
 standoffs(112, 75, 72, 45.8)    # Display & Sensor Board

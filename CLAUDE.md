@@ -38,9 +38,13 @@ links to it so far. Before every commit:
   140 mm tray with standoffs), made by `tools/make_formboard_demo.py`. Tried in the demo: every ring, a cable
   drawn between unused tabs, Wall wires made a harness and undone, Plug in a harness, Make external, the FFC
   turned Complete by a part number, both demo references, and Route and Apply lengths on the DXF board.
-  Not tried: dragging blocks, drawing channels, and Snap block by hand (Route and Apply ran on blocks and a channel
-  set in code), and phone widths (the new steps have no `phone` text). The preview pane was hidden, so the card's
-  place over the formboard stage and how legible the DXF's lines are weren't checked by eye.
+  Then (Chris: check the formboard steps) both chapters were run with pointer events: Top-view drags onto the
+  DXF's outlines, a channel clicked in and finished with Enter, Route, a cable's breakdown, and Apply lengths; on
+  the STL, Top-view drags and Z 8.8 onto the standoffs (now flush with the board corners; Snap block would put a
+  board's top corner on a standoff's, sinking it, so the step uses Z), and a channel clicked on the floor. Fixed on
+  the way: `wire(host)` in `formboard.js` added the host's listeners again on every formboard switch, so each click
+  ran twice (Four views toggled straight back, New formboard made two); and the Route step clears the selection,
+  since a channel just drawn stays selected. Not tried: phone widths (the new steps have no `phone` text).
 - **One run drag (2026-11-15, Chris: wires and cables drag alike).** `connect.js` `dragStart` and `dragTo` wrap the
   engine's grab and slide with the record's sides, mode, and split points kept; `dragRun` in `app.js` and the system's run
   drag both call them (a lead-in passes its own grab). A run drag no longer drops a moved split point, in either canvas.
