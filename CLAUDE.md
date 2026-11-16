@@ -22,6 +22,14 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Split points (2026-11-15, Chris: three or more ends as the harness's bundles).** A system cable with three or more
+  ends runs a trunk to a split point and a branch to each other end, all routed by the engine (`splitAt`, keys `split` and
+  each end's node id); a device harness has a split per plugged connector (`'t:<node>'`), straight out by default, a
+  routed trunk once its diamond is dragged (`movedTrunk` in `devLayout`). Diamonds on the selected cable
+  (`data-ssplit`, drag kind `split`), kept as the record's `split1` as in the harness. Run drags on a moved trunk's
+  wires go to the trunk. `LM.system.testHooks` sets the app's hooks for tests. Tests 119.
+- **Block name and status stacked (2026-11-15, Chris).** The name (or a pictured board's ref and name label) and the
+  status pill sit together in the middle of the block, the pill under the name (`mid`, `pill` in `svgHtml`'s block loop).
 - **Cable labels find a clear spot (2026-11-15, Chris: one behavior for wires and cables).** The lane helpers are the
   engine's (`connect.js` `lane`, `laneAt`, `laneT`), and an unset cable label takes the first spot clear of blocks and
   other labels along the level stretches, longest first, right then left (`labelSpot`), as the harness's labels do. A

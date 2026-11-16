@@ -849,6 +849,52 @@
     s.cables[0].ends.b = { block: a.id, conn: ar.id }; Y.normalize(s);
     ok(!s.cables[0].loose, 'plugged in again, the spot is dropped');
   });
+  test('system: a cable with three ends runs a trunk to a split point, then a branch to each other end', () => {
+    const Y = LM.system, s = Y.blank('Gizmo');
+    const a = Y.addDrawn(s, 'board', { x: 0, y: 0 }), b = Y.addDrawn(s, 'board', { x: 200, y: -60 }), c = Y.addDrawn(s, 'board', { x: 200, y: 80 });
+    [a, b, c].forEach(x => { x.w = 80; x.h = 40; x.conns.length = 0; });
+    const ar = Y.mkConn(a, 'J1', 2, { x: 80 - Y.TAB.w, y: 18 }), bl = Y.mkConn(b, 'J1', 2, { x: 0, y: 18 }), cl = Y.mkConn(c, 'J1', 2, { x: 0, y: 18 });
+    const h = harness('Y cable', { pn: '2200100-009' });
+    const n3 = M.addConnector(h, 300, 300, { family: 'generic-rect', pins: 2 });
+    const [n1, n2] = h.nodes.filter(M.isConn);
+    s.cables.push({ id: 'k3', kind: 'harness', harness: h.id, ends: { [n1.id]: { block: a.id, conn: ar.id }, [n2.id]: { block: b.id, conn: bl.id }, [n3.id]: { block: c.id, conn: cl.id } } });
+    const was = Y.testHooks({ harness: id => (id === h.id ? h : null), harnesses: () => [h], login: () => '', toast: () => {}, refresh: () => {} });
+    try {
+      Y.normalize(s);
+      const L = Y.layout(s).get('k3'), tr = L.routes.find(r => r.trunk), br = L.routes.filter(r => r.fromSplit);
+      ok(tr, 'a trunk');
+      eq(br.length, 2, 'a branch to each other end');
+      eq(L.splits.length, 1, 'one split point');
+      const S0 = L.splits[0], end = tr.pts[tr.pts.length - 1];
+      ok(Math.hypot(end.x - S0.x, end.y - S0.y) < 1, 'the trunk ends at the split');
+      ok(br.every(r => Math.hypot(r.pts[0].x - S0.x, r.pts[0].y - S0.y) < 1), 'each branch starts there');
+      ok([tr].concat(br).every(r => RT.fits(r.A, r.B, r.v, r.stub)), 'every piece fits its ends');
+      s.cables[0].routes = { split: { split1: { x: S0.x + 48, y: S0.y + 24 } } };
+      const L2 = Y.layout(s).get('k3'), e2 = L2.routes.find(r => r.trunk).pts.slice(-1)[0];
+      ok(Math.abs(e2.x - S0.x - 48) < 1 && Math.abs(e2.y - S0.y - 24) < 1, 'a dragged split stays where it was put');
+      eq(LM.connect.apply(s.cables[0].routes.split, 'reset-route'), null, 'Reset route forgets it');
+    } finally { Y.testHooks(was); }
+  });
+  test('system: a device harness trunk moved off its default routes to its split, and its wires fan from there', () => {
+    const { Y, s, a, c, h, get } = sysFixture();
+    const [p1, p2] = h.nodes.filter(M.isConn);
+    p2.atDevice = true; p2.name = 'Fan motor';
+    M.addWire(h, { node: p1.id, pin: '1' }, { node: p2.id, pin: '1' }, { color: 'RD' });
+    M.addWire(h, { node: p1.id, pin: '2' }, { node: p2.id, pin: '2' }, { color: 'BK' });
+    s.cables.push({ id: 'k1', kind: 'harness', harness: h.id, ends: { [p1.id]: { block: a.id, conn: c.id } }, lengthMm: null });
+    const D = Y.devLayout(s, get).get('k1');
+    eq(D.splits.length, 1, 'a split per plugged connector');
+    eq(D.trunks.length, 0, 'unmoved, the trunk runs straight out and needs no route');
+    const S0 = D.splits[0], key = S0.key;
+    s.cables[0].routes = { [key]: { split1: { x: S0.x + 120, y: S0.y + 160 } } };
+    const D2 = Y.devLayout(s, get).get('k1');
+    eq(D2.trunks.length, 1, 'moved, the trunk is a route');
+    const t = D2.trunks[0], e = t.pts[t.pts.length - 1];
+    ok(Math.abs(e.x - S0.x - 120) < 1 && Math.abs(e.y - S0.y - 160) < 1, 'ending at the split');
+    ok(RT.fits(t.A, t.B, t.v, t.stub), 'and fits its ends');
+    eq(D2.paths.length, 2, 'still a line per wire');
+    eq(D2.paths.map(p => p.color), D.paths.map(p => p.color), 'in the same colors');
+  });
   test('system: a turned block turns its connectors, their exits, and its size, and its cables still fit', () => {
     const Y = LM.system, s = Y.blank('Gizmo');
     const a = Y.addDrawn(s, 'board', { x: 0, y: 0 }), b = Y.addDrawn(s, 'board', { x: 0, y: 200 });

@@ -100,13 +100,22 @@ So the routing core is shared already. What diverged is everything around it:
   split point and ordered branches. So device harnesses are done with step 3, as one Connection with three
   or more ends. The shelved code is kept outside the repo.
 
+- **Split points (step 3), and device harnesses with them.**
+  - **Cables with three or more ends.** A cable with three or more ends runs a trunk from its first end to
+    a split point, then a branch to each other end. All of them are Connections in the one `routeAll` with
+    the rest. The split is a diamond on the selected cable that drags (grid, Ctrl free), kept as
+    `cab.routes.split.split1` (canvas units, the harness's field). Unmoved, it sits at the middle of the
+    ends' exits. *Reset route* forgets it.
+  - **Device harnesses.** A device harness has a split per plugged connector (`cab.routes['t:<node>']`).
+    Unmoved, the trunk runs straight out and fans as before, and on the reference systems nothing changed.
+    Moved, the trunk is a Connection routed round the blocks, whose runs drag, bend, and break as a cable's.
+    The wires ride it in their colors and fan from the split to their far ends.
+  - Tests 119.
+- **Block name and status (Chris, mid-step).** A block's name and its status pill stack in the middle of
+  the block, the pill under the name. A board drawn with its picture centers its ref-and-name label there.
+
 ## Next
 
-Step 3 and device harnesses together:
-- a Connection with three or more ends routes one trunk per plugged connector to a split point (a diamond
-  that drags, kept in `cab.routes`);
-- then a branch per far end, routed by the engine, with the furthest turning first so none cross (the
-  harness's `routeBranches`);
-- a device harness is that shape, with its far-end boxes as the ends.
-
-Then the shared gesture module.
+- Branches from a moved device split route as Connections when the far ends are far off. They still fan
+  as elbows, as the harness's split does within 120 units of its pins.
+- The shared gesture module.
