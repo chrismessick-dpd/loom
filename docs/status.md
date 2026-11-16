@@ -99,6 +99,10 @@ Steps 1 to 3 are built, in `assets/system.js` unless noted.
 - **The strip:** `#sys-stats` in `index.html`, beside the breadcrumb, drawn by `statsStrip()` from `app.js` and
   Formboard. It shows a 24 px donut, a chip per status, and the percent complete. Its panel has a 150 px patterned
   donut and the legend, whose rows include a status in the filter (Shift-click excludes, a second click clears).
+- **The pie's key (Chris, 2026-11-15: not clear which slice is which):** each legend row starts with a swatch filled
+  as its slice is (`swatchSvg`, `patMarks`), slices sit a little apart with their glyph on any over 6%, Wired is striped
+  so it doesn't read as Complete, a slice filters as its row does, and hovering either lights both and fades the rest
+  (`data-hot` on `.sys-spanel`).
 - **The filter:** a Status section (`f.states`) above Tags. A block lights on an included status any of its spots
   has, or anything inside a placed system has.
 - **Board pills:** at a block's bottom right (its name sits top left), sized with the block.
