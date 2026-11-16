@@ -1951,13 +1951,15 @@
         // name on a small label, in the middle of the block over the picture (Chris, 2026-11-15; it was at the top
         // left); with no picture, the name in the middle as on any block.
         const pic = picOf(b), fr = Math.max(14, Math.min(26, Hh / 8)), name = String(b.name || '');
-        const lw = U.textW(b.ref, fr) + (pic && name ? 10 + U.textW(name, fr * 0.72) : 0) + 16, lh = fr * 1.5;
+        // With a picture and a name, the label is the name alone (Chris, 2026-11-15: the ref came out); with no name,
+        // the ref.
+        const nf = fr * 0.85, named = !!(pic && name), lw = (named ? U.textW(name, nf) : U.textW(b.ref, fr)) + 16, lh = fr * 1.5;
         const fs = Math.max(7, Math.min(44, (W - 20) / Math.max(1, U.textW(name, 1)), Hh * 0.3));
         const lx = X + W / 2 - lw / 2, ly = pic || !name ? mid(lh, Y + Hh / 2) - lh / 2 : 0, ny = !pic && name ? mid(fs, Y + Hh / 2) : 0;
         html += `<g class="cv-conn sys-block board shaped${bs ? ' sel' : ''}${bdim}" data-block="${b.id}">` + (blit ? fring(X, Y, W, Hh) : '') + shapeSvg(b, pic, 'sys-shape') +
           (pic || !name ? `<rect class="sys-lab-bg" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" width="${lw.toFixed(1)}" height="${lh.toFixed(1)}" rx="${(fr * 0.4).toFixed(1)}"/>` +
-            `<text class="sys-ref" x="${(lx + 8).toFixed(1)}" y="${(ly + fr * 1.08).toFixed(1)}" style="font-size:${fr.toFixed(0)}px">${esc(b.ref)}</text>` +
-            (pic && name ? `<text class="sys-hname" x="${(lx + 8 + U.textW(b.ref, fr) + 10).toFixed(1)}" y="${(ly + fr * 1.05).toFixed(1)}" style="font-size:${(fr * 0.72).toFixed(1)}px">${esc(name)}</text>` : '') :
+            (named ? `<text class="sys-hname" x="${(lx + 8).toFixed(1)}" y="${(ly + fr * 1.03).toFixed(1)}" style="font-size:${nf.toFixed(1)}px">${esc(name)}</text>`
+              : `<text class="sys-ref" x="${(lx + 8).toFixed(1)}" y="${(ly + fr * 1.08).toFixed(1)}" style="font-size:${fr.toFixed(0)}px">${esc(b.ref)}</text>`) :
             `<text class="sys-ref" x="${X + 14}" y="${(Y + 6 + fr * 1.08).toFixed(1)}" style="font-size:${fr.toFixed(0)}px">${esc(b.ref)}</text>` +
             `<text class="sys-center" x="${X + W / 2}" y="${ny.toFixed(1)}" style="font-size:${fs.toFixed(1)}px">${esc(name)}</text>`);
       } else
