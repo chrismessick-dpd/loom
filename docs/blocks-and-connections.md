@@ -79,3 +79,34 @@ So the routing core is shared already. What diverged is everything around it:
    round the perimeter, dragged round it. Boards keep their pick-and-place spots, with a draggable
    exit.
 3. **Three or more ends.** System cables get the harness's split point and routed branches.
+
+## Progress (2026-11-15)
+
+- **Step 0 done.** A private before/after page draws every harness and system in a local `loom_data`
+  snapshot with the code frozen at the plan's start and with the working code, and lists what differs.
+  It's kept outside this repo. Before any change: 190 harnesses and 37 systems, no differences.
+- **Every selected connection carries the current** (Chris, mid-step): a selected connector's cables,
+  every selected block's in a multi-selection, and device harness wires. The bead has the harness's look
+  at the system's fixed size and speed, and a connection with its own color carries a lighter shade of it.
+- **Labels, one model.** The lane helpers (`lane`, `laneAt`, `laneT`) are the engine's (`connect.js`).
+  An unset cable label takes the first spot clear of blocks and other labels (`labelSpot`), as the
+  harness's labels do. On the reference systems, labels overlapping a block went from 13 to 9, and
+  overlapping each other from 4 to 2, on the largest one. Harnesses: no differences.
+- **Lead-ins** already drag through the engine's `slide` and `release`, so they get its snap straight and
+  merge. Shift-break doesn't apply: a lead-in is part of the port.
+- **Device harnesses: first try shelved.** Routing each leg (connector or splice to far end) as its own
+  Connection worked (drag, bend, break, all tests pass), but the legs crossed each other: on the reference
+  harness the tidy trunk-and-fan became a tangle. The harness editor avoids this with one trunk route to a
+  split point and ordered branches. So device harnesses are done with step 3, as one Connection with three
+  or more ends. The shelved code is kept outside the repo.
+
+## Next
+
+Step 3 and device harnesses together:
+- a Connection with three or more ends routes one trunk per plugged connector to a split point (a diamond
+  that drags, kept in `cab.routes`);
+- then a branch per far end, routed by the engine, with the furthest turning first so none cross (the
+  harness's `routeBranches`);
+- a device harness is that shape, with its far-end boxes as the ends.
+
+Then the shared gesture module.

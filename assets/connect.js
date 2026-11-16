@@ -119,6 +119,49 @@
   function draw(R0) { return RT().shape(R0.A, R0.B, R0.v, R0.r, R0.half + 4); }
   const pathD = pts => 'M' + pts.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('L');
 
+  // ── Labels along a Connection ──
+  // Chris, 2026-11-12 and 2026-11-15: a wire's or cable's label hangs from a dot on it, with a thin leader; the
+  // dot slides along it (labelAt, 0 to 1) and the label drags anywhere (labelOff, from the dot). A lane is
+  // the line as points with the distance along it (s).
+  const lane = pts => { let s0 = 0; return pts.map((q, i) => { if (i) s0 += Math.hypot(q.x - pts[i - 1].x, q.y - pts[i - 1].y); return { x: q.x, y: q.y, s: s0 }; }); };
+  // The point t (0 to 1) along a lane.
+  function laneAt(L, t) {
+    const S0 = L[L.length - 1].s * Math.max(0, Math.min(1, t));
+    for (let i = 1; i < L.length; i++) if (L[i].s >= S0) { const a = L[i - 1], b = L[i], u = (S0 - a.s) / Math.max(1e-6, b.s - a.s); return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u }; }
+    return { x: L[0].x, y: L[0].y };
+  }
+  // How far along a lane (0 to 1) the point nearest p is.
+  function laneT(L, p) {
+    let best = Infinity, at = 0;
+    for (let i = 1; i < L.length; i++) {
+      const a = L[i - 1], b = L[i], vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy || 1e-9;
+      const u = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / l2)), x = a.x + vx * u, y = a.y + vy * u, d = Math.hypot(p.x - x, p.y - y);
+      if (d < best) { best = d; at = a.s + (b.s - a.s) * u; }
+    }
+    return L[L.length - 1].s ? at / L[L.length - 1].s : 0;
+  }
+  // A label's default spot clear of the parts, as the harness's labels find theirs (docs/routing.md, Third
+  // round): along the level stretches, longest first, at their middle, then a quarter in from either end;
+  // right of the dot, then left; the first whose box (w wide, h tall, its baseline at the dot less up)
+  // overlaps no part (rects, grown by pad) and no label already placed (taken, which it joins). null: none
+  // is clear. Returns { t, dot, x0, y0, end } (end: the text runs left of x0).
+  function labelSpot(L, w, h, rects, taken, o) {
+    o = Object.assign({ gap: 8, up: 9, pad: 4, min: 0 }, o);
+    if (!L || L.length < 2) return null;
+    const S = L[L.length - 1].s, segs = [];
+    for (let i = 1; i < L.length; i++) { const a = L[i - 1], b = L[i]; if (Math.abs(a.y - b.y) < 0.5 && b.s - a.s > o.min) segs.push({ a, b }); }
+    segs.sort((p, q) => (q.b.s - q.a.s) - (p.b.s - p.a.s));
+    const hits = (x0, y0) => { const r = { x0: x0 - 5, y0: y0 - h + 4, x1: x0 + w + 5, y1: y0 + 4 }; return rects.some(q => r.x1 > q.x0 - o.pad && r.x0 < q.x1 + o.pad && r.y1 > q.y0 - o.pad && r.y0 < q.y1 + o.pad) || taken.some(q => r.x1 > q.x0 && r.x0 < q.x1 && r.y1 > q.y0 && r.y0 < q.y1) ? null : r; };
+    for (const g of segs) for (const f of [0.5, 0.25, 0.75]) {
+      const sAt = g.a.s + (g.b.s - g.a.s) * f, dot = { x: g.a.x + (g.b.x - g.a.x) * f, y: g.a.y };
+      for (const end of [false, true]) {
+        const x0 = end ? dot.x - o.gap - w : dot.x + o.gap, y0 = dot.y - o.up, r = hits(x0, y0);
+        if (r) { taken.push(r); return { t: S ? sAt / S : 0.5, dot, x0, y0, end }; }
+      }
+    }
+    return null;
+  }
+
   // ── Shaping ──
   // The run of a route nearest p: route.js nearestRun with its route, { route, j, k, axis, d, at }.
   function runAt(R0, p) { const n = RT().nearestRun(R0.A, R0.B, R0.v, p); return n ? Object.assign({ route: R0 }, n) : null; }
@@ -237,5 +280,5 @@
   // A stored record as given (a bare v, from before records, becomes { v }).
   const record = x => (Array.isArray(x) ? { v: x } : x && typeof x === 'object' ? x : null);
 
-  LM.connect = { routeAll, draw, pathD, runAt, runOf, handles, grab, slide, stick, release, bend, menuHtml, apply, record };
+  LM.connect = { lane, laneAt, laneT, labelSpot, routeAll, draw, pathD, runAt, runOf, handles, grab, slide, stick, release, bend, menuHtml, apply, record };
 })(window.LM = window.LM || {});

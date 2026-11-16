@@ -1436,21 +1436,8 @@
   // along the cable and the label comes along; dragging the label moves it anywhere and the dot stays.
   // Either drag first fixes the other half. The Cable labels box at the canvas's bottom right hides them
   // (this browser).
-  const laneOfPts = pts => { let s0 = 0; return pts.map((q, i) => { if (i) s0 += Math.hypot(q.x - pts[i - 1].x, q.y - pts[i - 1].y); return { x: q.x, y: q.y, s: s0 }; }); };
-  function laneAt(L, t) {
-    const S0 = L[L.length - 1].s * Math.max(0, Math.min(1, t));
-    for (let i = 1; i < L.length; i++) if (L[i].s >= S0) { const a = L[i - 1], b = L[i], u = (S0 - a.s) / Math.max(1e-6, b.s - a.s); return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u }; }
-    return { x: L[0].x, y: L[0].y };
-  }
-  function laneT(L, p) {
-    let best = Infinity, at = 0;
-    for (let i = 1; i < L.length; i++) {
-      const a = L[i - 1], b = L[i], vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy || 1e-9;
-      const u = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / l2)), x = a.x + vx * u, y = a.y + vy * u, d = Math.hypot(p.x - x, p.y - y);
-      if (d < best) { best = d; at = a.s + (b.s - a.s) * u; }
-    }
-    return L[L.length - 1].s ? at / L[L.length - 1].s : 0;
-  }
+  // The lane helpers and the clear spot are the engine's (connect.js), shared with the harness's wire labels.
+  const laneOfPts = pts => CN().lane(pts), laneAt = (L, t) => CN().laneAt(L, t), laneT = (L, p) => CN().laneT(L, p);
   const labelsOn = () => { try { return localStorage.getItem(NS + 'sysLabels') !== 'off'; } catch (e) { return true; } };
   let labInfo = new Map();
   // Cables into this system's external connectors from the systems placing it (Chris, 2026-11-14: a PDD system
@@ -1781,6 +1768,10 @@
     });
     html += '</g><g class="sys-cables">';
     let labels = '', handles = '';
+    // Unset labels keep clear of the blocks and of each other (labelSpot); the blocks' boxes, made once a drawing.
+    let rects0 = null;
+    const labRects = () => rects0 || (rects0 = s.blocks.map(b => { const z = sizeOf(b); return { x0: b.x * K, y0: b.y * K, x1: (b.x + z.W) * K, y1: (b.y + z.H) * K }; }));
+    const labTaken = [];
     (Lo || layout(s)).forEach(({ cab, h, ends, at, routes, dev }) => {
       const st = statusOf(cab, h), on = isSel('cable', cab.id), fc = fcls(fm && fm.cable(cab));
       // A selected block's cables glow and carry the harness's soft current (as a selected connector's
@@ -1853,13 +1844,19 @@
         const tx = raw ? U.textW(raw, 11) : 0, pw = ctags.length ? LM.tags.pillsW(ctags) : 0, tw0 = tx + (raw && pw ? 6 : 0) + pw;
         const set = cab.labelAt != null || cab.labelOff != null;
         // Where it has always been, unset: by the route's middle, or along a device stub past its mark.
-        const t0 = cab.labelAt != null ? cab.labelAt : routes.length ? 0.5 : 1;
-        const dot = lane ? laneAt(lane, t0) : { x: mid.x, y: mid.y };
+        let t0 = cab.labelAt != null ? cab.labelAt : routes.length ? 0.5 : 1;
+        let dot = lane ? laneAt(lane, t0) : { x: mid.x, y: mid.y };
         let x0, y0, rot = 0, end = false;
         if (cab.labelOff) { x0 = dot.x + cab.labelOff.dx * K; y0 = dot.y + cab.labelOff.dy * K; }
         else if (!set && mid.dx != null && mid.dy) { x0 = mid.x + 3.5; y0 = mid.y + mid.dy * 9; rot = mid.dy > 0 ? 90 : -90; }
         else if (!set && mid.dx != null) { x0 = mid.x + mid.dx * 9; y0 = mid.y + 3.5; end = mid.dx < 0; }
-        else { x0 = dot.x + 8; y0 = dot.y - 9; }
+        else {
+          // Unset, a spot clear of the blocks and the other labels, as the harness's labels find theirs (Chris,
+          // 2026-11-15: one behavior for wires and cables); none clear, just right of the route's middle.
+          const sp = !set && lane ? CN().labelSpot(lane, tw0, 16, labRects(), labTaken) : null;
+          if (sp) { dot = sp.dot; t0 = sp.t; x0 = sp.end ? sp.x0 + tw0 : sp.x0; y0 = sp.y0; end = sp.end; }
+          else { x0 = dot.x + 8; y0 = dot.y - 9; }
+        }
         labInfo.set(cab.id, { lane, t: t0, dot, off: { dx: (x0 - dot.x) / K, dy: (y0 - dot.y) / K }, rot });
         const ax = end ? x0 + 4 : x0 - 4, ay = y0 - 4, lead = !rot && Math.hypot(ax - dot.x, ay - dot.y) > 10 ? `<path class="sys-ldot-lead${dim ? ' dim' : ''}" d="M${dot.x} ${dot.y}L${ax} ${ay}"/>` : '';
         // An end-anchored label (text running left of x0) keeps its pills on the left of the text.

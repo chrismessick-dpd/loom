@@ -22,6 +22,10 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Cable labels find a clear spot (2026-11-15, Chris: one behavior for wires and cables).** The lane helpers are the
+  engine's (`connect.js` `lane`, `laneAt`, `laneT`), and an unset cable label takes the first spot clear of blocks and
+  other labels along the level stretches, longest first, right then left (`labelSpot`), as the harness's labels do. A
+  label set by hand stays. Harness drawings unchanged. Progress and next steps: `docs/blocks-and-connections.md`.
 - **Every selected connection carries the current (2026-11-15, Chris).** A selected connector's cables, and every
   selected block's in a selection of several, carry the soft current as a selected block's do (`plugs` in the
   cable loop). The bead has the harness's look (white at half strength with its soft glow, ink on a light line) but
