@@ -60,7 +60,9 @@ links to it so far. Before every commit:
   empty.
   Then (Chris) a break's label box steps clear of device boxes, captions, blocks, and earlier breaks, from its default
   or hand-placed spot: across its stub's way first, then further out (`clearUp`, `upLabel`, `UP.step`); `upAuto` keeps
-  where it's drawn so a drag starts there. Device drawings themselves don't move for each other yet.
+  where it's drawn so a drag starts there. Device drawings step clear too (Chris): each drawing's far-end boxes and
+  caption, of the blocks and of drawings placed before it (hand-dragged ones first), along the connector's edge, then out
+  (`farRects`, `D.push`, `DW.clear`/`step`/`wide`/`far2`); the drawing's `at` is where it's drawn, never stored. Tests 122.
 - **Status statistics (2026-11-15, Chris: "start building" the plan).** Plan and what's built: `docs/status.md`.
   The ladder is Open, Generic, Placeholder, Needs fixing, Wired, and Complete (`STATES`, `stateOf`, `systemStats`). A
   strip and pie in the toolbar (`#sys-stats`, `statsStrip`), Status in the filter (`f.states`), board pills, and List
