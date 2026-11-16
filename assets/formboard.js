@@ -193,6 +193,10 @@
     const r = f && f.reference;
     if (!r) return null;
     // A made-up reference for the demo, built here (no file).
+    if (r.kind === 'builtin' && r.shape === 'bracket') {
+      if (!REF.bracket) REF.bracket = { mesh: bracketMesh(), T: [0, 0, 0] };
+      return { id: 'ref', mesh: REF.bracket.mesh, R: null, pivot: [0, 0, 0], T: REF.bracket.T, fixed: true };
+    }
     if (r.kind === 'builtin') {
       const k = 'builtin|' + r.size.join('x');
       if (!REF[k]) {
@@ -206,6 +210,34 @@
     const got = REF[r.sha + '|' + (r.scale || 1)];
     if (!got) { loadRef(r); return null; }
     return { id: 'ref', mesh: got.mesh, tex: got.tex, R: null, pivot: [0, 0, 0], T: got.T || [0, 0, 0], fixed: true };
+  }
+  // The demo's made-up bracket, one closed solid: a 300 × 200 × 10 mm base (top at z 10) and a 10 mm wall at the
+  // back, along y 190 to 200, up to z 150 (Chris: the back of the bracket at the back), the L profile in y and z run along x. Each flat face is its own face id, as a
+  // STEP's would be; faces looking up are lighter.
+  const BRACKET = { x: 300, y: 200, t: 10, h: 150 };
+  function bracketMesh() {
+    const { x: X, y: Y, t: T, h: H } = BRACKET, pos = [], idx = [], col = [], fid = [], seen = new Map();
+    let face = 0;
+    // Corners shared between faces are one vertex, so each edge is one edge between two faces.
+    const vert = p => { const k = p.join(','); if (!seen.has(k)) { seen.set(k, pos.length / 3); pos.push(p[0], p[1], p[2]); } return seen.get(k); };
+    // A triangle of the current face; faces looking up are lighter.
+    const tri = (a, b, c) => {
+      const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]], nz = u[0] * w[1] - u[1] * w[0];
+      const g = nz > 1e-9 ? [214, 217, 222] : [170, 174, 180];
+      [a, b, c].forEach(p => idx.push(vert(p)));
+      col.push(g[0], g[1], g[2]); fid.push(face);
+    };
+    // The L profile, counterclockwise seen from +x: (y, z).
+    const L = [[0, 0], [Y, 0], [Y, H], [Y - T, H], [Y - T, T], [0, T]];
+    for (let i = 0; i < L.length; i++, face++) {
+      const a = L[i], b = L[(i + 1) % L.length], A = [0, a[0], a[1]], B = [0, b[0], b[1]], C = [X, b[0], b[1]], D = [X, a[0], a[1]];
+      tri(A, B, C); tri(A, C, D);
+    }
+    // The two ends: the L in four triangles using only its own six corners (no vertex partway along an edge).
+    const TRI = [[0, 1, 4], [1, 2, 4], [2, 3, 4], [0, 4, 5]];
+    TRI.forEach(t => tri(...t.map(i => [X, L[i][0], L[i][1]]))); face++;
+    TRI.forEach(t => tri(...t.slice().reverse().map(i => [0, L[i][0], L[i][1]]))); face++;
+    return { pos: Float32Array.from(pos), idx: Uint32Array.from(idx), col: Uint8Array.from(col), fid: Uint32Array.from(fid) };
   }
   const loading = {};
   function loadRef(r) {
@@ -862,7 +894,7 @@
   }
   function onHover(v, i) {
     S.hover = { v: v.key, xy: i.xy };
-    if (S.tool === 'channel') S.hoverPt = (pointAt(v, i, (S.draft || {}).h || CH.h) || {}).p || null;
+    if (S.tool === 'channel') { const at = pointAt(v, i, (S.draft || {}).h || CH.h) || {}; S.hoverPt = at.p || null; S.hoverFt = at.ft && at.ft.type !== 'plane' ? at.ft : null; S.hoverJoin = !!at.join; }
     else if (S.tool === 'snap' && S.sel && S.sel.kind === 'block') { const me = 'b:' + S.sel.id; S.hoverFt = S.st.featureAt(v, i.xy, (oi, o) => (S.snap ? o.id !== me && (o.id === 'ref' || o.id.startsWith('b:')) : o.id === me)); S.hoverFt && (S.hoverFt.view = v.key); }
     else {
       // A cable's line under the pointer, for a click to pick it.
@@ -942,6 +974,14 @@
       const c = f.channels.find(x => x.id === S.sel.id);
       if (c) { g.save(); g.fillStyle = '#fff'; g.strokeStyle = '#00a3b4'; g.lineWidth = 2 * k; c.pts.forEach(p => { const q = P(p); g.beginPath(); g.arc(q[0], q[1], 5 * k, 0, 7); g.fill(); g.stroke(); }); g.restore(); }
     }
+    // Drawing a channel: the corner or edge a click would snap to, and its name by the pointer.
+    if (S.tool === 'channel' && S.hover && S.hover.v === v.key && S.hoverPt && (S.hoverFt || S.hoverJoin)) {
+      if (S.hoverFt) S.st.drawFeature(v, g, S.hoverFt);
+      const q = P(S.hoverPt), t = S.hoverJoin ? 'Join channel' : S.hoverFt.label;
+      g.save(); g.font = `600 ${10.5 * k}px system-ui, sans-serif`; const w = g.measureText(t).width + 10 * k;
+      g.fillStyle = 'rgba(20, 22, 26, 0.72)'; g.fillRect(q[0] + 8 * k, q[1] + 8 * k, w, 16 * k);
+      g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(t, q[0] + 13 * k, q[1] + 16 * k); g.restore();
+    }
     if (S.tool === 'snap') { if (S.snap) S.st.drawFeature(v, g, S.snap, '#e07800'); if (S.hoverFt) S.st.drawFeature(v, g, S.hoverFt); }
     if (S.tool === 'calibrate' && S.cal) S.cal.forEach(p => { const q = P(p); g.save(); g.strokeStyle = '#e07800'; g.lineWidth = 2 * k; g.beginPath(); g.arc(q[0], q[1], 6 * k, 0, 7); g.stroke(); g.restore(); });
   }
@@ -958,30 +998,30 @@
     return false;
   }
 
-  // ── Demo (?demo): a made-up wall plate for the thermostat, two classes, and three channels ──
+  // ── Demo (?demo): a made-up bracket for the thermostat (BRACKET), two classes, and two channels on its base ──
   function demo(systemId) {
-    const f = blank(systemId, 'Wall plate');
+    const f = blank(systemId, 'Bracket'), z = BRACKET.t;
     f.classes = [{ id: 'kcls1', name: 'Low voltage', color: '#2f6fd1' }, { id: 'kcls2', name: '24 VAC', color: '#d4a514' }];
     f.channels = [
-      { id: 'cdemo1', name: 'Plate channel', pts: [[30, 45, 8], [250, 45, 8]], up: [0, 0, 1], w: 25, h: 16, classes: ['kcls1'], exclusive: false, extraPerM: 0 },
-      { id: 'cdemo2', name: '24 VAC raceway', pts: [[265, 45, 8], [265, 195, 8]], up: [0, 0, 1], w: 25, h: 16, classes: ['kcls2'], exclusive: true, extraPerM: 0 },
+      { id: 'cdemo1', name: 'Base channel', pts: [[30, 45, z + 8], [250, 45, z + 8]], up: [0, 0, 1], w: 25, h: 16, classes: ['kcls1'], exclusive: false, extraPerM: 0 },
+      { id: 'cdemo2', name: '24 VAC raceway', pts: [[265, 45, z + 8], [265, 175, z + 8]], up: [0, 0, 1], w: 25, h: 16, classes: ['kcls2'], exclusive: true, extraPerM: 0 },
     ];
-    f.reference = { kind: 'builtin', name: 'Wall plate (made up), 320 × 220 mm', size: [320, 220, 4] };
-    // The thermostat's boards on the plate, the wall wiring's device beside the 24 VAC raceway.
+    f.reference = { kind: 'builtin', shape: 'bracket', name: 'Bracket (made up), 300 × 200 × 150 mm' };
+    // The thermostat's boards on the base, the wall wiring's device beside the 24 VAC raceway.
     const fl = LM.system.flatten(systemId);
     let x = 40;
     (fl ? fl.blocks : []).forEach(b => {
       const t = THICK[b.kind] || 10, w = b.w, h = b.h;
-      if (b.kind === 'device') { f.blocks[b.path] = { at: [295, 150, t / 2], rot: [0, 0, 0] }; return; }
-      f.blocks[b.path] = { at: [x + w / 2, 125, t / 2], rot: [0, 0, 0] };
+      if (b.kind === 'device') { f.blocks[b.path] = { at: [285, 150, z + t / 2], rot: [0, 0, 0] }; return; }
+      f.blocks[b.path] = { at: [x + w / 2, 125, z + t / 2], rot: [0, 0, 0] };
       x += w + 20;
     });
     // The wall wiring is tagged 24 VAC in the demo system, so it may use the raceway (exclusive) as well as the
-    // plate channel.
+    // base channel.
     f.demo = true; f.demoV = DEMO_V;
     return f;
   }
-  const DEMO_V = 3;   // bump to rebuild the demo formboard in browsers that have an older one
+  const DEMO_V = 4;   // bump to rebuild the demo formboard in browsers that have an older one
   function ensureDemo(systemId) {
     if (!DEMO) return;
     live().filter(f => f.demo && f.demoV !== DEMO_V).forEach(f => { delete S.store[f.id]; if (S.cur === f.id) S.cur = null; });

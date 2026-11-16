@@ -24,7 +24,20 @@
   };
   const ISO = { az: -35 * DEG, el: 30 * DEG };
   const featCache = new WeakMap();
-  const featsOf = mesh => { let f = featCache.get(mesh); if (!f) { f = M3().features(mesh); featCache.set(mesh, f); } return f; };
+  // A mesh with no CAD faces (an STL: every triangle one face id) would read as one smooth face with no edges or
+  // corners to snap to. Read it as facets instead, so neighbors meeting under 30° join and sharper creases are edges.
+  const featsOf = mesh => {
+    let f = featCache.get(mesh);
+    if (!f) {
+      const nt = mesh.idx.length / 3, fid = mesh.fid;
+      let one = nt > 1;
+      if (one && fid) for (let t = 1; t < nt; t++) if (fid[t] !== fid[0]) { one = false; break; }
+      if (one) { const id = new Uint32Array(nt); for (let t = 0; t < nt; t++) id[t] = t; f = M3().features(Object.assign({}, mesh, { fid: id })); }
+      else f = M3().features(mesh);
+      featCache.set(mesh, f);
+    }
+    return f;
+  };
   const vtx = (m, i) => [m.pos[i * 3], m.pos[i * 3 + 1], m.pos[i * 3 + 2]];
   function segDist(p, a, b) {
     const vx = b[0] - a[0], vy = b[1] - a[1], l = vx * vx + vy * vy, t = l ? Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l)) : 0;

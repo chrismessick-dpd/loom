@@ -48,9 +48,15 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   are drawn over the views; Not routed is dashed and labeled.
 - **Apply lengths** and **Save to base part** as decided under *Lengths*, each one undo step in the
   formboard's own history (which puts the system's or harness's values back).
-- **The demo** (`?demo`, the thermostat system): a made-up 320 × 220 mm wall plate (built in, no file), the
-  boards placed on it, a Low voltage channel and an exclusive 24 VAC raceway, and the wall wiring tagged
-  24 VAC.
+- **The demo** (`?demo`, the thermostat system): a made-up bracket (built in, no file; `bracketMesh`), one closed
+  L-shaped solid: a 300 × 200 × 10 mm base and a 10 mm wall at its back, 150 mm tall (Chris, 2026-11-15, after the
+  first wall plate). Each flat face is its own face id, so it snaps as a STEP would. The boards sit on the base, with a
+  Low voltage channel and an exclusive 24 VAC raceway, and the wall wiring tagged 24 VAC.
+- **STL snapping (2026-11-15, Chris: channel points didn't snap to edges and corners on his STL).** An STL has no CAD
+  faces, so `readStl` gives every triangle face id 0, and `model3d.features` read the whole model as one face with no
+  edges. `stage.js` `featsOf` now reads a mesh whose triangles all share one face id as facets (neighbors under 30°
+  join, sharper creases are edges), with no change to stored files. While drawing a channel, the corner or edge a
+  click would snap to is drawn and named by the pointer (or *Join channel*).
 
 - **Sync (2026-11-15, Chris: "Build sync next").** `store.js` `syncFormboards` runs after the systems in every
   sync (on opening signed in, the Sync button, Ctrl+S). Each formboard is `loom_data/formboards/projects/<id>.json`
