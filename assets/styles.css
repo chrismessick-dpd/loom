@@ -1115,6 +1115,10 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .sys-fmenu[hidden] { display: none; }
 .sys-fhead { display: flex; justify-content: space-between; align-items: center; }
 .sys-fhead b { font-size: 14px; }
+.sys-fhead { gap: 8px; }
+.sys-fmode { margin-left: auto; }
+.sys-fmode button { min-width: 40px; }
+.sys-fclear-sp { width: 34px; }
 .sys-fclear { background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--accent); cursor: pointer; }
 .sys-fclear:hover { text-decoration: underline; }
 .sys-fsec { margin-top: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }

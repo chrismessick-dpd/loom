@@ -1690,15 +1690,15 @@
     const f = filters()[root || S.root] || {}, pats = Object.assign({}, f.pats || {});
     // The first version's name and number boxes, as included patterns.
     [f.name, f.pn].forEach(x => { if (x && String(x).trim()) pats[String(x).trim()] = 'in'; });
-    return { tags: Object.assign({}, f.tags || {}), pats, states: Object.assign({}, f.states || {}) };
+    return { tags: Object.assign({}, f.tags || {}), pats, states: Object.assign({}, f.states || {}), mode: f.mode === 'or' ? 'or' : 'and' };
   }
   const applies = v => v === 'in' || v === 'out';
   const filterOn = f => Object.values(f.tags).some(applies) || Object.values(f.pats).some(applies) || Object.values(f.states || {}).some(applies);
   // Kept while anything is in it, an unapplied pattern's badge too.
-  const filterKept = f => filterOn(f) || Object.keys(f.pats).length > 0;
+  const filterKept = f => filterOn(f) || Object.keys(f.pats).length > 0 || f.mode === 'or';
   function setFilter(f, root) {
     const all = filters(), k = root || S.root;
-    if (filterKept(f)) all[k] = { tags: f.tags, pats: f.pats, states: f.states || {} }; else delete all[k];
+    if (filterKept(f)) all[k] = Object.assign({ tags: f.tags, pats: f.pats, states: f.states || {} }, f.mode === 'or' ? { mode: 'or' } : {}); else delete all[k];
     try { localStorage.setItem(FKEY, JSON.stringify(all)); } catch (e) { /* storage blocked */ }
   }
   function glob(p) {
@@ -1717,22 +1717,31 @@
     const sin = by(f.states || {}, 'in'), sout = by(f.states || {}, 'out'), SS = sin.length || sout.length ? statsNow(S.root && (S.root === s.id || places(S.store[S.root], s.id)) ? S.root : s.id) : null;
     const hit = (re, xs) => xs.some(x => x && re.test(x));
     const pats = xs => (!pin.length || pin.some(re => hit(re, xs))) && !pout.some(re => hit(re, xs));
+    // And (Chris, 2026-11-16: an And / Or switch; his choice, sections combine): in each section in use any
+    // included item, and every such section must match. Or: any included item in any section. An Exclude fades
+    // what it matches either way.
+    const or = f.mode === 'or', anyIn = inc.length + sin.length + pin.length > 0;
     const cable = cab => {
-      const h = harnessOf(cab), tg = cab.tags || [];
-      if (inc.length && !inc.some(k => LM.tags.has(tg, k))) return false;
-      if (exc.some(k => LM.tags.has(tg, k))) return false;
-      if (SS) { const v = SS.stateOf(cab); if ((sin.length && !sin.includes(v)) || sout.includes(v)) return false; }
-      return pats([titleOf(cab, h), cab.name, h && h.title, pnOf(h, cab), cab.mpn]);
+      const h = harnessOf(cab), tg = cab.tags || [], xs = [titleOf(cab, h), cab.name, h && h.title, pnOf(h, cab), cab.mpn];
+      const v = SS ? SS.stateOf(cab) : null;
+      if (exc.some(k => LM.tags.has(tg, k)) || (v && sout.includes(v)) || pout.some(re => hit(re, xs))) return false;
+      const tIn = inc.some(k => LM.tags.has(tg, k)), sIn = !!v && sin.includes(v), pIn = pin.some(re => hit(re, xs));
+      if (or) return !anyIn || tIn || sIn || pIn;
+      return (!inc.length || tIn) && (!sin.length || sIn) && (!pin.length || pIn);
     };
     // A block lights by itself on an included pattern or status (with no tag included): a status when one of its
     // cables or connectors, or anything inside a placed system, has it (Chris: the worst wins for the pill, but
     // any one lights it here).
     const direct = (pin.length > 0 || sin.length > 0) && !inc.length;
+    // Or: a block lights on any included pattern or status of its own, whatever tags are included.
     const block = (b, x) => {
-      if (!direct) return false;
-      if (sin.length && SS && !sin.some(v => SS.statesIn(x || s, b).has(v))) return false;
-      const ch = childOf(b), name = ch ? ch.title : b.name || '';
-      return pats([name, b.ref + ' ' + name, b.ref, b.source && b.source.name, b.pn, ch && ch.pn]);
+      if (!direct && !(or && (pin.length || sin.length))) return false;
+      const ch = childOf(b), name = ch ? ch.title : b.name || '', xs = [name, b.ref + ' ' + name, b.ref, b.source && b.source.name, b.pn, ch && ch.pn];
+      if (pout.some(re => hit(re, xs))) return false;
+      const sIn = !!sin.length && !!SS && sin.some(v => SS.statesIn(x || s, b).has(v)), pIn = pin.some(re => hit(re, xs));
+      if (or) return sIn || pIn;
+      if (sin.length && SS && !sIn) return false;
+      return !pin.length || pIn;
     };
     const memo = new Map();
     const holds = (x, trail) => {
@@ -1791,7 +1800,9 @@
       const tags = LM.tags.all().slice().sort((a, b2) => a.localeCompare(b2, undefined, { sensitivity: 'base' }));
       const stOf = k => { const hit = Object.keys(f.tags).find(x => LM.tags.key(x) === LM.tags.key(k)); return hit ? f.tags[hit] : ''; };
       const pats = Object.keys(f.pats);
-      m.innerHTML = `<div class="sys-fhead"><b>Filter</b>${on ? '<button class="sys-fclear" data-sact="filter-clear">Clear</button>' : ''}</div>` +
+      m.innerHTML = `<div class="sys-fhead"><b>Filter</b><span class="seg sys-fmode" role="radiogroup" aria-label="Combine">${[['and', 'And', 'Every section in use must match (within a section, any included item)'], ['or', 'Or', 'Anything matching any included item lights']].map(([k, l, tip]) =>
+        `<button class="${f.mode === k ? 'on' : ''}" data-sact="filter-mode" data-v="${k}" role="radio" aria-checked="${f.mode === k}" title="${tip}. Excludes fade what they match either way.">${l}</button>`).join('')}</span>` +
+        `${on ? '<button class="sys-fclear" data-sact="filter-clear">Clear</button>' : '<span class="sys-fclear-sp"></span>'}</div>` +
         `<div class="sys-fsec">Status</div><div class="sys-ftags">${STATES.map(x => `<div class="sys-ftag">${statePill(x.key)}` + fseg('filter-state', `data-state="${x.key}"`, f.states[x.key] || '', 'status', true) + '</div>').join('')}</div>` +
         `<div class="sys-fsec">Tags</div>` +
         (tags.length ? `<div class="sys-ftags">${tags.map(k => `<div class="sys-ftag"><span class="tag-badge sm" style="--tag:${esc(LM.tags.color(k))}"><span class="tag-dot"></span>${esc(k)}</span>` +
@@ -3263,7 +3274,8 @@
       case 'list-mode': { const p = listPrefs(); p.mode = el.dataset.mode === 'flat' ? 'flat' : 'tree'; setListPrefs(p); A.refresh(); break; }
       case 'filter': S.filterOpen = !S.filterOpen; filterUi(true); break;
       case 'filter-tag': { const f = filterOf(), k = el.dataset.tag, v = el.dataset.v; Object.keys(f.tags).forEach(x => { if (LM.tags.key(x) === LM.tags.key(k)) delete f.tags[x]; }); if (v) f.tags[k] = v; setFilter(f); filterUi(true); A.refresh(); break; }
-      case 'filter-clear': setFilter({ tags: {}, pats: {}, states: {} }); filterUi(true); A.refresh(); break;
+      case 'filter-clear': { const m0 = filterOf().mode; setFilter({ tags: {}, pats: {}, states: {}, mode: m0 }); filterUi(true); A.refresh(); break; }
+      case 'filter-mode': { const f = filterOf(); f.mode = el.dataset.v === 'or' ? 'or' : 'and'; setFilter(f); filterUi(true); A.refresh(); break; }
       case 'filter-state': { const f = filterOf(), k = el.dataset.state, v = el.dataset.v; if (v) f.states[k] = v; else delete f.states[k]; setFilter(f); filterUi(true); A.refresh(); break; }
       case 'filter-add': { const i = fwrap() && fwrap().querySelector('#sys-fpat'); if (i && addPattern(i.value)) { filterUi(true); A.refresh(); setTimeout(() => { const j = fwrap() && fwrap().querySelector('#sys-fpat'); if (j) j.focus(); }, 0); } break; }
       case 'filter-pat': { const f = filterOf(), k = el.dataset.pat, v = el.dataset.v; if (v) f.pats[k] = v; else delete f.pats[k]; setFilter(f); filterUi(true); A.refresh(); break; }

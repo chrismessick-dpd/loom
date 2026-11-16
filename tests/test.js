@@ -1360,6 +1360,19 @@
       ok(LM.tags.has(['24 VAC'], '24 vac') && !LM.tags.has(['24 VAC'], '24'), 'names match without case');
     } finally { done(); }
   });
+  test('system filter: And needs every section in use, Or any included item, and Exclude fades either way', () => {
+    const { Y, pump, done } = nestFixture();
+    try {
+      const can = { id: 'kc', kind: 'link', name: 'CAN bus', tags: ['Data'], ends: {} }, pwr = { id: 'kp', kind: 'link', name: 'Power', tags: ['24V'], ends: {} };
+      pump.cables.push(can, pwr);
+      const lit = f => [can, pwr].filter(Y.filterMatch(pump, f).cable).map(c => c.id);
+      const f = mode => ({ tags: { '24V': 'in' }, pats: { 'CAN*': 'in' }, states: {}, mode });
+      eq(lit(f('and')), [], 'And: a cable needs the tag and the name');
+      eq(lit(f('or')), ['kc', 'kp'], 'Or: either one lights it');
+      eq(lit(Object.assign(f('or'), { pats: { 'CAN*': 'in', 'Pow*': 'out' } })), ['kc'], 'an Exclude still fades what it matches');
+      eq(lit({ tags: { Data: 'in', '24V': 'in' }, pats: {}, states: {}, mode: 'and' }), ['kc', 'kp'], 'within one section, And takes any included item');
+    } finally { done(); }
+  });
   test('system filter: a pattern clicked off keeps its badge and filters nothing', () => {
     const { Y, top, done } = nestFixture();
     try {
