@@ -1572,10 +1572,12 @@
       if (!cabs.length) return;
       const g = tabGeom(b, c), d = [g.dx, g.dy];
       const lines = cabs.flatMap(x => { const hx = harnessOf(x), pn = pnOf(hx, x); return wrapText(`${statusOf(x, hx).glyph} ${titleOf(x, hx)}`, UP.font, UP.wrapW, 3).concat(pn ? [pn] : []); });
-      // Unmoved, the break steps clear of device boxes, captions, blocks, and the other labels (Chris, 2026-11-15:
-      // a label from above sat on a device box); upAuto keeps that step, so a drag starts where it's drawn.
-      const key = b.id + '|' + c.id, off = c.upAt || clearUp(g, d, lines, taken());
-      if (c.upAt) upAuto.delete(key); else upAuto.set(key, off);
+      // The break steps clear of device boxes, captions, blocks, and the other labels, from where it was put or
+      // its default (Chris, 2026-11-15: a label from above sat on a device box); upAuto keeps where it's drawn, so a
+      // drag starts there.
+      const key = b.id + '|' + c.id, off0 = c.upAt || { dx: 0, dy: 0 }, step = clearUp(g, d, lines, taken(), off0);
+      const off = { dx: off0.dx + step.dx, dy: off0.dy + step.dy };
+      upAuto.set(key, off);
       const A0 = { x: g.ex + d[0] * UP.out, y: g.ey + d[1] * UP.out };
       const E = { x: g.ex + d[0] * UP.reach + off.dx * K, y: g.ey + d[1] * UP.reach + off.dy * K };
       // Out of the connector, then at right angles to the break: across halfway (never back past the stub),
@@ -1606,15 +1608,16 @@
     return { lx, ly0, anchor, box, hit };
   }
   const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
-  // The nearest spot for an unmoved break whose label box (with its zigzag) touches none of rects: the break slides
-  // across its stub's way first, then further out, in UP.step steps, and stays put when nothing nearby is clear.
-  // Returns the offset in mm, as c.upAt would hold it.
-  function clearUp(g, d, lines, rects) {
+  // The nearest spot for a break (at0, mm off its default, as c.upAt holds it) whose label box with its zigzag
+  // touches none of rects: it slides across its stub's way first, then further out, in UP.step steps, and stays put
+  // when nothing nearby is clear. Returns the step in mm, added to at0.
+  function clearUp(g, d, lines, rects, at0) {
+    at0 = at0 || { dx: 0, dy: 0 };
     const p = [d[1] ? 1 : 0, d[0] ? 1 : 0], tries = [];
     for (let e = 0; e <= UP.far; e += UP.step) for (let w = 0; w <= UP.wide; w += UP.step) { tries.push([e, w]); if (w) tries.push([e, -w]); }
     tries.sort((a, b) => Math.abs(a[1]) + a[0] * 1.5 - (Math.abs(b[1]) + b[0] * 1.5) || a[0] - b[0]);
     for (const [e, w] of tries) {
-      const E = { x: g.ex + d[0] * (UP.reach + e) + p[0] * w, y: g.ey + d[1] * (UP.reach + e) + p[1] * w };
+      const E = { x: g.ex + d[0] * (UP.reach + e) + p[0] * w + at0.dx * K, y: g.ey + d[1] * (UP.reach + e) + p[1] * w + at0.dy * K };
       const h = upLabel(E, d, lines).hit;
       if (!rects.some(r => overlaps(h, r))) return e || w ? { dx: (d[0] * e + p[0] * w) / K, dy: (d[1] * e + p[1] * w) / K } : { dx: 0, dy: 0 };
     }
@@ -2775,7 +2778,7 @@
       try { svg.setPointerCapture(e.pointerId); } catch (err) { /* not an active pointer */ }
       if (e.button !== 0) { drag = Object.assign(base, { kind: 'pan', cam: Object.assign({}, S.cam), k: p.k }); return; }
       const upEl = !S.pending && t.closest('[data-upgrab]');
-      if (upEl) { const [ub, uc] = upEl.dataset.upgrab.split('|'), c0 = conn(block(s, ub), uc); drag = Object.assign(base, { kind: 'up', ub, uc, a0: Object.assign({ dx: 0, dy: 0 }, c0 && (c0.upAt || upAuto.get(ub + '|' + uc))) }); return; }
+      if (upEl) { const [ub, uc] = upEl.dataset.upgrab.split('|'), c0 = conn(block(s, ub), uc); drag = Object.assign(base, { kind: 'up', ub, uc, a0: Object.assign({ dx: 0, dy: 0 }, (upAuto.get(ub + '|' + uc) || (c0 && c0.upAt))) }); return; }
       const spEl = !S.pending && t.closest('[data-ssplit]');
       if (spEl) { const [cid, key] = spEl.dataset.ssplit.split('|'), q = (lastLo.get(cid).splits || []).find(x => x.key === key); drag = Object.assign(base, { kind: 'split', cab: cid, key, grab: q ? { x: p.x - q.x, y: p.y - q.y } : { x: 0, y: 0 } }); return; }
       const dvEl0 = !S.pending && t.closest('[data-devgrab]'), dvRun = dvEl0 && (() => { const n = runNear(dvEl0.dataset.devgrab, p); return n && n.d <= n.route.half + 6 ? n : null; })();

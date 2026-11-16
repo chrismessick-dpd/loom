@@ -1500,6 +1500,10 @@
     const E = { x: 400 + off.dx * 4, y: 260 + off.dy * 4 }, h = Y.upLabel(E, d, lines).hit;
     ok(!(h.x0 < box.x1 && box.x0 < h.x1 && h.y0 < box.y1 && box.y0 < h.y1), 'clear of it now');
     ok(Math.abs(off.dx) * 4 <= (at.x1 - at.x0) + 12, 'by about its own width, no further');
+    const moved = Y.clearUp(g, d, lines, [box], { dx: 0, dy: -30 });
+    eq(moved, { dx: 0, dy: 0 }, 'a break put somewhere clear by hand stays there');
+    const back = Y.clearUp(g, d, lines, [box], { dx: 1, dy: 1 });
+    ok(back.dx || back.dy, 'one put onto a box by hand steps off it too');
   });
   test('system: a harness end marked as its device isn’t asked for in a system', () => {
     const { Y, s, a, c, h, get } = sysFixture();
