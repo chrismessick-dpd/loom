@@ -22,6 +22,10 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Kept layouts point at the live cables (2026-11-15, Chris: cables didn't draw their set color).** `layout`'s memo key
+  leaves out what doesn't move a route (color, tags, label, a harness's title), and its entries held the cable and harness
+  objects they were made from; a sync, undo, or redo swaps those for copies, so a color set since drew in the state's
+  color while the panel showed it. A memo hit now rebinds each entry's `cab` and `h` to the current ones. Tests 123.
 - **List: Name · Ref, merged connector rows (2026-11-15, Chris).** Blocks and connectors read their label, then the ref
   after a dot ("Unit of Use System · A1", "Power in · 24V · A1 J8"), under a *Name · Ref* header. A connector with exactly
   one cable plugged in here is one row (Chris's choices): the cable's name and tags, then "<part number> · Connector <ref>
