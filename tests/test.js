@@ -903,6 +903,14 @@
     ok(RT.fits(t.A, t.B, t.v, t.stub), 'and fits its ends');
     eq(D2.paths.length, 2, 'still a line per wire');
     eq(D2.paths.map(p => p.color), D.paths.map(p => p.color), 'in the same colors');
+    // Dragged far from its far end, the far end gets a branch of its own, routed by the engine.
+    const box = D2.boxes[0];
+    s.cables[0].routes = { [key]: { split1: { x: box.x - 900, y: box.y + 600 } } };
+    const D3 = Y.devLayout(s, get).get('k1'), br = D3.trunks.filter(r => r.fromSplit);
+    eq(br.length, 1, 'a branch to the far end');
+    ok(RT.fits(br[0].A, br[0].B, br[0].v, br[0].stub), 'which fits its ends');
+    const ends = D3.paths.map(p => p.d.match(/-?\d+(\.\d+)?/g).map(Number).slice(-2));
+    ok(ends.every(([x, y]) => x >= D3.boxes[0].x - 1 && x <= D3.boxes[0].x + D3.boxes[0].w + 1 && y >= D3.boxes[0].y - 1 && y <= D3.boxes[0].y + D3.boxes[0].h + 1), 'every wire still ends at its box');
   });
   test('system: a turned block turns its connectors, their exits, and its size, and its cables still fit', () => {
     const Y = LM.system, s = Y.blank('Gizmo');

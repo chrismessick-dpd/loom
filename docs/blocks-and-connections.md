@@ -126,7 +126,12 @@ So the routing core is shared already. What diverged is everything around it:
   - What a press grabs (blocks, labels, ends) stays per canvas: those are different objects. The rules for
     a Connection's line are the same in both.
 
+- **Routed branches from a moved device split.** A far end more than `DW.far` (200 units, 50 mm) from
+  its split gets a branch of its own. The engine routes it round the blocks and the far end's box, kept as
+  `cab.routes['t:<connector>><far end>']`, dragged and reset as any route. Its wires ease across from the
+  trunk over its first 40 units and land on their slots. Closer far ends fan as before, as the harness's
+  split does within 120 units of its pins. Tests 120.
+
 ## Next
 
-- Branches from a moved device split route as Connections when the far ends are far off. They still fan
-  as elbows, as the harness's split does within 120 units of its pins.
+The plan's steps are done. What's left is Chris trying it on real systems and saying what still differs.

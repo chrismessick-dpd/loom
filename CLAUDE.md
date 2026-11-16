@@ -29,7 +29,8 @@ links to it so far. Before every commit:
 - **Split points (2026-11-15, Chris: three or more ends as the harness's bundles).** A system cable with three or more
   ends runs a trunk to a split point and a branch to each other end, all routed by the engine (`splitAt`, keys `split` and
   each end's node id); a device harness has a split per plugged connector (`'t:<node>'`), straight out by default, a
-  routed trunk once its diamond is dragged (`movedTrunk` in `devLayout`). Diamonds on the selected cable
+  routed trunk once its diamond is dragged (`movedTrunk` in `devLayout`). A far end more than `DW.far` (200 units) from a moved split gets a
+  routed branch (`'t:<node>><far end>'`), closer ones fan as before (`termsRect` makes a box's terminal). Diamonds on the selected cable
   (`data-ssplit`, drag kind `split`), kept as the record's `split1` as in the harness. Run drags on a moved trunk's
   wires go to the trunk. `LM.system.testHooks` sets the app's hooks for tests. Tests 119.
 - **Block name and status stacked (2026-11-15, Chris).** The name (or a pictured board's ref and name label) and the

@@ -972,13 +972,16 @@
   // connector would fall short of the stub, and the route would give up and run straight.
   const onGrid = (x, out, need, step) => Math.abs((out > 0 ? Math.ceil((x + need) / step) : Math.floor((x - need) / step)) * step - x);
   function terminals(g, b, end, toward, step) {
-    const node = b.id;
+    return termsRect(g, g.dx ? null : { y0: b.y * K, y1: (b.y + sizeOf(b).H) * K }, b.id, end, toward, step);
+  }
+  // The same for any rectangle R (y0, y1, canvas units; a device harness's far-end box), its id node.
+  function termsRect(g, R, node, end, toward, step) {
     if (g.dx) {
       const T = { x: g.ex, y: g.ey, pins: true, node, side: g.dx > 0 ? 'r' : 'l', conn: false, stub: onGrid(g.ex, g.dx, g.inside + STUB_U, step) };
       T[end === 'A' ? 'out' : 'in'] = end === 'A' ? g.dx : -g.dx;
       return [T];
     }
-    const ly = g.dy < 0 ? b.y * K - STUB_U : (b.y + sizeOf(b).H) * K + STUB_U, from = { x: g.ex, y: g.ey };
+    const ly = g.dy < 0 ? R.y0 - STUB_U : R.y1 + STUB_U, from = { x: g.ex, y: g.ey };
     const first = toward >= g.ex ? 1 : -1;
     return [first, -first].map(o => {
       const T = { x: g.ex, y: ly, pins: true, node, side: o > 0 ? 'r' : 'l', conn: true, stub: onGrid(g.ex, o, RADIUS, step) };
@@ -1042,7 +1045,7 @@
   // dashed line to each device end. Lengths are in canvas units (K per mm), not to scale.
   // wrapW, lines, lh: a far end's name wraps in its box (Chris, 2026-11-15: about 22 characters a line, up to 4);
   // capW, capLines, capLh: the caption's name the same way, its part number on a line of its own.
-  const DW = { pitch: 5, trunk: 90, fan: 130, turn: 24, lead: 60, box: 34, gap: 16, font: 16, cap: 24, chars: 40, wrapW: 190, lines: 4, lh: 19, capW: 230, capLines: 3, capLh: 16 };
+  const DW = { far: 200, pitch: 5, trunk: 90, fan: 130, turn: 24, lead: 60, box: 34, gap: 16, font: 16, cap: 24, chars: 40, wrapW: 190, lines: 4, lh: 19, capW: 230, capLines: 3, capLh: 16 };
   const devMemo = new Map();
   const clip = (t, n) => (t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t);
   // Text wrapped to lines at most maxW wide (words kept whole unless one alone is too wide), at most maxLines,
@@ -1210,7 +1213,35 @@
         });
         const rankOf = new Map();
         [ws.filter(v => v.w > 0.5).sort((p, q) => q.ob - p.ob), ws.filter(v => v.w < -0.5).sort((p, q) => p.ob - q.ob)].forEach(g0 => g0.forEach((v, k) => rankOf.set(v, k)));
+        // A far end close to the split fans from it at right angles, as above; one further off (DW.far, as the
+        // harness's split routes a branch past 120 units of its pins) gets a branch of its own, a Connection the
+        // engine routes round the blocks and its box (cab.routes['t:<connector>>far end'], kept and dragged as
+        // any), its wires riding it side by side onto their slots.
+        const far = new Map();
+        ws.forEach(v => { if (!v.t || !v.t.box) return; if (!far.has(v.t)) far.set(v.t, []); far.get(v.t).push(v); });
+        far.forEach((g0, t) => { const Qc = { x: g0.reduce((n, v) => n + v.Q.x, 0) / g0.length, y: g0.reduce((n, v) => n + v.Q.y, 0) / g0.length }; if (Math.hypot(Qc.x - S1.x, Qc.y - S1.y) <= DW.far) far.delete(t); else g0.Qc = Qc; });
+        far.forEach((g0, t) => {
+          const bk = key + '>' + t.T.id, brec = CN().record(cab.routes && cab.routes[bk]), b = t.box, node = 'dev|' + cab.id + '|' + t.T.id, Qc = g0.Qc;
+          const og = looseGeom(S1, Qc.x), Ab = terminals(og.g, og.b, 'A', Qc.x, step);
+          const Bb = termsRect({ ex: Qc.x, ey: Qc.y, dx: -d[0], dy: -d[1], inside: 0 }, { y0: b.y, y1: b.y + b.h }, node, 'B', S1.x, step), cb = [];
+          Ab.forEach(A => Bb.forEach(B => cb.push({ A, B })));
+          const hb = Math.max(HALF, (g0.length - 1) * DW.pitch / 2 + 2);
+          const R1 = CN().routeAll(s.id + '#dev|' + cab.id + '|' + bk, rects.concat([{ id: node, x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h }]), [{ key: bk, weight: g0.length, combos: cb, half: hb, stub: STUB_R, r: Math.max(RADIUS, hb + 6), shape: brec }], { grid: step }).routes.get(bk);
+          if (!R1) { far.delete(t); return; }
+          const Pb = drawCable(R1).pts, last = Pb[Pb.length - 1], first = Pb[0], Sb = Pb[Pb.length - 1].s || 1;
+          trunks.push(Object.assign({}, R1, { end: bk, fromSplit: true, d: pathOf(Pb), mid: midOfPts(Pb), pts: Pb }));
+          Pb.forEach(q => pts.push(q));
+          g0.forEach(v => {
+            // From where it leaves the trunk to its slot: eased across over the branch's first 40 units.
+            const e0 = (v.E.x - first.x) * first.nx + (v.E.y - first.y) * first.ny, o1 = (v.Q.x - Qc.x) * last.nx + (v.Q.y - Qc.y) * last.ny;
+            const off = q => { const u = Math.min(1, q.s / Math.min(40, Sb / 2)), k = u * u * (3 - 2 * u); return e0 + (o1 - e0) * k; };
+            const bp = Pb.map(q => ({ x: q.x + q.nx * off(q), y: q.y + q.ny * off(q) }));
+            bp[bp.length - 1] = { x: v.Q.x, y: v.Q.y };
+            push(v.o, 'M' + v.tp.concat(bp).map(q => f1(q.x) + ' ' + f1(q.y)).join('L'), v.Q, v.t, true);
+          });
+        });
         ws.forEach(v => {
+          if (v.t && far.has(v.t)) return;
           const Pe = elbow(v.E, a, v.Q, d, DW.turn + (rankOf.get(v) || 0) * DW.pitch);
           pts.push(...Pe);
           push(v.o, 'M' + v.tp.map(q => f1(q.x) + ' ' + f1(q.y)).join('L') + roundPts(Pe), v.Q, v.t, true);
