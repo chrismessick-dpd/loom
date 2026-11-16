@@ -825,9 +825,10 @@
   // the corner, edge, or face of the model or a block that's highlighted (Chris, 2026-11-15: the point and the
   // rubber band go where the highlight is; it used to stand off by half the section's height); else on the
   // view's plane.
-  function pointAt(v, i, h) {
+  // skip: { id, pi }, a channel point being dragged, which mustn't snap to itself.
+  function pointAt(v, i, h, skip) {
     const f = cur(), k = v.scale;
-    for (const c of f.channels) for (const p of c.pts) { const q = v.res.project(p); if (Math.hypot(q[0] / k - i.xy[0], q[1] / k - i.xy[1]) < 8) return { p: p.slice(), join: true }; }
+    for (const c of f.channels) for (let n = 0; n < c.pts.length; n++) { if (skip && skip.id === c.id && skip.pi === n) continue; const p = c.pts[n], q = v.res.project(p); if (Math.hypot(q[0] / k - i.xy[0], q[1] / k - i.xy[1]) < 8) return { p: p.slice(), join: true }; }
     if (S.draft) for (const p of S.draft.pts) { const q = v.res.project(p); if (Math.hypot(q[0] / k - i.xy[0], q[1] / k - i.xy[1]) < 8) return { p: p.slice(), join: true }; }
     const ft = S.st.featureAt(v, i.xy, (oi, o) => o.id === 'ref' || o.id.startsWith('b:'));
     if (ft && (ft.type === 'point' || ft.on)) {
@@ -880,8 +881,15 @@
         const p0 = c.pts[pi].slice();
         let live = null;
         return {
-          move: (j) => { const p = v.flat ? j.plane(p0[v.flat.fixed]) : j.plane(p0[2]); if (p) { live = p.map(r1); c.pts[pi] = live; S.st.setObjs(scene().objs); S.st.later(); } },
-          up: () => { c.pts[pi] = p0; if (live) change(x => { x.channels.find(y => y.id === c.id).pts[pi] = live; }); },
+          // Snaps as drawing does (Chris, 2026-11-15): another channel's point, else a corner, edge, or face of the
+          // model or a block, else the view's plane at the point's own height.
+          move: (j) => {
+            const at = pointAt(v, j, c.h || CH.h, { id: c.id, pi }), snap = at && (at.ft || at.join) ? at : null;
+            const p = snap ? snap.p : (v.flat ? j.plane(p0[v.flat.fixed]) : j.plane(p0[2]));
+            S.dragSnap = snap ? { v: v.key, p: snap.p, ft: snap.ft || null, join: !!snap.join } : null;
+            if (p) { live = p.map(r1); c.pts[pi] = live; S.st.setObjs(scene().objs); S.st.later(); }
+          },
+          up: () => { S.dragSnap = null; c.pts[pi] = p0; if (live) change(x => { x.channels.find(y => y.id === c.id).pts[pi] = live; }); else S.st.overlays(); },
         };
       }
     }
@@ -1052,10 +1060,12 @@
       const c = f.channels.find(x => x.id === S.sel.id);
       if (c) { g.save(); g.fillStyle = '#fff'; g.strokeStyle = '#00a3b4'; g.lineWidth = 2 * k; c.pts.forEach(p => { const q = P(p); g.beginPath(); g.arc(q[0], q[1], 5 * k, 0, 7); g.fill(); g.stroke(); }); g.restore(); }
     }
-    // Drawing a channel: the corner or edge a click would snap to, and its name by the pointer.
-    if (S.tool === 'channel' && S.hover && S.hover.v === v.key && S.hoverPt && (S.hoverFt || S.hoverJoin)) {
-      if (S.hoverFt) S.st.drawFeature(v, g, S.hoverFt);
-      const q = P(S.hoverPt), t = S.hoverJoin ? 'Join channel' : S.hoverFt.label;
+    // Drawing a channel or dragging its point: the corner or edge it snaps to, and its name by the pointer.
+    const sn = S.dragSnap ? (S.dragSnap.v === v.key ? S.dragSnap : null)
+      : S.tool === 'channel' && S.hover && S.hover.v === v.key && S.hoverPt && (S.hoverFt || S.hoverJoin) ? { p: S.hoverPt, ft: S.hoverFt, join: S.hoverJoin } : null;
+    if (sn) {
+      if (sn.ft) S.st.drawFeature(v, g, sn.ft);
+      const q = P(sn.p), t = sn.join ? 'Join channel' : sn.ft.label;
       g.save(); g.font = `600 ${10.5 * k}px system-ui, sans-serif`; const w = g.measureText(t).width + 10 * k;
       g.fillStyle = 'rgba(20, 22, 26, 0.72)'; g.fillRect(q[0] + 8 * k, q[1] + 8 * k, w, 16 * k);
       g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(t, q[0] + 13 * k, q[1] + 16 * k); g.restore();

@@ -68,6 +68,8 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   block is (sampled against the view's depth buffer), hovered and selected ones stronger, the selected one in the
   accent. `overHit` picks a channel for the stage (`host.overHit` in `stage.js` `info`): inside a run's outline and not
   buried. A cable's line under the pointer wins over the channel it runs in.
+- **Dragging a channel's point snaps (2026-11-15, Chris)** as drawing does: another channel's point (not its own),
+  else the corner, edge, or face highlighted and named by the pointer, else the view's plane at the point's height.
 
 - **Sync (2026-11-15, Chris: "Build sync next").** `store.js` `syncFormboards` runs after the systems in every
   sync (on opening signed in, the Sync button, Ctrl+S). Each formboard is `loom_data/formboards/projects/<id>.json`
