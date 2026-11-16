@@ -1049,7 +1049,7 @@
   // dashed line to each device end. Lengths are in canvas units (K per mm), not to scale.
   // wrapW, lines, lh: a far end's name wraps in its box (Chris, 2026-11-15: about 22 characters a line, up to 4);
   // capW, capLines, capLh: the caption's name the same way, its part number on a line of its own.
-  const DW = { far: 200, pitch: 5, trunk: 90, fan: 130, turn: 24, lead: 60, box: 34, gap: 16, font: 16, cap: 24, chars: 40, wrapW: 190, lines: 4, lh: 19, capW: 230, capLines: 3, capLh: 16 };
+  const DW = { clear: 8, step: 12, wide: 600, far2: 300, far: 200, pitch: 5, trunk: 90, fan: 130, turn: 24, lead: 60, box: 34, gap: 16, font: 16, cap: 24, chars: 40, wrapW: 190, lines: 4, lh: 19, capW: 230, capLines: 3, capLh: 16 };
   const devMemo = new Map();
   const clip = (t, n) => (t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t);
   // Text wrapped to lines at most maxW wide (words kept whole unless one alone is too wide), at most maxLines,
@@ -1164,13 +1164,37 @@
       const back = list.reduce((n, D) => n + (D.c - D.axis), 0) / list.length;
       list.forEach(D => { D.c -= back; });
     });
+    // Drawings pushed apart (Chris, 2026-11-15): each drawing's far-end boxes and caption step clear of the blocks and
+    // of the drawings placed before it, those dragged by hand first. The whole drawing slides along its connector's
+    // edge first, then further out (DW.step steps), to the nearest clear spot; it stays put when none is near.
+    // D.push is that step (mm), added to cab.devAt; the drawing's `at` is where it's drawn, so a drag starts there.
+    {
+      const pad = DW.clear, taken = s.blocks.map(b => { const z = sizeOf(b); return { x0: b.x * K, y0: b.y * K, x1: (b.x + z.W) * K, y1: (b.y + z.H) * K }; });
+      const hit = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+      const tries = [];
+      for (let e = 0; e <= DW.far2; e += DW.step) for (let w = 0; w <= DW.wide; w += DW.step) { tries.push([e, w]); if (w) tries.push([e, -w]); }
+      tries.sort((a, b) => Math.abs(a[1]) + a[0] * 1.5 - (Math.abs(b[1]) + b[0] * 1.5) || a[0] - b[0]);
+      drafts.map((D, i) => [D, i]).sort((a, b) => (b[0].cab.devAt ? 1 : 0) - (a[0].cab.devAt ? 1 : 0) || a[1] - b[1]).forEach(([D]) => {
+        const at0 = D.cab.devAt || { dx: 0, dy: 0 };
+        for (const [e, w] of tries) {
+          const step = { dx: (D.d[0] * e + D.pv[0] * w) / K, dy: (D.d[1] * e + D.pv[1] * w) / K };
+          const rs = farRects(D, { dx: at0.dx + step.dx, dy: at0.dy + step.dy }).map(r => ({ x0: r.x0 - pad, y0: r.y0 - pad, x1: r.x1 + pad, y1: r.y1 + pad }));
+          if (rs.some(r => taken.some(q => hit(r, q)))) continue;
+          D.push = e || w ? step : null;
+          rs.forEach(r => taken.push(r));
+          return;
+        }
+        D.push = null;
+        farRects(D, at0).forEach(r => taken.push(r));
+      });
+    }
     const out = new Map();
     const f1 = v => v.toFixed(1);
     // The blocks a moved trunk walks round, made once a layout.
     let rects0 = null;
     const devRects = () => rects0 || (rects0 = s.blocks.map(b => ({ id: b.id, x0: b.x * K, y0: b.y * K, x1: (b.x + sizeOf(b).W) * K, y1: (b.y + sizeOf(b).H) * K })));
     drafts.forEach(D => {
-      const { cab, g, d, pv, horiz, tg, segs, ghost, keyOf } = D, off = cab.devAt || { dx: 0, dy: 0 };
+      const { cab, g, d, pv, horiz, tg, segs, ghost, keyOf } = D, at0 = cab.devAt || { dx: 0, dy: 0 }, off = D.push ? { dx: at0.dx + D.push.dx, dy: at0.dy + D.push.dy } : at0;
       const pt = (o, a, b) => ({ x: o.x + d[0] * a + pv[0] * b, y: o.y + d[1] * a + pv[1] * b });
       const ex = { x: g.ex, y: g.ey }, reach = DW.trunk + DW.fan;
       const B = { x: ex.x + d[0] * reach + pv[0] * (D.c - D.axis) + off.dx * K, y: ex.y + d[1] * reach + pv[1] * (D.c - D.axis) + off.dy * K };
@@ -1318,10 +1342,31 @@
       const mpts = pts.filter(q => !bare.has(q));
       boxes.forEach(x => { const g = miniBox(x); mpts.push({ x: g.x, y: g.y }, { x: g.x + g.w, y: g.y + g.h }); });
       leads.forEach(l => l.dots.forEach(q => mpts.push({ x: q.x - MINI_DOT, y: q.y - MINI_DOT }, { x: q.x + MINI_DOT, y: q.y + MINI_DOT })));
-      out.set(cab.id, { paths, boxes, leads, juncs, cap, capBox: cap && cap.box, splits, trunks, box, mbox: bounds(mpts), lane: [ex, { x: ex.x + d[0] * DW.trunk, y: ex.y + d[1] * DW.trunk }] });
+      out.set(cab.id, { at: off, paths, boxes, leads, juncs, cap, capBox: cap && cap.box, splits, trunks, box, mbox: bounds(mpts), lane: [ex, { x: ex.x + d[0] * DW.trunk, y: ex.y + d[1] * DW.trunk }] });
     });
     devMemo.set(s.id, { key, out });
     return out;
+  }
+  // A device drawing's far-end boxes and caption (canvas units) with the drawing at off (mm), worked out as the
+  // drawing places them, without building its wires.
+  function farRects(D, off) {
+    const { g, d, pv, horiz, tg } = D, reach = DW.trunk + DW.fan;
+    const B = { x: g.ex + d[0] * reach + pv[0] * (D.c - D.axis) + off.dx * K, y: g.ey + d[1] * reach + pv[1] * (D.c - D.axis) + off.dy * K };
+    const pt = (o, a, b) => ({ x: o.x + d[0] * a + pv[0] * b, y: o.y + d[1] * a + pv[1] * b });
+    const rs = [];
+    let u = -D.span / 2 + D.lane;
+    tg.forEach(t => {
+      const a = pt(B, 0, u + t.Lp / 2); u += t.Lp + DW.gap;
+      const r = horiz ? { x: d[0] > 0 ? a.x : a.x - t.Ld, y: a.y - t.Lp / 2, w: t.Ld, h: t.Lp } : { x: a.x - t.Lp / 2, y: d[1] > 0 ? a.y : a.y - t.Ld, w: t.Lp, h: t.Ld };
+      rs.push({ x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h });
+    });
+    if (D.caption) {
+      const maxLd = Math.max(0, ...tg.map(t => t.Ld)), top = pt(B, 0, -D.span / 2);
+      const nl = Math.max(1, D.caption.lines.length), up = !horiz && d[1] < 0 ? (nl - 1) * DW.capLh : 0;
+      const cap = horiz ? { x: d[0] > 0 ? top.x : top.x - D.capW, y: top.y + 15 } : { x: top.x, y: B.y + d[1] * (maxLd + 22) + (d[1] > 0 ? 4 : 0) - up };
+      rs.push({ x0: cap.x, y0: cap.y - 14, x1: cap.x + D.capW, y1: cap.y + (nl - 1) * DW.capLh + 4 });
+    }
+    return rs;
   }
   // Points from E (leaving along a) to Q (arriving along q) at right angles: out m along a, across, then on
   // to Q; or one corner when a and q are square to each other. E first, Q last.
@@ -2784,7 +2829,7 @@
       const dvEl0 = !S.pending && t.closest('[data-devgrab]'), dvRun = dvEl0 && (() => { const n = runNear(dvEl0.dataset.devgrab, p); return n && n.d <= n.route.half + 6 ? n : null; })();
       if (dvRun) { drag = Object.assign(base, { kind: 'run', cab: cable(s, dvEl0.dataset.devgrab), run: dvRun, end: dvRun.route.end, click: dvEl0.dataset.devgrab }); return; }
       const dvEl = dvEl0;
-      if (dvEl) { const c0 = cable(s, dvEl.dataset.devgrab); drag = Object.assign(base, { kind: 'dev', cab: dvEl.dataset.devgrab, a0: Object.assign({ dx: 0, dy: 0 }, c0 && c0.devAt) }); return; }
+      if (dvEl) { const c0 = cable(s, dvEl.dataset.devgrab); const D0 = devLayout(s).get(dvEl.dataset.devgrab); drag = Object.assign(base, { kind: 'dev', cab: dvEl.dataset.devgrab, a0: Object.assign({ dx: 0, dy: 0 }, (D0 && D0.at) || (c0 && c0.devAt)) }); return; }
       const ldEl = !S.pending && t.closest('[data-cldot]'), lbEl = !S.pending && !ldEl && t.closest('[data-clabel]');
       if (ldEl || lbEl) { drag = Object.assign(base, { kind: ldEl ? 'ldot' : 'label', cab: ldEl ? ldEl.dataset.cldot : lbEl.dataset.clabel }); return; }
       const endEl = !S.pending && t.closest('[data-cend]'), run = !S.pending && t.closest('[data-run]'), bl = t.closest('[data-block]'), cb = t.closest('[data-cable]');

@@ -885,7 +885,8 @@
     } finally { Y.testHooks(was); }
   });
   test('system: a device harness trunk moved off its default routes to its split, and its wires fan from there', () => {
-    const { Y, s, a, c, h, get } = sysFixture();
+    const { Y, s, a, c, h, get, d } = sysFixture();
+    d.x = 300; // the fixture's device block, past where the drawing goes
     const [p1, p2] = h.nodes.filter(M.isConn);
     p2.atDevice = true; p2.name = 'Fan motor';
     M.addWire(h, { node: p1.id, pin: '1' }, { node: p2.id, pin: '1' }, { color: 'RD' });
@@ -1515,7 +1516,8 @@
   });
 
   test('system: a harness built onto its device is drawn as itself, its far ends boxes or flying leads, and drags', () => {
-    const { Y, s, a, c, h } = sysFixture();
+    const { Y, s, a, c, h, d } = sysFixture();
+    d.x = 300; // the fixture's device block, past where the drawing goes
     const [p1, p2] = h.nodes.filter(M.isConn);
     p2.atDevice = true; p2.name = 'Fan motor';
     const leads = M.addConnector(h, 640, 400, { family: 'flying', pins: 2, name: 'Thermistor' });
@@ -1547,6 +1549,22 @@
     eq(D3.juncs.length, 1, 'the splice is a junction');
     ok(D3.boxes.some(b => b.label === 'Pump motor'), 'the motor past the splice is drawn');
     eq(D3.paths.length, 5, 'both halves of the spliced wire are drawn');
+  });
+  test('system: a device harness drawing steps clear of a block or another drawing where its boxes would go', () => {
+    const { Y, s, a, c, h, d } = sysFixture();
+    d.x = 300; // the fixture's device block, past where the drawing goes
+    const [p1, p2] = h.nodes.filter(M.isConn);
+    p2.atDevice = true; p2.name = 'Fan motor';
+    M.addWire(h, { node: p1.id, pin: '1' }, { node: p2.id, pin: '1' }, { color: 'RD' });
+    s.cables.push({ id: 'k1', kind: 'harness', harness: h.id, ends: { [p1.id]: { block: a.id, conn: c.id } }, lengthMm: null });
+    const get = id => (id === h.id ? h : null), D = Y.devLayout(s, get).get('k1'), b0 = D.boxes[0];
+    eq(D.at, { dx: 0, dy: 0 }, 'nothing in the way: where it always went');
+    const blk = Y.addDrawn(s, 'device', { x: b0.x / 4 + 2, y: b0.y / 4 + 2 });
+    blk.w = 20; blk.h = 10;
+    const D2 = Y.devLayout(s, get).get('k1'), b1 = D2.boxes[0], z = { x0: blk.x * 4, y0: blk.y * 4, x1: (blk.x + 20) * 4, y1: (blk.y + 10) * 4 };
+    ok(D2.at.dx || D2.at.dy, 'a block where its far end goes moves the drawing');
+    ok(!(b1.x < z.x1 && z.x0 < b1.x + b1.w && b1.y < z.y1 && z.y0 < b1.y + b1.h), 'its box is clear of the block now');
+    ok(!s.cables[0].devAt, 'and nothing is stored');
   });
   test('system: a device harness plugged into two connectors of one board goes round the board, not across it', () => {
     const { Y, s, a, c, h } = sysFixture();
