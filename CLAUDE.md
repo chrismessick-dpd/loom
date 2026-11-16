@@ -58,6 +58,9 @@ links to it so far. Before every commit:
   (`DW.wrapW`, `lines`, `lh`). The caption wraps, with its part number on its own line (`DW.capW`, `capLines`). The
   labels on cables from a placing system wrap the same way, in a box (`UP.wrapW`, `.sys-upbox`). `D.leads` stays
   empty.
+  Then (Chris) a break's label box steps clear of device boxes, captions, blocks, and earlier breaks, from its default
+  or hand-placed spot: across its stub's way first, then further out (`clearUp`, `upLabel`, `UP.step`); `upAuto` keeps
+  where it's drawn so a drag starts there. Device drawings themselves don't move for each other yet.
 - **Status statistics (2026-11-15, Chris: "start building" the plan).** Plan and what's built: `docs/status.md`.
   The ladder is Open, Generic, Placeholder, Needs fixing, Wired, and Complete (`STATES`, `stateOf`, `systemStats`). A
   strip and pie in the toolbar (`#sys-stats`, `statsStrip`), Status in the filter (`f.states`), board pills, and List
