@@ -1692,10 +1692,13 @@
     [f.name, f.pn].forEach(x => { if (x && String(x).trim()) pats[String(x).trim()] = 'in'; });
     return { tags: Object.assign({}, f.tags || {}), pats, states: Object.assign({}, f.states || {}) };
   }
-  const filterOn = f => Object.values(f.tags).some(Boolean) || Object.values(f.pats).some(Boolean) || Object.values(f.states || {}).some(Boolean);
+  const applies = v => v === 'in' || v === 'out';
+  const filterOn = f => Object.values(f.tags).some(applies) || Object.values(f.pats).some(applies) || Object.values(f.states || {}).some(applies);
+  // Kept while anything is in it, an unapplied pattern's badge too.
+  const filterKept = f => filterOn(f) || Object.keys(f.pats).length > 0;
   function setFilter(f, root) {
     const all = filters(), k = root || S.root;
-    if (filterOn(f)) all[k] = { tags: f.tags, pats: f.pats, states: f.states || {} }; else delete all[k];
+    if (filterKept(f)) all[k] = { tags: f.tags, pats: f.pats, states: f.states || {} }; else delete all[k];
     try { localStorage.setItem(FKEY, JSON.stringify(all)); } catch (e) { /* storage blocked */ }
   }
   function glob(p) {
@@ -1757,7 +1760,7 @@
     const p = String(text || '').trim();
     if (!p) return false;
     const f = filterOf();
-    if (!f.pats[p]) f.pats[p] = 'in';
+    if (!applies(f.pats[p])) f.pats[p] = 'in';
     setFilter(f);
     return true;
   }
@@ -1769,12 +1772,12 @@
   // Include and Exclude for a tag or a pattern. A tag's lit one clears it when clicked again; a pattern's badge has
   // a × to remove it instead.
   const fseg = (act, attr, v, tip, toggle) => `<span class="seg sys-fseg">${[['in', 'Include', 'Show only what has this'], ['out', 'Exclude', 'Fade what has this']].map(([x, l, t]) =>
-    `<button class="${v === x ? 'on' : ''}" data-sact="${act}" ${attr} data-v="${toggle && v === x ? '' : x}" aria-pressed="${v === x}" title="${toggle && v === x ? 'Click again to stop filtering by this ' + tip : t}">${l}</button>`).join('')}</span>`;
+    `<button class="${v === x ? 'on' : ''}" data-sact="${act}" ${attr} data-v="${toggle && v === x ? (toggle === true ? '' : toggle) : x}" aria-pressed="${v === x}" title="${toggle && v === x ? 'Click again to stop filtering by this ' + tip : t}">${l}</button>`).join('')}</span>`;
   function filterUi(menuToo) {
     const w = fwrap();
     if (!w) return;
     const f = filterOf(), on = filterOn(f), s = cur();
-    const n = Object.values(f.tags).filter(Boolean).length + Object.values(f.pats).filter(Boolean).length + Object.values(f.states).filter(Boolean).length;
+    const n = Object.values(f.tags).filter(applies).length + Object.values(f.pats).filter(applies).length + Object.values(f.states).filter(applies).length;
     let b = w.querySelector('.sys-fbtn');
     if (!b) { w.innerHTML = '<button class="icon-btn glass sys-fbtn" data-sact="filter" aria-haspopup="true" aria-label="Filter"></button><div class="sys-fmenu" role="dialog" aria-label="Filter" hidden></div>'; b = w.querySelector('.sys-fbtn'); }
     b.classList.toggle('on', on || !!S.filterOpen);
@@ -1796,8 +1799,8 @@
           : '<p class="hint">No tags in Loom yet. Add them in a cable’s panel.</p>') +
         `<label class="sys-fsec" for="sys-fpat">Name or part number</label>` +
         `<div class="sys-fadd"><input class="input" id="sys-fpat" placeholder="Like PDD* or RA-003??, then Enter" autocomplete="off" spellcheck="false"><button class="btn" data-sact="filter-add">Add</button></div>` +
-        (pats.length ? `<div class="sys-ftags">${pats.map(p => `<div class="sys-ftag"><span class="sys-fpat"><span class="mono">${esc(p)}</span><button class="tag-x" data-sact="filter-pat" data-pat="${esc(p)}" data-v="" title="Remove ${esc(p)}" aria-label="Remove ${esc(p)}">×</button></span>` +
-          fseg('filter-pat', `data-pat="${esc(p)}"`, f.pats[p], 'pattern', false) + '</div>').join('')}</div>` : '') +
+        (pats.length ? `<div class="sys-ftags">${pats.map(p => `<div class="sys-ftag${applies(f.pats[p]) ? '' : ' off'}"><span class="sys-fpat" title="${applies(f.pats[p]) ? '' : 'Not applied: pick Include or Exclude'}"><span class="mono">${esc(p)}</span><button class="tag-x" data-sact="filter-pat" data-pat="${esc(p)}" data-v="" title="Remove ${esc(p)}" aria-label="Remove ${esc(p)}">×</button></span>` +
+          fseg('filter-pat', `data-pat="${esc(p)}"`, f.pats[p], 'pattern', 'off') + '</div>').join('')}</div>` : '') +
         `<p class="sys-fnote" id="sys-fnote"></p>`;
     }
     const note = m.querySelector('#sys-fnote'), fm = s && filterMatch(s, f);

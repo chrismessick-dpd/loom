@@ -1360,6 +1360,13 @@
       ok(LM.tags.has(['24 VAC'], '24 vac') && !LM.tags.has(['24 VAC'], '24'), 'names match without case');
     } finally { done(); }
   });
+  test('system filter: a pattern clicked off keeps its badge and filters nothing', () => {
+    const { Y, top, done } = nestFixture();
+    try {
+      eq(Y.filterMatch(top, { tags: {}, pats: { 'Pump*': 'off' }, states: {} }), null, 'off: nothing is filtered');
+      ok(Y.filterMatch(top, { tags: {}, pats: { 'Pump*': 'in' }, states: {} }), 'in again: it filters');
+    } finally { done(); }
+  });
   test('system filter: tags include and exclude, names and numbers with wildcards, and a placed system lit by what it holds', () => {
     const { Y, top, pump, psu, a, j1, j2, sb, done } = nestFixture();
     try {
