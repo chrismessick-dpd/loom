@@ -389,6 +389,9 @@
   // #rrggbb. Set, the cable draws in it whatever its state (its glyph and dashes still show that).
   const HEX = /^#[0-9a-f]{6}$/i;
   // The color a cable is drawn in: its own, else by its status.
+  // The current along a selected connection: the harness's bead (white, ink on a light line), of one size on
+  // screen (styles.css), or a lighter shade of the connection's own color when it has one (Chris, 2026-11-15).
+  const pulse = (d, soft, own, ink) => `<path class="w-pulse${soft ? ' soft' : ''}${own ? ' own' : ink}"${own ? ` style="stroke:color-mix(in srgb, ${own} 60%, #fff)"` : ''} d="${d}"/>`;
   const cabColor = (cab, h, st) => { st = st || statusOf(cab, h); return colorOf(cab) || (st.key === 'wired' ? 'var(--accent)' : st.key === 'placeholder' || st.key === 'link' ? 'var(--text-3)' : st.key === 'bought' ? 'var(--text-2)' : 'var(--issue)'); };
   // A light cable (a purchased one's gray on a dark page, white, yellow…: relative luminance over 0.3, as
   // conn.js's wires) carries a dark bead (.ink), since a white one doesn't show on it. A var(--x) color is read
@@ -1782,12 +1785,15 @@
       const st = statusOf(cab, h), on = isSel('cable', cab.id), fc = fcls(fm && fm.cable(cab));
       // A selected block's cables glow and carry the harness's soft current (as a selected connector's
       // wires do), and the rest fade (Chris, 2026-11-12).
-      const linked = !on && !!sel && sel.kind === 'block' && Object.values(cab.ends).some(e => e && e.block === sel.block);
+      // So do a selected connector's cables, and every selected block's in a selection of several (Chris,
+      // 2026-11-15: every selected connection carries the current).
+      const plugs = e => e && (sel.kind === 'block' ? e.block === sel.block : sel.kind === 'conn' ? e.block === sel.block && e.conn === sel.conn : sel.kind === 'multi' && sel.blocks.includes(e.block));
+      const linked = !on && !!sel && Object.values(cab.ends).some(plugs);
       // Cables alone selected together (a harness used more than once, picked in the menu) stand out as one does.
       const cablesOnly = !!sel && sel.kind === 'multi' && !sel.blocks.length;
-      const color = cabColor(cab, h, st), ink = (on || linked) && lightColor(color) ? ' ink' : '';
+      const color = cabColor(cab, h, st), own = colorOf(cab), ink = (on || linked) && lightColor(color) ? ' ink' : '';
       const wire = (d, extra) => `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
-        (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on ? `<path class="w-pulse${ink}" d="${d}"/>` : linked ? `<path class="w-pulse soft${ink}" d="${d}"/>` : '');
+        (st.key === 'placeholder' || st.key === 'link' || extra === 'open' ? '' : `<path class="w-gloss" d="${d}"/>`) + (on || linked ? pulse(d, !on, own, ink) : '');
       // While a cable is selected, however it was picked, the others fade (Chris, 2026-11-12).
       const dim = !on && !!sel && (sel.kind === 'cable' || cablesOnly || (sel.kind === 'block' && !linked));
       // The one selected cable, while the others fade, is drawn half again as wide with a glow (Chris).
@@ -1808,7 +1814,7 @@
           D.paths.map(p => `<path class="sys-dglow" d="${p.d}"/>`).join('') +
           D.paths.map(p => `<path class="sys-dedge" d="${p.d}"/><path class="sys-dwire${p.ghost ? ' ghost' : ''}"${p.color ? ` style="stroke:${p.color}"` : ''} d="${p.d}"/>` + (p.stripe ? `<path class="sys-dstripe" style="stroke:${p.stripe}" d="${p.d}"/>` : '') +
             // The current runs along it while it or its block is selected, as on any cable.
-            (on || linked ? `<path class="w-pulse${on ? '' : ' soft'}${lightColor(p.color) ? ' ink' : ''}" d="${p.d}"/>` : '')).join('') +
+            (on || linked ? pulse(p.d, !on, p.color, lightColor(p.color) ? ' ink' : '') : '')).join('') +
           D.juncs.map(j => `<circle class="sys-djunc" cx="${j.x}" cy="${j.y}" r="4.5"/>`).join('') +
           D.boxes.map(x => `<g class="sys-dend" data-devgrab="${cab.id}"><title>${esc(x.full)}</title><rect class="sys-dbox${x.ghost ? ' ghost' : ''}${x.leads ? ' leads' : ''}" x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="${x.leads ? 8 : 3}"/>` +
             x.dots.map(q => `<circle class="sys-ddot"${q.color ? ` style="fill:${q.color}"` : ''} cx="${q.x}" cy="${q.y}" r="4.2"/>`).join('') +

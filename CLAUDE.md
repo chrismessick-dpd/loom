@@ -22,6 +22,13 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Every selected connection carries the current (2026-11-15, Chris).** A selected connector's cables, and every
+  selected block's in a selection of several, carry the soft current as a selected block's do (`plugs` in the
+  cable loop). The bead has the harness's look (white at half strength with its soft glow, ink on a light line) but
+  keeps the system's one size and speed on screen; a cable with its own color, or a device harness wire, carries a
+  lighter shade of that color (`pulse`, `.w-pulse.own`). The plan for one behavior across harnesses and systems:
+  `docs/blocks-and-connections.md`.
+
 - **System cables' current shows (2026-11-15, Chris: no animation on a real system).** It was drawn, but white at
   25% over a selected block's cyan glow, and by `pathLength`, so a long cable's bead was a streak. Now a system
   cable's beads keep one size and speed on screen (`--u`, units per pixel, set by `zoomVar` with the viewBox; the
