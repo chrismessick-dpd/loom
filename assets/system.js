@@ -2410,11 +2410,12 @@
       const xs = endsOf(cab, h).map(n => endName(s, cab.ends[n.id]) || `${n.ref} not plugged`).concat(deviceEnds(h).map(n => `${n.ref} at its device`));
       return xs.length === 2 ? `${xs[0]} → ${xs[1]}` : xs.join(', ');
     };
-    const cabRow = (cab, lvl) => {
+    // sub: the second line, the part number unless given (a connector's row merged with its one cable).
+    const cabRow = (cab, lvl, sub) => {
       const h = harnessOf(cab), st = statusOf(cab, h), k = kindOf(cab), pn = pnOf(h, cab);
       const title = `<b>${esc(titleOf(cab, h))}</b>${LM.tags.badgesHtml(cab.tags)}`;
       const cells = { ends: `<td>${esc(endsText(cab)) || '<span class="sys-none">—</span>'}</td>`, length: `<td class="num">${cab.lengthMm ? U.fmtLen(cab.lengthMm) : ''}</td>`, wires: `<td class="num">${h ? h.wires.length : ''}</td>` };
-      return `<tr${rowAttr('cable:' + cab.id, 'cab', fm ? fm.cable(cab) : null)}>${nameCell(lvl, lvl ? spacer : '', title, esc(pn || NOPN))}<td class="sys-ltype">${chip(CAB_CHIP[k] || k, 'k-' + k)}${h ? drill('harness', h.id, path, 'harness') : ''}</td>` +
+      return `<tr${rowAttr('cable:' + cab.id, 'cab', fm ? fm.cable(cab) : null)}>${nameCell(lvl, lvl ? spacer : '', title, sub || esc(pn || NOPN))}<td class="sys-ltype">${chip(CAB_CHIP[k] || k, 'k-' + k)}${h ? drill('harness', h.id, path, 'harness') : ''}</td>` +
         `<td class="sys-lst" title="${esc(st.text)}">${statePill(SL ? SL.stateOf(cab) : stateOf(cab, h))}</td>${cols.map(([c]) => cells[c]).join('')}</tr>`;
     };
     let rows = '';
@@ -2425,7 +2426,8 @@
       s.blocks.slice().sort((a, b) => natural(a.ref, b.ref)).forEach(b => {
         const ch = childOf(b), bk = 'b:' + b.id;
         const conns = b.conns.filter(c => pluggedAt(s, b.id, c.id).length || (fitted(c) && c.used)).sort((x, y) => natural(x.ref, y.ref));
-        const name = `<b>${esc(b.ref)} ${esc(ch ? ch.title : b.name || '')}</b>`;
+        // The label, then its ref after a dot (Chris, 2026-11-15: Name · Ref).
+        const label = ch ? ch.title : b.name || '', name = `<b>${label ? esc(label) + ' · ' : ''}${esc(b.ref)}</b>`;
         const sub = `${conns.length} of ${b.conns.length} connector${b.conns.length === 1 ? '' : 's'} used${b.source ? ' · Signoff EE' : ''}`;
         const blit = fm ? fm.block(b) || fm.inside(b) || conns.some(c => pluggedAt(s, b.id, c.id).some(x => fm.cable(x.cable))) : null;
         rows += `<tr${rowAttr('block:' + b.id, 'blk', blit)}>${nameCell(0, conns.length ? caret(bk) : spacer, name, sub)}<td class="sys-ltype">${chip(b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board')}${ch ? drill('system', ch.id, path + '>' + ch.id, 'system') : ''}</td><td class="sys-lst">${SL ? statePill(SL.blockState(s, b)) : ''}</td>${blank}</tr>`;
@@ -2446,8 +2448,15 @@
             kinds = [...new Set(above.map(cab => kindOf(cab)))].map(k => chip(CAB_CHIP[k] || k, 'k-' + k)).join('');
             stat = above.map(cab => { const st = statusOf(cab, harnessOf(cab)); return `<span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}`; }).join('<br>');
           } else if (!at.length) stat = isOpen(s, b, c) ? statePill('open') : '<span class="sys-none">No harness connected</span>';
+          // A connector with one cable plugged in here is one row with it (Chris, 2026-11-15): the cable's name over
+          // its part number and the connector, the cable's type and status, and a click selects the cable.
+          if (at.length === 1 && !above.length) {
+            const cab = at[0].cable, pn = pnOf(harnessOf(cab), cab);
+            rows += cabRow(cab, 1, `${esc(pn || NOPN)} · Connector <span class="mono">${esc(c.ref)}</span>${c.fn ? ' ' + esc(c.fn) : ''}`);
+            return;
+          }
           const fst = filterOf().states || {}, clit = fm ? at.some(x => fm.cable(x.cable)) || above.some(cab => fm.cable(cab)) || (fst.open === 'in' && isOpen(s, b, c)) : null;
-          rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn', clit)}>${nameCell(1, at.length ? caret(ck) : spacer, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ' ' + esc(c.fn) : ''}`, sub)}<td class="sys-ltype">${chip(c.link ? 'External' : 'Connector')}${kinds}</td><td class="sys-lst">${stat}</td>${blank}</tr>`;
+          rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn', clit)}>${nameCell(1, at.length ? caret(ck) : spacer, `${c.fn ? esc(c.fn) + ' · ' : ''}<span class="mono">${esc(c.ref)}</span>`, sub)}<td class="sys-ltype">${chip(c.link ? 'External' : 'Connector')}${kinds}</td><td class="sys-lst">${stat}</td>${blank}</tr>`;
           if (!closed.has(ck)) at.forEach(x => { rows += cabRow(x.cable, 2); });
         });
       });
@@ -2458,7 +2467,7 @@
       }
     }
     const nc = 3 + cols.length;
-    const head = `<thead><tr><th>Name</th><th>Type</th><th>Status</th>${cols.map(([k, l]) => `<th${k === 'ends' ? '' : ' class="num"'}>${l}</th>`).join('')}</tr></thead>`;
+    const head = `<thead><tr><th>Name · Ref</th><th>Type</th><th>Status</th>${cols.map(([k, l]) => `<th${k === 'ends' ? '' : ' class="num"'}>${l}</th>`).join('')}</tr></thead>`;
     const tools = `<div class="sys-ltools"><div class="seg" role="tablist">${[['tree', 'Hierarchy', 'Blocks, their connectors, and the cables in each'], ['flat', 'Cables', 'Just the cables and harnesses, each once']].map(([m, l, tip]) => `<button class="${pr.mode === m ? 'on' : ''}" data-sact="list-mode" data-mode="${m}" title="${tip}">${l}</button>`).join('')}</div></div>`;
     return `<div class="page wide sys-wpage">` + listHead('', s.title, `${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'}<span class="sep">·</span>${nCab} cable${nCab === 1 ? '' : 's'}`, '') + tools +
       `<div class="card table-wrap"><table class="table compact sys-wtable sys-ltable">${head}<tbody>${rows || `<tr><td colspan="${nc}" class="pc-muted">${pr.mode === 'flat' ? 'No cables yet.' : 'Nothing placed yet.'}</td></tr>`}</tbody></table></div>` +
