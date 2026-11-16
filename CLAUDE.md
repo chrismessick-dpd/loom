@@ -112,7 +112,9 @@ links to it so far. Before every commit:
   Then (Chris, 2026-11-15) no Any: a tag's Include or Exclude clears when clicked again; one box (`#sys-fpat`)
   makes pattern badges (`f.pats`, Enter or Add, Include or Exclude, × removes), each over names and part numbers,
   any included pattern and no excluded one; the old name and number boxes read as included patterns. Then (Chris, 2026-11-16) a second click on a pattern's lit
-  Include or Exclude turns it `'off'`: its badge stays, struck through, and filters nothing (`applies`, `filterKept`).
+  Include or Exclude turns it `'off'`: its badge stays, struck through, and filters nothing (`applies`, `filterKept`). An **And / Or** switch in the menu's head (`f.mode`, Chris's
+  choice: sections combine): And as before; Or lights anything matching any included item in any section, and a block lights
+  on its own included pattern or status whatever tags are in. Excludes fade either way; Clear keeps the mode. Tests 125.
   Formboard has the same filter (Chris, 2026-11-15): one `.sys-fwrap` per view, `filterUi()` drawing whichever shows;
   `filterFlat(rootId)` matches flattened blocks and cables, unmatched blocks tint gray, unmatched cable lines fade, and
   lit blocks get a dashed ring in `drawOverlay`.
