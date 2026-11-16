@@ -523,6 +523,7 @@
     if (!S.st.cam) S.st.fit();
     S.st.draw(true);
     LM.system.filterUi();
+    const ss = document.querySelector('#sys-stats'); if (ss) { const h = LM.system.statsStrip(); ss.innerHTML = h; ss.hidden = !h; }
     const panel = host.querySelector('#fb-panel'), keep = panel.scrollTop;
     panel.innerHTML = panelHtml(f, sc);
     panel.scrollTop = keep;

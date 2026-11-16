@@ -1,4 +1,4 @@
-# Status statistics for systems (plan)
+# Status statistics for systems
 
 2026-11-15, Chris: a status section at the top of a system, with counts and a pie, to see what's left. What it
 answers:
@@ -88,3 +88,22 @@ beside it, and `openSpots(s)` lists the Open connectors.
 - Should a purchased cable without a length be Placeholder, or Complete once it has a part number? Plan: Placeholder.
 - Should Open include connectors marked used but not populated? Plan: no, only populated ones.
 - Should Formboard's routed lengths count before Apply lengths writes them? Plan: no, only stored lengths.
+
+## Built (2026-11-15)
+
+Steps 1 to 3 are built, in `assets/system.js` unless noted.
+
+- **The model:** `STATES`, `stateOf(cab, h)`, `isOpen`, `blockCables`, and `systemStats(rootId)`. It returns
+  `counts`, `total`, `spots`, `blockState(s, b)` (the worst), `statesIn(s, b)` (all the states at a block), and
+  `stateOf`. `statsNow()` keeps it for one redraw.
+- **The strip:** `#sys-stats` in `index.html`, beside the breadcrumb, drawn by `statsStrip()` from `app.js` and
+  Formboard. It shows a 24 px donut, a chip per status, and the percent complete. Its panel has a 150 px patterned
+  donut and the legend, whose rows include a status in the filter (Shift-click excludes, a second click clears).
+- **The filter:** a Status section (`f.states`) above Tags. A block lights on an included status any of its spots
+  has, or anything inside a placed system has.
+- **Board pills:** at a block's bottom right (its name sits top left), sized with the block.
+- **List:** cable rows show the ladder's status, block rows the rolled-up status, and connector rows Open.
+- **Tests:** *status statistics*, which covers Open through two levels, the worst, a system placed twice, and the
+  filter.
+
+Step 4 (a read-only check on real data) is next.

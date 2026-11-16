@@ -404,6 +404,91 @@
   }
   const colorOf = cab => { const c = cab && cab.color; return !c ? '' : HEX.test(c) ? c : M.COLORS[c] ? M.COLORS[c][1] : ''; };
   const titleOf = (cab, h) => { const k = kindOf(cab); return k === 'harness' ? (h ? h.title : 'Missing harness') : cab.name || KINDS[k]; };
+  // ── Status statistics (docs/status.md; Chris, 2026-11-15) ──
+  // Every spot on the ladder, least finished first: a used connector with nothing in it, then each system cable.
+  const STATES = [
+    { key: 'open', glyph: '○', name: 'Open', text: 'A used connector with nothing plugged in' },
+    { key: 'generic', glyph: '─', name: 'Generic', text: 'A generic connection: something joins these connectors' },
+    { key: 'placeholder', glyph: '◌', name: 'Placeholder', text: 'A harness with no wires yet, or a purchased cable without a part number or length' },
+    { key: 'fix', glyph: '✕', name: 'Needs fixing', text: 'A harness with wires and check errors' },
+    { key: 'wired', glyph: '◉', name: 'Wired', text: 'Wires drawn, no errors, but some lengths unknown' },
+    { key: 'complete', glyph: '✔', name: 'Complete', text: 'Wired, no errors, every wire’s length known' },
+  ];
+  const STATE = Object.fromEntries(STATES.map((x, i) => [x.key, Object.assign({ rank: i }, x)]));
+  // The less finished of two states (either may be null).
+  const worse = (a, b) => (!a ? b : !b ? a : STATE[a].rank <= STATE[b].rank ? a : b);
+  // A system cable's place on the ladder.
+  function stateOf(cab, h) {
+    const k = kindOf(cab);
+    if (k === 'link') return 'generic';
+    if (k === 'bought') return (cab.pn || cab.mpn) && cab.lengthMm ? 'complete' : 'placeholder';
+    if (h === undefined) h = harnessOf(cab);
+    if (!h || !h.wires.length) return 'placeholder';
+    if (status(h).key !== 'wired') return 'fix';
+    const L = an(h).wireLen;
+    if (h.wires.every(w => L.get(w.id) != null)) return 'complete';
+    // A length set here counts for a harness that's one run between two ends.
+    if (cab.lengthMm && harnessEnds(h).length + deviceEnds(h).length === 2 && h.segments.length === 1) return 'complete';
+    return 'wired';
+  }
+  // A connector that's Open: populated, used, nothing plugged in here, and (external) nothing from above.
+  const isOpen = (s, b, c) => b.kind !== 'system' && fitted(c) && c.used && !pluggedAt(s, b.id, c.id).length && !(c.external && pluggedAbove(s, b.id + '/' + c.id, 0));
+  // The cables at a block's connectors: plugged here, and into its external connectors from above.
+  const blockCables = (s, b) => (b.conns || []).flatMap(c => pluggedAt(s, b.id, c.id).map(x => x.cable).concat(c.external && b.kind !== 'system' ? cablesAbove(s, b.id + '/' + c.id, 0) : []));
+  // The counts for a system and everything placed in it, each system once (a to-do list, not a BOM):
+  // { counts, total, spots: [{ state, system, cable } | { state, system, block, conn }], blockState(s, b), stateOf }.
+  function systemStats(rootId) {
+    const root = S.store[rootId];
+    if (!root) return null;
+    const seen = new Set(), spots = [], counts = Object.fromEntries(STATES.map(x => [x.key, 0])), cabState = new Map();
+    const walk = (x, depth) => {
+      if (!x || seen.has(x.id) || depth > DEPTH) return;
+      seen.add(x.id);
+      x.blocks.forEach(b => { (b.conns || []).forEach(c => { if (isOpen(x, b, c)) spots.push({ state: 'open', system: x.id, block: b.id, conn: c.id }); }); });
+      x.cables.forEach(cab => { const st = stateOf(cab); cabState.set(cab, st); spots.push({ state: st, system: x.id, cable: cab.id }); });
+      x.blocks.forEach(b => walk(childOf(b), depth + 1));
+    };
+    walk(root, 0);
+    spots.forEach(p => { counts[p.state]++; });
+    const st = cab => (cabState.has(cab) ? cabState.get(cab) : stateOf(cab));
+    // A block's worst: its connectors' cables and Open connectors, and a placed system's everything inside.
+    const memo = new Map();
+    const inner = (x, trail) => {
+      if (memo.has(x.id)) return memo.get(x.id);
+      memo.set(x.id, null);
+      let w = null;
+      x.blocks.forEach(b => { w = worse(w, blockState(x, b, trail)); });
+      x.cables.forEach(cab => { w = worse(w, st(cab)); });
+      memo.set(x.id, w);
+      return w;
+    };
+    function blockState(x, b, trail) {
+      trail = trail || [x.id];
+      let w = null;
+      blockCables(x, b).forEach(cab => { w = worse(w, st(cab)); });
+      (b.conns || []).forEach(c => { if (isOpen(x, b, c)) w = worse(w, 'open'); });
+      const ch = childOf(b);
+      if (ch && !trail.includes(ch.id) && trail.length <= DEPTH) w = worse(w, inner(ch, trail.concat(ch.id)));
+      return w;
+    }
+    // The states found at a block (for the filter): any of them, not just the worst.
+    const smemo = new Map();
+    function statesIn(x, b, trail) {
+      trail = trail || [x.id];
+      const out = new Set();
+      blockCables(x, b).forEach(cab => out.add(st(cab)));
+      (b.conns || []).forEach(c => { if (isOpen(x, b, c)) out.add('open'); });
+      const ch = childOf(b);
+      if (ch && !trail.includes(ch.id) && trail.length <= DEPTH) {
+        if (!smemo.has(ch.id)) { smemo.set(ch.id, new Set()); const inn = new Set(); ch.cables.forEach(cab => inn.add(st(cab))); ch.blocks.forEach(bb => statesIn(ch, bb, trail.concat(ch.id)).forEach(v => inn.add(v))); smemo.set(ch.id, inn); }
+        smemo.get(ch.id).forEach(v => out.add(v));
+      }
+      return out;
+    }
+    return { counts, total: spots.length, spots, blockState: (x, b) => blockState(x, b), statesIn: (x, b) => statesIn(x, b), stateOf: st };
+  }
+  // A short pill for a state: glyph and name.
+  const statePill = (k, cls) => (k ? `<span class="st-pill st-${k}${cls ? ' ' + cls : ''}" title="${esc(STATE[k].text)}">${STATE[k].glyph} ${esc(STATE[k].name)}</span>` : '');
   function status(h) {
     if (!h) return { key: 'missing', glyph: '✕', text: 'Harness missing' };
     if (!h.wires.length) return { key: 'placeholder', glyph: '○', text: 'Placeholder, no wires yet' };
@@ -1358,12 +1443,12 @@
     const f = filters()[root || S.root] || {}, pats = Object.assign({}, f.pats || {});
     // The first version's name and number boxes, as included patterns.
     [f.name, f.pn].forEach(x => { if (x && String(x).trim()) pats[String(x).trim()] = 'in'; });
-    return { tags: Object.assign({}, f.tags || {}), pats };
+    return { tags: Object.assign({}, f.tags || {}), pats, states: Object.assign({}, f.states || {}) };
   }
-  const filterOn = f => Object.values(f.tags).some(Boolean) || Object.values(f.pats).some(Boolean);
+  const filterOn = f => Object.values(f.tags).some(Boolean) || Object.values(f.pats).some(Boolean) || Object.values(f.states || {}).some(Boolean);
   function setFilter(f, root) {
     const all = filters(), k = root || S.root;
-    if (filterOn(f)) all[k] = { tags: f.tags, pats: f.pats }; else delete all[k];
+    if (filterOn(f)) all[k] = { tags: f.tags, pats: f.pats, states: f.states || {} }; else delete all[k];
     try { localStorage.setItem(FKEY, JSON.stringify(all)); } catch (e) { /* storage blocked */ }
   }
   function glob(p) {
@@ -1379,17 +1464,23 @@
     const by = (o, v) => Object.keys(o).filter(k => o[k] === v);
     const inc = by(f.tags, 'in'), exc = by(f.tags, 'out');
     const pin = by(f.pats, 'in').map(glob).filter(Boolean), pout = by(f.pats, 'out').map(glob).filter(Boolean);
+    const sin = by(f.states || {}, 'in'), sout = by(f.states || {}, 'out'), SS = sin.length || sout.length ? statsNow(S.root && (S.root === s.id || places(S.store[S.root], s.id)) ? S.root : s.id) : null;
     const hit = (re, xs) => xs.some(x => x && re.test(x));
     const pats = xs => (!pin.length || pin.some(re => hit(re, xs))) && !pout.some(re => hit(re, xs));
     const cable = cab => {
       const h = harnessOf(cab), tg = cab.tags || [];
       if (inc.length && !inc.some(k => LM.tags.has(tg, k))) return false;
       if (exc.some(k => LM.tags.has(tg, k))) return false;
+      if (SS) { const v = SS.stateOf(cab); if ((sin.length && !sin.includes(v)) || sout.includes(v)) return false; }
       return pats([titleOf(cab, h), cab.name, h && h.title, pnOf(h, cab), cab.mpn]);
     };
-    const direct = pin.length > 0 && !inc.length;
-    const block = b => {
+    // A block lights by itself on an included pattern or status (with no tag included): a status when one of its
+    // cables or connectors, or anything inside a placed system, has it (Chris: the worst wins for the pill, but
+    // any one lights it here).
+    const direct = (pin.length > 0 || sin.length > 0) && !inc.length;
+    const block = (b, x) => {
       if (!direct) return false;
+      if (sin.length && SS && !sin.some(v => SS.statesIn(x || s, b).has(v))) return false;
       const ch = childOf(b), name = ch ? ch.title : b.name || '';
       return pats([name, b.ref + ' ' + name, b.ref, b.source && b.source.name, b.pn, ch && ch.pn]);
     };
@@ -1397,7 +1488,7 @@
     const holds = (x, trail) => {
       if (memo.has(x.id)) return memo.get(x.id);
       memo.set(x.id, false);
-      const v = x.cables.some(cable) || x.blocks.some(b => { if (block(b)) return true; const c = childOf(b); return !!c && !trail.includes(c.id) && holds(c, trail.concat(c.id)); });
+      const v = x.cables.some(cable) || x.blocks.some(b => { if (block(b, x)) return true; const c = childOf(b); return !!c && !trail.includes(c.id) && holds(c, trail.concat(c.id)); });
       memo.set(x.id, v);
       return v;
     };
@@ -1436,7 +1527,7 @@
     const w = fwrap();
     if (!w) return;
     const f = filterOf(), on = filterOn(f), s = cur();
-    const n = Object.values(f.tags).filter(Boolean).length + Object.values(f.pats).filter(Boolean).length;
+    const n = Object.values(f.tags).filter(Boolean).length + Object.values(f.pats).filter(Boolean).length + Object.values(f.states).filter(Boolean).length;
     let b = w.querySelector('.sys-fbtn');
     if (!b) { w.innerHTML = '<button class="icon-btn glass sys-fbtn" data-sact="filter" aria-haspopup="true" aria-label="Filter"></button><div class="sys-fmenu" role="dialog" aria-label="Filter" hidden></div>'; b = w.querySelector('.sys-fbtn'); }
     b.classList.toggle('on', on || !!S.filterOpen);
@@ -1451,6 +1542,7 @@
       const stOf = k => { const hit = Object.keys(f.tags).find(x => LM.tags.key(x) === LM.tags.key(k)); return hit ? f.tags[hit] : ''; };
       const pats = Object.keys(f.pats);
       m.innerHTML = `<div class="sys-fhead"><b>Filter</b>${on ? '<button class="sys-fclear" data-sact="filter-clear">Clear</button>' : ''}</div>` +
+        `<div class="sys-fsec">Status</div><div class="sys-ftags">${STATES.map(x => `<div class="sys-ftag">${statePill(x.key)}` + fseg('filter-state', `data-state="${x.key}"`, f.states[x.key] || '', 'status', true) + '</div>').join('')}</div>` +
         `<div class="sys-fsec">Tags</div>` +
         (tags.length ? `<div class="sys-ftags">${tags.map(k => `<div class="sys-ftag"><span class="tag-badge sm" style="--tag:${esc(LM.tags.color(k))}"><span class="tag-dot"></span>${esc(k)}</span>` +
           fseg('filter-tag', `data-tag="${esc(k)}"`, stOf(k), 'tag', true) + '</div>').join('')}</div>`
@@ -1465,6 +1557,60 @@
     if (note) note.textContent = !fm ? 'A pattern matches names and part numbers; * is any run of characters, ? one character. Matching cables and blocks stay lit; the rest fade.'
       : (() => { const c = s.cables.filter(fm.cable).length, k = s.blocks.filter(x => fm.block(x) || fm.inside(x)).length; return `${c} cable${c === 1 ? '' : 's'} and ${k} block${k === 1 ? '' : 's'} lit here.`; })();
   }
+  // The counts for the open system, worked out once per redraw (the toolbar, the drawing, the List, and the filter
+  // all ask during one).
+  let statsMemo = null;
+  function statsNow(rootId) {
+    rootId = rootId || S.root;
+    if (statsMemo && statsMemo.root === rootId) return statsMemo.v;
+    const v = systemStats(rootId);
+    statsMemo = { root: rootId, v };
+    Promise.resolve().then(() => { statsMemo = null; });
+    return v;
+  }
+  // A donut of the counts: r 15.9155 makes the circumference 100, so each slice's dash is its percent. Patterned
+  // (big) or plain (small); a slice never differs by hue alone, since the legend and chips carry each glyph.
+  let donutN = 0;
+  function donutSvg(counts, total, size, patterned) {
+    const id = 'sd' + (++donutN);
+    let at = 0;
+    const defs = patterned ? `<defs>${STATES.map(x => `<pattern id="${id}-${x.key}" class="sp-${x.key}" patternUnits="userSpaceOnUse" width="2.4" height="2.4" patternTransform="rotate(45)"><rect class="sp-bg" width="2.4" height="2.4"/>${x.key === 'fix' ? '<rect class="sp-mk" width="0.8" height="2.4"/>' : x.key === 'open' ? '<circle class="sp-mk" cx="1.2" cy="1.2" r="0.45"/>' : x.key === 'placeholder' ? '<circle class="sp-mk" cx="1.2" cy="1.2" r="0.3"/>' : ''}</pattern>`).join('')}</defs>` : '';
+    const slices = total ? STATES.filter(x => counts[x.key]).map(x => {
+      const p = counts[x.key] / total * 100, d = `<circle class="ds ds-${x.key}" r="15.9155" cx="21" cy="21" ${patterned ? `stroke="url(#${id}-${x.key})"` : ''} stroke-dasharray="${p.toFixed(3)} ${(100 - p).toFixed(3)}" stroke-dashoffset="${(25 - at).toFixed(3)}"><title>${esc(`${x.name}: ${counts[x.key]}`)}</title></circle>`;
+      at += p;
+      return d;
+    }).join('') : '<circle class="ds ds-none" r="15.9155" cx="21" cy="21"/>';
+    return `<svg class="sys-donut" viewBox="0 0 42 42" width="${size}" height="${size}" aria-hidden="true">${defs}${slices}</svg>`;
+  }
+  // The strip in the toolbar: the donut, a chip per status that has any, and the share complete; a click opens the
+  // panel with the big pie and the legend, whose rows include a status in the filter (Shift: exclude).
+  function statsStrip() {
+    const st = statsNow();
+    if (!st) return '';
+    const { counts, total } = st, done = total ? Math.round(counts.complete / total * 100) : 0;
+    const chips = STATES.filter(x => counts[x.key]).map(x => `<span class="sys-schip st-${x.key}" title="${esc(x.name + ': ' + x.text)}">${x.glyph} ${counts[x.key]}</span>`).join('');
+    const f = filterOf();
+    const panel = S.statsOpen ? `<div class="sys-spanel" role="dialog" aria-label="Status">${donutSvg(counts, total, 150, true)}<div class="sys-slegend">` +
+      `<div class="sys-shead"><b>${total} spot${total === 1 ? '' : 's'}</b><span>${done}% complete</span></div>` +
+      STATES.map(x => { const v = f.states[x.key] || '', n = counts[x.key]; return `<button class="sys-srow st-${x.key}${v ? ' f-' + v : ''}" data-sstate="${x.key}" title="${esc(x.text)}. Click to show only these; Shift-click to fade them; again to stop.">` +
+        `<span class="sys-sglyph">${x.glyph}</span><span class="sys-sname">${esc(x.name)}${v ? ` <em>${v === 'in' ? 'included' : 'excluded'}</em>` : ''}</span><span class="sys-sn">${n}</span><span class="sys-sp">${total ? Math.round(n / total * 100) : 0}%</span></button>`; }).join('') +
+      `<p class="sys-snote">Counts this system and every system placed in it, each once. A used connector with nothing plugged in is Open; each cable is counted by how finished it is.</p></div></div>` : '';
+    return `<button class="sys-sbtn${S.statsOpen ? ' on' : ''}" data-sstats aria-expanded="${S.statsOpen ? 'true' : 'false'}" title="Status: ${done}% complete. Click for the pie and to filter by status.">${donutSvg(counts, total, 24, false)}<span class="sys-schips">${chips || '<span class="sys-schip">Nothing yet</span>'}</span><span class="sys-sdone">${done}%</span></button>${panel}`;
+  }
+  function redrawStrip() { const el = document.querySelector('#sys-stats'); if (el) { const h = S.cur ? statsStrip() : ''; el.innerHTML = h; el.hidden = !h; } }
+  // The strip's clicks (it sits in the app's toolbar, outside the page).
+  document.addEventListener('click', e => {
+    const t = e.target;
+    if (S.statsOpen && t.closest && !t.closest('#sys-stats')) { S.statsOpen = false; redrawStrip(); }
+    if (!t.closest) return;
+    if (t.closest('[data-sstats]')) { S.statsOpen = !S.statsOpen; redrawStrip(); return; }
+    const r = t.closest('[data-sstate]');
+    if (r) {
+      const f = filterOf(), k = r.dataset.sstate, want = e.shiftKey ? 'out' : 'in';
+      if (f.states[k] === want) delete f.states[k]; else f.states[k] = want;
+      setFilter(f); filterUi(true); A.refresh(); redrawStrip();
+    }
+  });
   function upSvg(s, fm) {
     let o = '';
     const f1 = v => v.toFixed(1);
@@ -1493,7 +1639,7 @@
     labInfo = new Map();
     // The view's filter (Chris, 2026-11-15): what matches stays lit, a placed system holding a match too, and
     // everything else fades.
-    const fm = filterMatch(s), fcls = lit => (!fm ? '' : lit ? ' fhit' : ' fout');
+    const fm = filterMatch(s), fcls = lit => (!fm ? '' : lit ? ' fhit' : ' fout'), SS = statsNow();
     // A system picked in the menu lights its block and that block's cables, the rest faded (Chris, 2026-11-14:
     // a short-lived change that lit nothing for a pick was taken back).
     const sel = S.sel;
@@ -1566,6 +1712,13 @@
         html += `<g class="${cls}" data-conn="${c.id}" data-block="${b.id}"><title>${esc(`${b.ref} ${c.ref}${c.inside ? ' · inside ' + c.inside : ''}${c.external ? ' · external' : ''}${c.fn ? ' · ' + c.fn : ''} · ${c.pins.length} pins${c.side === 'bottom' ? ' · bottom side' : ''}${c.placed === 'hand' && b.source ? ' · placed by hand' : c.placed === 'netlist' ? ' · not in the pick-and-place: placed at its pads in the netlist' : ''}${fit ? ' · click, then click another connector, to run a cable' : ' · not populated'}`)}</title>` +
           `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3"/><text x="${g.cx}" y="${g.cy + 3.5}">${esc(c.ref)}</text>${mark}</g>`;
       });
+      // Its status, the least finished of its cables and connectors (Chris, 2026-11-15), at the bottom right (the name sits top left).
+      const bk = SS && SS.blockState(s, b);
+      if (bk) {
+        // Sized with the block, so it reads at the zoom the block does.
+        const fs = Math.max(12, Math.min(30, Math.min(W, Hh) / 9)), tx = STATE[bk].glyph + ' ' + STATE[bk].name, pw = U.textW(tx, fs) + fs * 1.2, ph = fs * 1.6, m = fs * 0.5;
+        html += `<g class="st-bpill st-${bk}"><title>${esc(STATE[bk].name + ': the least finished of ' + b.ref + '’s cables and connectors')}</title><rect x="${(X + W - pw - m).toFixed(1)}" y="${(Y + Hh - ph - m).toFixed(1)}" width="${pw.toFixed(1)}" height="${ph.toFixed(1)}" rx="${(ph / 2).toFixed(1)}"/><text x="${(X + W - pw / 2 - m).toFixed(1)}" y="${(Y + Hh - m - ph * 0.3).toFixed(1)}" style="font-size:${fs.toFixed(1)}px">${esc(tx)}</text></g>`;
+      }
       html += '</g>';
     });
     html += '</g><g class="sys-cables">';
@@ -1980,7 +2133,7 @@
     if (f && f.kind === 'harness') return harnessListHtml(f);
     const s = S.store[listSys(f)];
     if (!s) return '';
-    const path = f ? f.path : S.root, pr = listPrefs(), cols = LIST_COLS, fm = filterMatch(s);
+    const path = f ? f.path : S.root, pr = listPrefs(), cols = LIST_COLS, fm = filterMatch(s), SL = statsNow();
     const closed = S.listClosed || (S.listClosed = new Set());
     const nameCell = (lvl, caret, title, sub) => `<td class="sys-wi" style="--lvl:${lvl}"><div class="sys-lname">${caret}<div class="sys-llabel">${title}${sub ? `<div class="sys-lsub">${sub}</div>` : ''}</div></div></td>`;
     const caret = key => `<button class="sys-caret${closed.has(key) ? ' closed' : ''}" data-sact="list-fold" data-key="${esc(key)}" aria-label="${closed.has(key) ? 'Expand' : 'Collapse'}">${CHEV}</button>`;
@@ -1996,7 +2149,7 @@
       const title = `<b>${esc(titleOf(cab, h))}</b>${LM.tags.badgesHtml(cab.tags)}`;
       const cells = { ends: `<td>${esc(endsText(cab)) || '<span class="sys-none">—</span>'}</td>`, length: `<td class="num">${cab.lengthMm ? U.fmtLen(cab.lengthMm) : ''}</td>`, wires: `<td class="num">${h ? h.wires.length : ''}</td>` };
       return `<tr${rowAttr('cable:' + cab.id, 'cab', fm ? fm.cable(cab) : null)}>${nameCell(lvl, lvl ? spacer : '', title, esc(pn || NOPN))}<td class="sys-ltype">${chip(CAB_CHIP[k] || k, 'k-' + k)}${h ? drill('harness', h.id, path, 'harness') : ''}</td>` +
-        `<td class="sys-lst"><span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}</td>${cols.map(([c]) => cells[c]).join('')}</tr>`;
+        `<td class="sys-lst" title="${esc(st.text)}">${statePill(SL ? SL.stateOf(cab) : stateOf(cab, h))}</td>${cols.map(([c]) => cells[c]).join('')}</tr>`;
     };
     let rows = '';
     const nCab = s.cables.length;
@@ -2009,7 +2162,7 @@
         const name = `<b>${esc(b.ref)} ${esc(ch ? ch.title : b.name || '')}</b>`;
         const sub = `${conns.length} of ${b.conns.length} connector${b.conns.length === 1 ? '' : 's'} used${b.source ? ' · Signoff EE' : ''}`;
         const blit = fm ? fm.block(b) || fm.inside(b) || conns.some(c => pluggedAt(s, b.id, c.id).some(x => fm.cable(x.cable))) : null;
-        rows += `<tr${rowAttr('block:' + b.id, 'blk', blit)}>${nameCell(0, conns.length ? caret(bk) : spacer, name, sub)}<td class="sys-ltype">${chip(b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board')}${ch ? drill('system', ch.id, path + '>' + ch.id, 'system') : ''}</td><td></td>${blank}</tr>`;
+        rows += `<tr${rowAttr('block:' + b.id, 'blk', blit)}>${nameCell(0, conns.length ? caret(bk) : spacer, name, sub)}<td class="sys-ltype">${chip(b.kind === 'system' ? 'System' : b.kind === 'device' ? 'Device' : 'Board')}${ch ? drill('system', ch.id, path + '>' + ch.id, 'system') : ''}</td><td class="sys-lst">${SL ? statePill(SL.blockState(s, b)) : ''}</td>${blank}</tr>`;
         if (closed.has(bk)) return;
         conns.forEach(c => {
           const at = pluggedAt(s, b.id, c.id), ck = `c:${b.id}:${c.id}`;
@@ -2026,8 +2179,8 @@
             sub = `<span class="sys-lconn">Connected to ${above.map(cab => { const h = harnessOf(cab), pn = pnOf(h, cab); return esc(titleOf(cab, h)) + (pn ? ' · ' + esc(pn) : '') + LM.tags.badgesHtml(cab.tags); }).join(', ')}</span>`;
             kinds = [...new Set(above.map(cab => kindOf(cab)))].map(k => chip(CAB_CHIP[k] || k, 'k-' + k)).join('');
             stat = above.map(cab => { const st = statusOf(cab, harnessOf(cab)); return `<span class="sys-st st-${st.key}">${st.glyph}</span> ${esc(st.text)}`; }).join('<br>');
-          } else if (!at.length) stat = '<span class="sys-none">No harness connected</span>';
-          const clit = fm ? at.some(x => fm.cable(x.cable)) || above.some(cab => fm.cable(cab)) : null;
+          } else if (!at.length) stat = isOpen(s, b, c) ? statePill('open') : '<span class="sys-none">No harness connected</span>';
+          const fst = filterOf().states || {}, clit = fm ? at.some(x => fm.cable(x.cable)) || above.some(cab => fm.cable(cab)) || (fst.open === 'in' && isOpen(s, b, c)) : null;
           rows += `<tr${rowAttr(`conn:${b.id}:${c.id}`, 'conn', clit)}>${nameCell(1, at.length ? caret(ck) : spacer, `<span class="mono">${esc(c.ref)}</span>${c.fn ? ' ' + esc(c.fn) : ''}`, sub)}<td class="sys-ltype">${chip(c.link ? 'External' : 'Connector')}${kinds}</td><td class="sys-lst">${stat}</td>${blank}</tr>`;
           if (!closed.has(ck)) at.forEach(x => { rows += cabRow(x.cable, 2); });
         });
@@ -2138,6 +2291,7 @@
       page.querySelector('#sys-labels').checked = labelsOn();
     }
     filterUi();
+    redrawStrip();
     page.querySelector('#sys-help').innerHTML = listOn ? '' : helpHtml();
     const panel = page.querySelector('#sys-panel'), keep = panel.scrollTop;
     const backBtn = S.sel || S.adding ? `<button class="sys-back" data-sact="back" title="Back to the system">${'‹'} Back</button>` : '';
@@ -2771,7 +2925,8 @@
       case 'list-mode': { const p = listPrefs(); p.mode = el.dataset.mode === 'flat' ? 'flat' : 'tree'; setListPrefs(p); A.refresh(); break; }
       case 'filter': S.filterOpen = !S.filterOpen; filterUi(true); break;
       case 'filter-tag': { const f = filterOf(), k = el.dataset.tag, v = el.dataset.v; Object.keys(f.tags).forEach(x => { if (LM.tags.key(x) === LM.tags.key(k)) delete f.tags[x]; }); if (v) f.tags[k] = v; setFilter(f); filterUi(true); A.refresh(); break; }
-      case 'filter-clear': setFilter({ tags: {}, pats: {} }); filterUi(true); A.refresh(); break;
+      case 'filter-clear': setFilter({ tags: {}, pats: {}, states: {} }); filterUi(true); A.refresh(); break;
+      case 'filter-state': { const f = filterOf(), k = el.dataset.state, v = el.dataset.v; if (v) f.states[k] = v; else delete f.states[k]; setFilter(f); filterUi(true); A.refresh(); break; }
       case 'filter-add': { const i = fwrap() && fwrap().querySelector('#sys-fpat'); if (i && addPattern(i.value)) { filterUi(true); A.refresh(); setTimeout(() => { const j = fwrap() && fwrap().querySelector('#sys-fpat'); if (j) j.focus(); }, 0); } break; }
       case 'filter-pat': { const f = filterOf(), k = el.dataset.pat, v = el.dataset.v; if (v) f.pats[k] = v; else delete f.pats[k]; setFilter(f); filterUi(true); A.refresh(); break; }
       case 'list-fold': { const k = el.dataset.key, c = S.listClosed || (S.listClosed = new Set()); if (c.has(k)) c.delete(k); else c.add(k); A.refresh(); break; }
@@ -3158,7 +3313,7 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending || (S.tab === 'formboard' && !!LM.formboard && LM.formboard.busy()), act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, filterFlat, filterUi, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
+    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, filterFlat, filterUi, systemStats, stateOf, statsStrip, STATES, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
     tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,
     canUndo: () => !locked() && S.past.length > 0, canRedo: () => !locked() && S.future.length > 0, discardTo, restore, saveFile, openDoc,
     // compare.js: a stored version made ready to draw (its placed systems' tabs resolved), the selection

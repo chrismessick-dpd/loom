@@ -1312,6 +1312,36 @@
       ok(!m.cable(kt) && !m.cable(kp) && !m.block(sb), 'every part must hold, and an include keeps blocks from matching by name');
     } finally { done(); }
   });
+  test('status statistics: the ladder, Open connectors, counts through placed systems, and a block’s worst', () => {
+    const { Y, top, pump, psu, a, j1, j2, sb, done } = nestFixture();
+    try {
+      const p1 = psu.conns[0] || Y.mkConn(psu, 'TB1', 2, { x: 0, y: 5 });
+      p1.used = true; j2.used = true; j1.used = true;
+      Y.resolve();
+      let st = Y.systemStats(top.id);
+      eq(st.counts.open, 3, 'nothing plugged: the device’s TB1, and the board’s J1 (external, nothing above) and J2');
+      eq(st.blockState(top, sb), 'open', 'a placed system takes the worst inside it');
+      const tab = sb.conns.find(c => c.id === a.id + '/' + j1.id);
+      top.cables.push({ id: 'kg', kind: 'link', ends: { a: { block: psu.id, conn: p1.id }, b: { block: sb.id, conn: tab.id } } });
+      st = Y.systemStats(top.id);
+      eq([st.counts.open, st.counts.generic], [1, 1], 'plugged from above: J1 isn’t open; the link is generic');
+      eq(st.blockState(top, psu), 'generic', 'the device takes its cable’s state');
+      eq(st.blockState(pump, a), 'open', 'the board inside: J2 still open is worse than J1’s generic cable');
+      ok(st.statesIn(pump, a).has('generic') && st.statesIn(pump, a).has('open'), 'every state at the board, its external J1’s cable from above too');
+      pump.cables.push({ id: 'kb', kind: 'bought', name: 'Jumper', pn: 'X-1', lengthMm: 120, ends: { a: { block: a.id, conn: j2.id }, b: null } });
+      st = Y.systemStats(top.id);
+      eq([st.counts.open, st.counts.generic, st.counts.complete, st.total], [0, 1, 1, 2], 'a purchased cable with a part number and length is complete');
+      eq(Y.stateOf({ kind: 'bought', pn: 'X-1' }), 'placeholder', 'no length: placeholder');
+      eq(Y.stateOf({ kind: 'harness', harness: 'gone' }, null), 'placeholder', 'a missing harness');
+      eq(Y.stateOf({ kind: 'harness' }, harness('Empty')), harness('Empty').wires.length ? Y.stateOf({ kind: 'harness' }, harness('Empty')) : 'placeholder', 'no wires: placeholder');
+      top.blocks.push(Object.assign({}, sb, { id: 'sb2', ref: 'S2' }));
+      Y.resolve();
+      eq(Y.systemStats(top.id).total, 2, 'a system placed twice is counted once');
+      const m = Y.filterMatch(top, { tags: {}, pats: {}, states: { generic: 'in' } });
+      ok(m.cable(top.cables.find(c => c.id === 'kg')) && !m.cable(pump.cables.find(c => c.id === 'kb')), 'status in the filter: cables by their state');
+      ok(m.block(psu) && m.inside(sb), 'a block with a cable in that state lights, and the placed system holding one');
+    } finally { done(); }
+  });
   test('formboard flatten: a connector passed up two levels reaches its board', () => {
     const { Y, store, pump, top, a, j1, sb, done } = nestFixture();
     const plant = Y.blank('Gizmo'); plant.title = 'Plant';

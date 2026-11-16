@@ -700,6 +700,9 @@
     if (window.SignoffTickets && SignoffTickets.items) SignoffTickets.items(menuItems);
     const bar = LM.system.current() ? LM.system.crumbs() : h ? harnessCrumbs(h) : '';
     crumbs.innerHTML = bar; crumbs.hidden = !bar;
+    // The status strip (docs/status.md), for a system on any tab.
+    const stats = $('#sys-stats');
+    if (stats) { const sh = LM.system.current() ? LM.system.statsStrip() : ''; stats.innerHTML = sh; stats.hidden = !sh; }
     // A system's tabs (Chris, 2026-11-12: as the harness's, over the canvas): System and List (Chris,
     // 2026-11-14: Overview was redundant; Detail, renamed System, draws the open system at the top).
     // Not data-view, which is the harness's own.
