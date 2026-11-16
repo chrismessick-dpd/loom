@@ -137,6 +137,53 @@
       const g = v.over.getContext('2d');
       g.clearRect(0, 0, v.over.width, v.over.height);
       if (host.overlay) host.overlay(v, g, v.scale);
+      drawRing(v, g);
+    }
+    // ── The turn ring (Chris, 2026-11-16: as Signoff PL's Exploded) ──
+    // In each flat view, a very light circle round the selected block with a dot to drag: it turns the block about
+    // the axis toward the eye (Top about Z, Front about Y, Right about X), 15° steps, Alt for any angle. Its size
+    // comes from the block's own extent, so it holds still while it turns. v.ring is kept in CSS px for the pointer.
+    const RING_DOT = 6;
+    const dark = () => { const t = document.documentElement.getAttribute('data-theme'); return t ? t === 'dark' : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); };
+    function ringObj() {
+      if (host.noRing && host.noRing()) return null;
+      const id = host.selected ? host.selected() : null, o = id && st.objs.find(x => x.id === id);
+      return o && !o.fixed && !o.hidden && o.mesh && o.mesh.idx.length ? o : null;
+    }
+    function drawRing(v, g) {
+      v.ring = null;
+      const o = ringObj();
+      if (!v.flat || !o || !v.res) return;
+      if (!o.rad) { const bb = M3().bbox(o.mesh.pos); o.rad = Math.hypot(bb.hi[0] - bb.lo[0], bb.hi[1] - bb.lo[1], bb.hi[2] - bb.lo[2]) / 2; }
+      const pc = M3().place(o, o.pivot || [0, 0, 0]), c = v.res.project(pc), e = v.res.project(pc.map((x, i) => x + (i === v.flat.h ? 1 : 0)));
+      const k = v.scale, r = Math.max(18 * k, Math.abs(e[0] - c[0]) * o.rad + 10 * k);
+      const spin = st.drag && st.drag.kind === 'spin' && st.drag.v === v ? st.drag : null;
+      // The dot rests at 12 o'clock, else the first of 3, 6, and 9 inside the view.
+      const W = v.over.width, H = v.over.height, m = (RING_DOT + 2) * k;
+      let a = spin ? spin.a : [-90, 0, 90, 180].map(d => d * DEG).find(t => { const x = c[0] + r * Math.cos(t), y = c[1] + r * Math.sin(t); return x >= m && y >= m && x <= W - m && y <= H - m; });
+      if (a == null) a = -Math.PI / 2;
+      const dot = [c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)], dk = dark();
+      g.save();
+      g.lineWidth = 1.5 * k; g.strokeStyle = dk ? 'rgba(225, 228, 232, 0.55)' : 'rgba(150, 155, 160, 0.55)';
+      g.beginPath(); g.arc(c[0], c[1], r, 0, Math.PI * 2); g.stroke();
+      if (spin) { g.setLineDash([4 * k, 4 * k]); g.beginPath(); g.moveTo(c[0], c[1]); g.lineTo(dot[0], dot[1]); g.stroke(); g.setLineDash([]); }
+      g.fillStyle = dk ? '#e6e8eb' : '#f4f5f6'; g.strokeStyle = dk ? 'rgba(0, 0, 0, 0.55)' : 'rgba(90, 95, 100, 0.8)'; g.lineWidth = 1.2 * k;
+      g.beginPath(); g.arc(dot[0], dot[1], RING_DOT * k, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.restore();
+      v.ring = { id: o.id, c: [c[0] / k, c[1] / k], r: r / k, dot: [dot[0] / k, dot[1] / k] };
+    }
+    const onDot = (v, xy) => !!v.ring && Math.hypot(xy[0] - v.ring.dot[0], xy[1] - v.ring.dot[1]) <= RING_DOT + 5;
+    // θ (radians, counterclockwise as seen) about the axis n, as a matrix; then the product, and back to degrees
+    // about X, then Y, then Z (model3d.rotation).
+    function axisTurn(n, t) {
+      const c = Math.cos(t), s2 = Math.sin(t), C = 1 - c, x = n[0], y = n[1], z = n[2];
+      return [c + x * x * C, x * y * C - z * s2, x * z * C + y * s2, y * x * C + z * s2, c + y * y * C, y * z * C - x * s2, z * x * C - y * s2, z * y * C + x * s2, c + z * z * C];
+    }
+    function mul3(A, B) { const out = []; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) out.push(A[i * 3] * B[j] + A[i * 3 + 1] * B[3 + j] + A[i * 3 + 2] * B[6 + j]); return out; }
+    function eulerOf(R) {
+      const clean = r => { let d = r / DEG; d = Math.round(d * 100) / 100; return Math.abs(d - Math.round(d)) < 0.02 ? Math.round(d) : d; };
+      if (Math.abs(R[6]) > 0.99999) { const b = R[6] < 0 ? Math.PI / 2 : -Math.PI / 2; return [0, clean(b), clean(Math.atan2(-R[1], R[4]))]; }
+      return [clean(Math.atan2(R[7], R[8])), clean(Math.asin(-R[6])), clean(Math.atan2(R[3], R[0]))];
     }
     function overlays() { st.views.forEach(overlay); }
     function later() {
@@ -175,6 +222,10 @@
         if (!v.res) return;
         cv.focus({ preventScroll: true });
         const i = info(v, e);
+        if (e.button === 0 && v.flat && onDot(v, i.xy)) {
+          const o = st.objs.find(x => x.id === v.ring.id), a0 = Math.atan2(i.xy[1] - v.ring.c[1], i.xy[0] - v.ring.c[0]);
+          if (o) { st.drag = { kind: 'spin', v, o, a0, a: a0, R0: (o.R || [1, 0, 0, 0, 1, 0, 0, 0, 1]).slice(), moved: false }; cv.setPointerCapture(e.pointerId); return; }
+        }
         const claim = host.down && e.button === 0 && host.down(v, i, e);
         if (claim) { st.drag = { kind: 'host', v, h: claim, moved: false, x0: i.xy[0], y0: i.xy[1] }; cv.setPointerCapture(e.pointerId); return; }
         const o = i.hit && st.objs[i.hit.obj], sel = host.selected ? host.selected() : null;
@@ -187,8 +238,21 @@
       });
       cv.addEventListener('pointermove', e => {
         const d = st.drag;
-        if (!d) { if (host.hover && v.res) host.hover(v, info(v, e)); return; }
+        if (!d) { const i0 = v.res ? info(v, e) : null; if (host.hover && i0) host.hover(v, i0); if (i0 && v.flat && onDot(v, i0.xy)) cv.style.cursor = 'grab'; return; }
         if (d.v !== v) return;
+        if (d.kind === 'spin') {
+          // On screen y runs down, so the screen angle grows clockwise; counterclockwise as seen is a positive turn
+          // about the axis toward the eye. 15° steps; Alt for any angle.
+          const p = info(v, e).xy, rg = v.ring || d, step = 15 * DEG;
+          let t = -(Math.atan2(p[1] - rg.c[1], p[0] - rg.c[0]) - d.a0);
+          t = Math.atan2(Math.sin(t), Math.cos(t));
+          if (!e.altKey) t = Math.round(t / step) * step;
+          d.a = d.a0 - t; d.moved = d.moved || Math.abs(t) > 1e-9; d.t = t;
+          d.o.R = mul3(axisTurn(v.res.cam.f, t), d.R0);
+          hint('Turn ' + (Math.round(t * v.res.cam.f[v.flat.fixed] / DEG * 10) / 10).toLocaleString() + '° about ' + 'XYZ'[v.flat.fixed]);
+          later();
+          return;
+        }
         const i = info(v, e), dx = i.xy[0] - d.x0, dy = i.xy[1] - d.y0;
         if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
         if (d.kind === 'host') { if (d.h.move) d.h.move(i, e, d); return; }
@@ -220,6 +284,12 @@
         if (!d || d.v !== v) return;
         st.drag = null;
         if (d.kind === 'host') { if (d.h.up) d.h.up(info(v, e), e, d); return; }
+        if (d.kind === 'spin') {
+          hint('');
+          if (d.moved && host.rotated) { const live = st.objs.find(x => x.id === d.o.id) || d.o; host.rotated(live.id, eulerOf(d.o.R)); }
+          else { d.o.R = d.R0; draw(true); }
+          return;
+        }
         if (d.kind === 'move') {
           hint('');
           const live = st.objs.find(x => x.id === d.o.id) || d.o;

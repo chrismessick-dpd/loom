@@ -80,6 +80,11 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   tab (`setFocus`). Each system has its own formboards (`f.system`), any number. A formboard imports only its own
   system: `flatten` walks that system down (placed systems opened inside it, unless kept as one block), so cables
   plugged into it from the systems above stay out. Only the demo's own system gets the made-up bracket.
+- **Turn ring (2026-11-16, Chris: as Signoff PL's).** In each flat view of Four views, a very light circle round the
+  selected block with a dot (12 o'clock, else 3, 6, or 9 inside the view); dragging the dot turns the block about the
+  axis toward the eye (Top Z, Front Y, Right X), 15° steps, Alt for any angle (`stage.js` `drawRing`, `axisTurn`,
+  `eulerOf`, PL's own math), written as one change through `host.rotated` (degrees about X, then Y, then Z). Only
+  with Select; R still turns 90°.
 
 - **Sync (2026-11-15, Chris: "Build sync next").** `store.js` `syncFormboards` runs after the systems in every
   sync (on opening signed in, the Sync button, Ctrl+S). Each formboard is `loom_data/formboards/projects/<id>.json`

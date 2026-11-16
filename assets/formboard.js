@@ -814,6 +814,9 @@
       },
       moved: (id, T) => { const o = S.sc.blocks[id.slice(2)]; if (o) moveBlock(o, T); },
       turned: (id, axis, deg) => { const o = S.sc.blocks[id.slice(2)]; if (o) turnBlock(o, axis, deg); },
+      // The turn ring (stage.js): any angle, as degrees about X, then Y, then Z.
+      rotated: (id, rot) => { const o = S.sc.blocks[id.slice(2)]; if (o) change(x => { const k = x.blocks[o.b.path] || {}; x.blocks[o.b.path] = { at: (k.at || o.T).map(r1), rot: rot.map(a => Math.round(a * 100) / 100) }; }); },
+      noRing: () => S.tool !== 'select',
       saved: st => { S.ui.cams = S.ui.cams || {}; if (S.cur) S.ui.cams[S.cur] = st; saveUi(); },
       overlay: drawOverlay,
       overHit,
