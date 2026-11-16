@@ -580,6 +580,7 @@
     const st = S.st || {};
     return `<select data-fbsel="pick" aria-label="Formboard">${list.map(x => `<option value="${esc(x.id)}"${x.id === f.id ? ' selected' : ''}>${esc(x.title)}</option>`).join('')}<option value="+new">New formboard…</option></select>` +
       `<span class="fb-sep"></span><label class="btn" title="A 3D model (STEP, or STL for a big assembly), a DXF, or a picture (PNG or JPEG) to place the system on">Reference…<input type="file" accept=".step,.stp,.stl,.dxf,.png,.jpg,.jpeg,.webp" data-fbfile hidden></label>` +
+      (DEMO ? `<button class="btn" data-fb="demo-ref" data-ref="dxf" title="A made-up layout board for the thermostat, drawn in mm">Demo DXF</button><button class="btn" data-fb="demo-ref" data-ref="stl" title="A made-up enclosure tray for the thermostat, in mm">Demo STL</button>` : '') +
       (f.reference && (f.reference.kind === 'dxf' || f.reference.kind === 'image') ? `<button class="btn${S.tool === 'calibrate' ? ' on' : ''}" data-fb="tool" data-tool="calibrate" title="Click two points on the reference, then type the distance between them">Calibrate</button>` : '') +
       `<span class="fb-sep"></span><div class="seg" role="group" aria-label="Tool">${toolBtn('select', 'Select', 'Select and move blocks (Esc)')}${toolBtn('channel', 'Draw channel', 'Click point to point along the path; double-click or Enter to finish, Esc to cancel')}${toolBtn('snap', 'Snap block', 'Pick a corner, edge, hole, or face on the selected block, then where it goes')}</div>` +
       `<span class="fb-sep"></span><button class="btn${st.quad ? ' on' : ''}" data-fb="quad" aria-pressed="${!!st.quad}" title="Top, Front, and Right beside the 3D view">Four views</button>` +
@@ -720,6 +721,7 @@
       case 'tool': S.tool = t.dataset.tool; S.draft = null; S.snap = null; S.cal = null; if (S.tool === 'snap' && (!S.sel || S.sel.kind !== 'block')) A.toast('Select a block first, then Snap block.'); refresh(); return;
       case 'quad': if (S.st) { S.st.setQuad(!S.st.quad); refresh(); } return;
       case 'fit': if (S.st) { S.st.fit(); S.st.draw(true); } return;
+      case 'demo-ref': demoRef(t.dataset.ref); return;
       case 'route': routeAll(); return;
       case 'apply': applyLengths(); return;
       case 'apply-one': applyLengths(t.dataset.id); return;
@@ -1120,6 +1122,34 @@
     persist();
   }
 
+  // Demo DXF and Demo STL (?demo, for the guide's formboard steps): Loom's made-up references in assets/demo
+  // (tools/make_formboard_demo.py), read as an import of that file would be.
+  const DEMO_REFS = { dxf: 'formboard-demo.dxf', stl: 'formboard-demo.stl' };
+  async function demoRef(kind) {
+    const name = DEMO_REFS[kind];
+    if (!DEMO || !name || !cur()) return;
+    try {
+      const r = await fetch('assets/demo/' + name);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      await importRef(new File([await r.arrayBuffer()], name));
+    } catch (e) { A.toast('Couldn’t read the demo ' + kind.toUpperCase() + ': ' + e.message, 'error'); }
+  }
+  // The guide (assets/guide.js), for a step that needs a formboard with Demo DXF or Demo STL in it: the one shown if
+  // it has that reference (the visitor's own, whatever they named it), else the open system's formboard of this
+  // title, else a new one; its reference loaded when it has none. A second run of the guide picks it up again.
+  // With load false (the step that has the visitor click Demo DXF or Demo STL), a formboard with no reference yet,
+  // shown as it is, does too.
+  async function guideFormboard(title, kind, load) {
+    if (!S.root) return null;
+    const has = x => !!x.reference && x.reference.name === DEMO_REFS[kind];
+    const c = cur(), mine = c && (has(c) || (load === false && !c.reference));
+    let f = mine ? c : forSystem(S.root).find(x => x.title === title) || forSystem(S.root).find(has);
+    if (!f) { f = blank(S.root, title); S.store[f.id] = f; persist(); }
+    if (S.cur !== f.id) { S.cur = f.id; S.sel = null; remember(); refresh(); }
+    if (kind && !f.reference && load !== false) await demoRef(kind);
+    return f;
+  }
+
   function init(hooks) { A = hooks; load(); }
   // After a sync (app.js): the documents GitHub's merge left, as plain objects, made whole again.
   function synced() {
@@ -1133,5 +1163,6 @@
     canUndo: () => S.past.length > 0, canRedo: () => S.future.length > 0,
     busy: () => !!(S.st && S.st.busy()) || !!S.draft || !!S.busy,
     current: cur, state: () => S, routeAll, applyLengths, scene: () => S.sc, select: x => { S.sel = x; refresh(); },
+    demoRef, guideFormboard, tool: t => { S.tool = t || 'select'; S.draft = null; S.snap = null; S.cal = null; refresh(); },
   };
 })(window.LM = window.LM || {});

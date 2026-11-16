@@ -22,6 +22,22 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Guide: systems, statuses, and formboards (2026-11-15, Chris: check the guide's steps still work, then add
+  cards on building a system, connection statuses, and a 2D DXF and a 3D STL formboard; his choices: demo
+  buttons for the files, the visitor builds both formboards, a tour of the demo system).** 45 steps in eleven
+  chapters now. Fixed: the Parts-tab steps rang nothing (a cleared selection leaves the pane on Properties;
+  `guide.tab`), Four views is Five views (Wires), the menu's rows (pill, systems tree), Adding parts' newer
+  buttons, and the card placed off the system canvas and formboard stage (it fell back to `#main`). New chapters
+  Systems (7), Connection statuses (3), Formboard from a DXF (5), and Formboard from an STL (3), on the demo
+  system `sdemo1`, found by block, connector, and cable names. Hooks in `LM.app.guide`: `tab`, `system(tab)`
+  (never rebuilds `sdemo1` once it exists, which would orphan formboards), `ssel`, `sysHelp`, and
+  `formboard(title, kind, load)` (`LM.formboard.guideFormboard`: the shown formboard if it has that demo
+  reference, else one by title, else a new one; a second run reuses them). In `?demo` the formboard bar has
+  **Demo DXF** and **Demo STL** (`demoRef`), reading `assets/demo/formboard-demo.dxf` (a made-up 360 × 220 mm
+  layout board, `$INSUNITS` mm, outlines and guide lines with pegs) and `formboard-demo.stl` (a made-up 200 ×
+  140 mm tray with standoffs), made by `tools/make_formboard_demo.py`. Tried in the demo: every ring, a cable
+  drawn between unused tabs, Wall wires made a harness and undone, Plug in a harness, Make external, the FFC
+  turned Complete by a part number, both demo references, and Route and Apply lengths on the DXF board.
 - **One run drag (2026-11-15, Chris: wires and cables drag alike).** `connect.js` `dragStart` and `dragTo` wrap the
   engine's grab and slide with the record's sides, mode, and split points kept; `dragRun` in `app.js` and the system's run
   drag both call them (a lead-in passes its own grab). A run drag no longer drops a moved split point, in either canvas.
@@ -803,8 +819,9 @@ links to it so far. Before every commit:
   - Not done: pinch zoom on the stage, no tests.
 
 - **The guide (2026-11-07, Chris: an interactive getting started for new users):** `assets/guide.js`,
-  `window.LoomGuide` (also `LM.guide`). 27 steps in seven chapters (Welcome, The canvas, Ends and wires,
-  Wire sets, Views and notes, The drawing, Done), each a title, what the feature is, a *Try it*
+  `window.LoomGuide` (also `LM.guide`). 45 steps in eleven chapters since 2026-11-15 (Welcome, The canvas, Ends
+  and wires, Wire sets, Views and notes, The drawing, Systems, Connection statuses, Formboard from a DXF,
+  Formboard from an STL, Done; see the 2026-11-15 entry at the top), each a title, what the feature is, a *Try it*
   instruction, a `setup` (view, selection, panels shown, the How it works card closed), and a `spot`
   (selectors, first one shown wins; a list of selectors in a spot rings them as one box), ringed by
   `#lm-guide-spot`, moved every animation frame. 2026-11-08 (Chris): after *A connector from a board*,

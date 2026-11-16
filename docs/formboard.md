@@ -52,6 +52,10 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   L-shaped solid: a 300 × 200 × 10 mm base and a 10 mm wall at its back, 150 mm tall (Chris, 2026-11-15, after the
   first wall plate). Each flat face is its own face id, so it snaps as a STEP would. The boards sit on the base, with a
   Low voltage channel and an exclusive 24 VAC raceway, and the wall wiring tagged 24 VAC.
+- **Demo DXF and Demo STL (2026-11-15, Chris: for the guide's formboard walkthrough).** In `?demo` the bar offers
+  both beside Reference…, read as an import would be: `assets/demo/formboard-demo.dxf`, a made-up 360 × 220 mm
+  layout board in mm with an outline per thermostat block and guide lines with pegs, and `formboard-demo.stl`, a
+  made-up 200 × 140 mm enclosure tray with standoffs (`tools/make_formboard_demo.py`).
 - **STL snapping (2026-11-15, Chris: channel points didn't snap to edges and corners on his STL).** An STL has no CAD
   faces, so `readStl` gives every triangle face id 0, and `model3d.features` read the whole model as one face with no
   edges. `stage.js` `featsOf` now reads a mesh whose triangles all share one face id as facets (neighbors under 30°

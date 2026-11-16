@@ -3177,6 +3177,37 @@
       // The How it works card, which would cover Properties.
       help(open) { if ((fold.help !== false) === open) return; fold.help = open; try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (e) { /* storage blocked */ } if (H() && S.view === 'build') renderParts(); },
       fit() { if (H() && S.view === 'build') fitGlide(); },
+      // The parts pane's tab: Parts (Add) or Properties. Any new selection, a cleared one too, shows Properties.
+      tab(t) { if (!H() || S.view !== 'build') return; S.paneTab = t === 'parts' ? 'parts' : 'props'; renderParts(); },
+      // The demo system (sdemo1, the thermostat) on a tab (detail, list, or formboard), drawn whole with nothing
+      // picked. It's built once on opening the demo, after the boards are read; never rebuilt here, since that
+      // makes fresh block and cable ids and would orphan the formboards made on it.
+      system(tab) {
+        const go = () => {
+          if (!LM.system.get('sdemo1')) return;
+          if (LM.system.root() !== 'sdemo1' || S.cur) openSystem('sdemo1'); else LM.system.openAt('sdemo1', 'sdemo1');
+          if (tab && tab !== 'detail') LM.system.setTab(tab);
+          if (LM.system.tab() !== 'formboard') LM.system.select(null);
+        };
+        if (LM.system.get('sdemo1')) go(); else LM.system.demo(true).then(go);
+      },
+      // Select on the system canvas: { kind: 'block', block } or { kind: 'cable', id } (or null).
+      ssel(t) { if (LM.system.root()) LM.system.select(t || null); },
+      // The system panel's How it works card, which would cover the panel's foot.
+      sysHelp(open) {
+        const k = NS + 'sysHelp';
+        let was; try { was = localStorage.getItem(k) !== 'closed'; } catch (e) { return; }
+        if (was === open) return;
+        try { localStorage.setItem(k, open ? 'open' : 'closed'); } catch (e) { /* storage blocked */ }
+        renderAll();
+      },
+      // A formboard of the demo system with Demo DXF or Demo STL in it (formboard.js guideFormboard).
+      formboard(title, kind, load) {
+        this.system('formboard');
+        const run = () => LM.formboard && LM.formboard.guideFormboard(title, kind, load);
+        if (LM.system.root() === 'sdemo1') return run();
+        setTimeout(run, 300);
+      },
       narrow,
     } };
 })(window.LM = window.LM || {});
