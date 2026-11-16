@@ -786,6 +786,15 @@
     ok(RT.fits(R0.A, R0.B, v, 23), 'the dragged shape fits its ends: ' + v);
     eq(CN.release(R0, v, { mode: 'behind' }).mode, 'behind', 'let go, the record keeps its mode');
   });
+  test('connect: the shared run drag keeps the record’s mode and a moved split point', () => {
+    const CN = LM.connect, R0 = { A: { x: 0, y: 0, out: 1, side: 'r' }, B: { x: 600, y: 200, in: 1, side: 'l' }, v: [300], stub: 23, half: 3, r: 13 };
+    const g = {}, rec = { v: [300], mode: 'behind', split1: { x: 600, y: 200 } };
+    const first = CN.dragStart(g, CN.runAt(R0, { x: 300, y: 100 }), rec, null, false, { x: 300, y: 100 });
+    eq([first.mode, first.split1], ['behind', rec.split1], 'kept at the start');
+    const r = CN.dragTo(g, { x: 340, y: 100 }, null, 0);
+    eq(r.v, [340], 'the run moves by the pointer');
+    eq([r.mode, r.split1, r.a, r.b], ['behind', rec.split1, 'r', 'l'], 'with its mode, split, and sides');
+  });
   test('connect: a drag moves the whole straight run; Shift-drag breaks it where it is grabbed', () => {
     const CN = LM.connect, R0 = { A: { x: 0, y: 0, out: 1 }, B: { x: 600, y: 200, in: 1 }, v: [300], stub: 23, half: 3, r: 13 };
     // The first run (A to x 300), grabbed at x 150 and pulled down 40.

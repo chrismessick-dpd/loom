@@ -1240,14 +1240,12 @@
     if (!g.moved) {
       // The shared engine's grab (connect.js): the whole straight run drags (an end run from a stub out
       // of its part); Shift breaks it where it's grabbed.
-      const st = CN.grab(g.run, snap, !!g.shiftKey);
-      if (!st) { gesture = null; return; }
+      const R0 = g.run.route, first = CN.dragStart(g, g.run, h.routes && h.routes[g.run.key], snap, !!g.shiftKey, toWorld({ clientX: g.x, clientY: g.y }));
+      if (!first) { gesture = null; return; }
       snapshot();
       h.routes = h.routes || {};
-      const R0 = g.run.route;
-      g.keep = { a: R0.A.side, b: R0.B.side, mode: h.routes[g.run.key] && h.routes[g.run.key].mode };
-      h.routes[g.run.key] = Object.assign({ v: st.v0 }, g.keep);
-      Object.assign(g, st, { p0: toWorld({ clientX: g.x, clientY: g.y }), A: R0.A, B: R0.B, stub: R0.stub });
+      h.routes[g.run.key] = first;
+      Object.assign(g, { A: R0.A, B: R0.B, stub: R0.stub });
       svgEl().classList.add('dragging');
     }
     g.moved = true;
@@ -1256,7 +1254,7 @@
     // as it does a part.
     const free = e.ctrlKey || e.metaKey || !gs;
     // Near straight, it snaps straight (5 grid steps, or 10-unit steps with the grid off; not with Ctrl).
-    h.routes[g.run.key] = Object.assign({ v: CN.slide(g, g.p0, toWorld(e), free ? null : snap, e.ctrlKey || e.metaKey ? 0 : gs || 10) }, g.keep);
+    h.routes[g.run.key] = CN.dragTo(g, toWorld(e), free ? null : snap, e.ctrlKey || e.metaKey ? 0 : gs || 10);
     renderCanvas();
   }
   // A finger lifting ends a pinch; the one left down does nothing until it lifts too.

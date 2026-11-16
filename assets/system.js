@@ -2824,18 +2824,17 @@
         // breaks the run where it's grabbed and drags the piece from there.
         const free = e.ctrlKey || e.metaKey;
         if (!d.snap) {
-          const st = d.lead ? leadGrab(d.run.route, d.lead, d.p) : CN().grab(d.run, snapU, d.brk);
-          if (!st) { drag = null; return; }
+          // The shared run drag (connect.js dragStart); a lead-in brings its own grab.
+          const first = CN().dragStart(d, d.run, d.cab.routes && d.cab.routes[d.end], snapU, d.brk, toWorld(svg, { clientX: d.x, clientY: d.y }), d.lead ? leadGrab(d.run.route, d.lead, d.p) : null);
+          if (!first) { drag = null; return; }
           pushPast(); d.snap = true;
-          d.keep = { a: d.run.route.A.side, b: d.run.route.B.side, mode: d.cab.routes && d.cab.routes[d.end] && d.cab.routes[d.end].mode };
-          Object.assign(d, st, { p0: toWorld(svg, { clientX: d.x, clientY: d.y }) });
           d.tabs = endTabs(d);
           d.ports = portLines(d);
           d.lines = d.lines.concat(d.ports.map(q => q.y));
           svg.classList.add('dragging');
         }
         // Near straight, it snaps straight (within 5 grid steps, 5 mm; not with Ctrl).
-        let v = CN().slide(d, d.p0, p, free || !stepU() ? null : snapU, free ? 0 : stepU() || K);
+        let v = CN().dragTo(d, p, free || !stepU() ? null : snapU, free ? 0 : stepU() || K).v;
         // Level with the port of an end that leaves from its tab's top or bottom: that end leaves from the
         // tab's side instead, straight out of the port, and its lead-in goes (Chris, 2026-11-13: the cable
         // climbed out past the block's edge and came back down in a loop).

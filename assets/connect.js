@@ -246,6 +246,25 @@
     const t = lines.reduce((m, x) => (Math.abs(x - val) < Math.abs(m - val) ? x : m));
     return Math.abs(t - val) <= STICK * step ? t : null;
   }
+  // One run drag, the same on a harness and a system (Chris, 2026-11-15: wires and cables drag alike). The
+  // canvas keeps the gesture (g) and says what was grabbed; this keeps the rest on g:
+  // - dragStart(g, run, rec, snap, brk, p0, st): the engine's grab (st: one the canvas made itself, as a
+  //   system's lead-in), the record's sides and mode frozen (g.keep), and where it started (g.p0). Returns
+  //   the record to keep at once, or null when there's nothing to drag there.
+  // - dragTo(g, p, snap, step): the record as the pointer stands (snap: the grid, or null for anywhere;
+  //   step: the snap-straight step, 0 for none, as with Ctrl).
+  // - release(R0, v, rec), below, when it's let go.
+  function dragStart(g, run, rec, snap, brk, p0, st) {
+    st = st || grab(run, snap, brk);
+    if (!st) return null;
+    const R0 = run.route;
+    // A moved split point stays (Chris, 2026-11-15: a run drag dropped it, in the harness editor too).
+    g.keep = { a: R0.A.side, b: R0.B.side, mode: rec && rec.mode };
+    ['split0', 'split1'].forEach(k => { if (rec && rec[k]) g.keep[k] = rec[k]; });
+    Object.assign(g, st, { p0 });
+    return Object.assign({ v: st.v0 }, g.keep);
+  }
+  const dragTo = (g, p, snap, step) => Object.assign({ v: slide(g, g.p0, p, snap, step) }, g.keep);
   // Let go: a run dragged flush with its neighbor merges into it (route.js tidy). The record to keep,
   // with the sides the route was shaped on and its mode.
   function release(R0, v, rec) { return Object.assign({}, rec, { v: RT().tidy(R0.A, R0.B, v), a: R0.A.side, b: R0.B.side }); }
@@ -280,5 +299,5 @@
   // A stored record as given (a bare v, from before records, becomes { v }).
   const record = x => (Array.isArray(x) ? { v: x } : x && typeof x === 'object' ? x : null);
 
-  LM.connect = { lane, laneAt, laneT, labelSpot, routeAll, draw, pathD, runAt, runOf, handles, grab, slide, stick, release, bend, menuHtml, apply, record };
+  LM.connect = { lane, laneAt, laneT, labelSpot, routeAll, draw, pathD, runAt, runOf, handles, grab, slide, stick, dragStart, dragTo, release, bend, menuHtml, apply, record };
 })(window.LM = window.LM || {});

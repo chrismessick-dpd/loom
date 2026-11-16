@@ -114,8 +114,19 @@ So the routing core is shared already. What diverged is everything around it:
 - **Block name and status (Chris, mid-step).** A block's name and its status pill stack in the middle of
   the block, the pill under the name. A board drawn with its picture centers its ref-and-name label there.
 
+- **One run drag (step 1, gestures).** Both canvases already shared the engine's `grab`, `slide`, and
+  `release`. The part around them is now shared too: `connect.js` `dragStart` (the grab, the record's
+  sides and mode frozen, where it started) and `dragTo` (the record as the pointer stands). The harness
+  editor's `dragRun` and the system's run drag call them. A system lead-in passes its own grab, and the
+  system keeps its port and exit rules on top.
+  - Checked with real pointer events on both canvases (plain, Shift-break, undo). The stored records are
+    the same as the frozen code's.
+  - Fixed on the way, in both: a run drag dropped a moved split point (`split0`, `split1`) from its
+    record. Tests 120.
+  - What a press grabs (blocks, labels, ends) stays per canvas: those are different objects. The rules for
+    a Connection's line are the same in both.
+
 ## Next
 
 - Branches from a moved device split route as Connections when the far ends are far off. They still fan
   as elbows, as the harness's split does within 120 units of its pins.
-- The shared gesture module.

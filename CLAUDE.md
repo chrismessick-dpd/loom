@@ -22,6 +22,10 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **One run drag (2026-11-15, Chris: wires and cables drag alike).** `connect.js` `dragStart` and `dragTo` wrap the
+  engine's grab and slide with the record's sides, mode, and split points kept; `dragRun` in `app.js` and the system's run
+  drag both call them (a lead-in passes its own grab). A run drag no longer drops a moved split point, in either canvas.
+  Tests 120.
 - **Split points (2026-11-15, Chris: three or more ends as the harness's bundles).** A system cable with three or more
   ends runs a trunk to a split point and a branch to each other end, all routed by the engine (`splitAt`, keys `split` and
   each end's node id); a device harness has a split per plugged connector (`'t:<node>'`), straight out by default, a
