@@ -1167,6 +1167,11 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .st-pill.st-fix { background: color-mix(in srgb, var(--issue) 16%, transparent); color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--issue) 60%, transparent); }
 .st-pill.st-wired { color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent); }
 .st-pill.st-complete { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
+/* In the sidebar (2026-11-15): a harness's status beside its part number, smaller. */
+.proj-sub .st-pill.sm { margin-left: 6px; padding: 0 6px; font-size: 10px; line-height: 15px; vertical-align: 1px; }
+.proj-sub .proj-pn + .st-pill.sm { margin-left: 6px; }
+.proj-sub > .st-pill.sm:first-child { margin-left: 0; }
+.proj.active .st-pill { background: rgba(255, 255, 255, 0.22); color: inherit; box-shadow: none; }
 .st-bpill rect { fill: var(--bg-elev); stroke: var(--hair); stroke-width: 1; }
 .st-bpill text { font: 600 12px var(--font, sans-serif); fill: var(--text-2); text-anchor: middle; pointer-events: none; }
 .st-bpill.st-open rect { stroke: var(--warn); } .st-bpill.st-fix rect { stroke: var(--issue); } .st-bpill.st-wired rect { stroke: color-mix(in srgb, var(--accent) 60%, transparent); }

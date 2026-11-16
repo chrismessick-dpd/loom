@@ -31,7 +31,8 @@ links to it so far. Before every commit:
 - **Status statistics (2026-11-15, Chris: "start building" the plan).** Plan and what's built: `docs/status.md`.
   The ladder is Open, Generic, Placeholder, Needs fixing, Wired, and Complete (`STATES`, `stateOf`, `systemStats`). A
   strip and pie in the toolbar (`#sys-stats`, `statsStrip`), Status in the filter (`f.states`), board pills, and List
-  statuses.
+  statuses. The sidebar's harness rows show a small pill beside the part number (`statePill(..., 'sm')`, the harness
+  alone, without a system's length override).
 - **System filter (2026-11-15, Chris: the List's column menu removed, a filter at the top right of the view; his
   choices: System and List, any included tag and no excluded one, * and ? over cables and blocks).** The List shows
   every column. `#sys-filter` sits at the top right of `.sys-main` (holding the canvas and the List): each tag Any,

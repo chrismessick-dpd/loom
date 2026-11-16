@@ -548,7 +548,7 @@
       // The name, and the part number under it when there is one; the counts are in the tooltip.
       return `<button class="proj${active ? ' active' : ''}" ${attr} title="${esc(`${h.title}\n${h.pn ? h.pn + ' · ' : ''}${ends} ends · ${h.wires.length} wires`)}">
         <span class="pkg-icon">${ICON.harness}</span>
-        <span class="proj-body"><span class="proj-name">${esc(h.title)}</span>${h.pn ? `<span class="proj-sub">${esc(h.pn)}</span>` : ''}</span>
+        <span class="proj-body"><span class="proj-name">${esc(h.title)}</span><span class="proj-sub">${h.pn ? `<span class="proj-pn">${esc(h.pn)}</span>` : ''}${LM.system.statePill(LM.system.stateOf({ kind: 'harness', harness: h.id }, h), 'sm')}</span></span>
         <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(h.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
     };
     // Groups fold as Signoff EE's do (Chris, 2026-11-11): a click on a group's heading, kept in this
