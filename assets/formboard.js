@@ -844,7 +844,13 @@
     const p = v.flat ? i.plane(prev ? prev[v.flat.fixed] : (v.flat.fixed === 2 ? h / 2 : 0)) : i.plane(prev ? prev[2] : h / 2);
     return p ? { p } : null;
   }
+  // A tool's click (a channel point, a calibration point, a snap pick) happens on a release without moving, so a
+  // drag still turns or pans the view (Chris, 2026-11-16).
   function onDown(v, i, e) {
+    if (S.tool === 'channel' || S.tool === 'calibrate' || (S.tool === 'snap' && S.sel && S.sel.kind === 'block')) return { tap: () => toolDown(v, i, e) };
+    return toolDown(v, i, e);
+  }
+  function toolDown(v, i, e) {
     const f = cur();
     if (S.tool === 'channel') {
       const d = S.draft = S.draft || { pts: [] }, h = d.h || CH.h, at = pointAt(v, i, h);

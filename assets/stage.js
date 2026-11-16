@@ -8,7 +8,8 @@
 // objs: [{ id, mesh, R, pivot, T, tex, tint, hidden, ghost }]. The host:
 //   selected() → id                  select(id | null)                 moved(id, T) (a drag let go)
 //   turned(id, axis, deg)            overlay(view, g, k)               hint(text)
-//   down(view, info, e) → { move(info, e), up(info, e) } | null: claims a press before the stage's own
+//   down(view, info, e) → { move(info, e), up(info, e) } | { tap() } | null: claims a press before the stage's own
+//   (a tap claim lets the press turn or pan the view, and calls tap() only on a release without moving)
 //   hover(view, info)                key(e, view) → true when handled  saved(state) (cameras, Four views)
 // A view: { key: '3d' | 'top' | 'front' | 'right', flat, res, scale, cv, over }. info: { xy (CSS px), hit
 // ({ obj, tri, depth, id } | null), world (the point under the pointer: on what's hit, else on the view's
@@ -238,6 +239,14 @@
           if (o) { st.drag = { kind: 'spin', v, o, a0, a: a0, R0: (o.R || [1, 0, 0, 0, 1, 0, 0, 0, 1]).slice(), moved: false }; cv.setPointerCapture(e.pointerId); return; }
         }
         const claim = host.down && e.button === 0 && host.down(v, i, e);
+        // A tap claim (a tool's click: a channel point, a snap pick): the press still turns or pans the view as
+        // usual, and only a release without moving is the tool's click (Chris, 2026-11-16: no turning while snapping).
+        if (claim && claim.tap) {
+          st.drag = v.flat ? { kind: 'pan', v, x0: i.xy[0], y0: i.xy[1], cs: linked(v.key).map(c => c.c.slice()), hit: null, moved: false, tap: claim.tap }
+            : { kind: 'orbit', v, x0: i.xy[0], y0: i.xy[1], az: st.cam.az, el: st.cam.el, hit: null, moved: false, tap: claim.tap };
+          cv.setPointerCapture(e.pointerId);
+          return;
+        }
         if (claim) { st.drag = { kind: 'host', v, h: claim, moved: false, x0: i.xy[0], y0: i.xy[1] }; cv.setPointerCapture(e.pointerId); return; }
         const o = i.hit && st.objs[i.hit.obj], sel = host.selected ? host.selected() : null;
         const grab = e.button === 0 && !e.shiftKey && o && !o.fixed && (v.flat || o.id === sel);
@@ -308,6 +317,7 @@
           return;
         }
         save();
+        if (d.tap) { if (!d.moved) d.tap(); else draw(true); return; }
         if (!d.moved) { host.select(d.hit); return; }
         draw(true);
       });

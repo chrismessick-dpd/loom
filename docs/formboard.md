@@ -89,6 +89,9 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   (⇄ and the other side's name) turning it round: Top and Bottom, Front and Back, Right and Left (`stage.js` `FLIP`,
   `flip`; same axes and fixed axis, the camera turned round). Kept per formboard with its cameras (`flip` in the
   saved stage state). Next, Chris: a way to slice through the depth.
+- **Turning the view with a tool on (2026-11-16, Chris: no turning while snapping).** Draw channel, Snap block, and
+  Calibrate click on a release without moving: `onDown` returns a tap claim (`{ tap }`), and the stage then turns
+  (3D) or pans (flat views) on a drag as usual, calling `tap()` only for a click.
 
 - **Sync (2026-11-15, Chris: "Build sync next").** `store.js` `syncFormboards` runs after the systems in every
   sync (on opening signed in, the Sync button, Ctrl+S). Each formboard is `loom_data/formboards/projects/<id>.json`
