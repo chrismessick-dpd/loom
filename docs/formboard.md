@@ -61,6 +61,13 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   on the highlighted corner, edge, or face (it used to stand off half the section's height along the face normal, or
   straight up), and a corner or edge counts only where nothing is in front of it, the part itself included (a corner
   behind its own wall was picked in the Top view); of two that line up on screen, the nearer wins.
+- **Glass channels (2026-11-15, Chris: the solid channels hid the model and the cables; translucent, wireframe).**
+  Channels are no longer rasterized (model3d has no transparency; they're `hidden` scene objects, so not in Fit
+  either). `drawGlass` draws each run's box in the overlay under the cables: sides filled at 8% of the class color
+  (untagged: steel blue), edges solid where nothing is in front of them and faint and dashed where the model or a
+  block is (sampled against the view's depth buffer), hovered and selected ones stronger, the selected one in the
+  accent. `overHit` picks a channel for the stage (`host.overHit` in `stage.js` `info`): inside a run's outline and not
+  buried. A cable's line under the pointer wins over the channel it runs in.
 
 - **Sync (2026-11-15, Chris: "Build sync next").** `store.js` `syncFormboards` runs after the systems in every
   sync (on opening signed in, the Sync button, Ctrl+S). Each formboard is `loom_data/formboards/projects/<id>.json`

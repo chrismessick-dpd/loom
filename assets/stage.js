@@ -148,7 +148,11 @@
     // ── Where the pointer is ──
     function info(v, e) {
       const r = v.cv.getBoundingClientRect(), xy = [e.clientX - r.left, e.clientY - r.top];
-      const h = v.res ? v.res.pick(xy[0] * v.scale, xy[1] * v.scale) : null, hit = h ? Object.assign({ id: st.objs[h.obj] && st.objs[h.obj].id }, h) : null;
+      const h = v.res ? v.res.pick(xy[0] * v.scale, xy[1] * v.scale) : null;
+      let hit = h ? Object.assign({ id: st.objs[h.obj] && st.objs[h.obj].id }, h) : null;
+      // Objects the host draws itself (hidden from the rasterizer, such as Formboard's glass channels) it picks too.
+      const over = host.overHit && v.res ? host.overHit(v, xy, hit) : null;
+      if (over) hit = over;
       const plane = val => {
         if (!v.res) return null;
         const f = v.res.cam.f, x = xy[0] * v.scale, y = xy[1] * v.scale;

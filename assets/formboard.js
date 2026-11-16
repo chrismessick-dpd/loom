@@ -130,7 +130,9 @@
       if (fm) { o.lit = fm.block(b); if (!o.lit) o.tint = [128, 133, 141, 0.78]; }
       blocks[b.path] = o; objs.push(o);
     });
-    f.channels.forEach(c => { const m = channelMesh(c, f); if (m) objs.push({ id: 'c:' + c.id, ch: c, mesh: m, fixed: true, pivot: [0, 0, 0], T: [0, 0, 0] }); });
+    // Channels are glass (Chris, 2026-11-15): not rasterized (the renderer has no transparency) but drawn in the
+    // overlay (drawGlass) and picked there (overHit); `hidden` keeps them out of the picture, picking, and Fit.
+    f.channels.forEach(c => { const m = channelMesh(c, f); if (m) objs.push({ id: 'c:' + c.id, ch: c, mesh: m, fixed: true, hidden: true, pivot: [0, 0, 0], T: [0, 0, 0] }); });
     return { objs, blocks, fl, refBox, fm };
   }
   // A connector's world point: on its block's top face, where the system drawing puts it.
@@ -141,12 +143,12 @@
   }
   const classColor = (f, id) => { const c = f.classes.find(x => x.id === id); return c ? c.color : '#8a8f98'; };
   const hexRgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-  // A channel's mesh: a box along each run, its section w across and h tall, standing on c.up.
-  function channelMesh(c, f) {
-    const P = (c.pts || []).filter(p => Array.isArray(p) && p.length === 3);
-    if (P.length < 2) return null;
-    const rgb = hexRgb(c.classes && c.classes.length ? classColor(f, c.classes[0]) : '#8a8f98');
-    const pos = [], idx = [], col = [], fid = [];
+  // A channel's runs as boxes: per run its two ends a, b and eight corners (the ring at a, then at b), its section
+  // w across and h tall, standing on c.up.
+  const QUADS = [[0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7], [0, 3, 2, 1], [4, 5, 6, 7]];
+  const EDGES = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+  function channelBoxes(c) {
+    const P = (c.pts || []).filter(p => Array.isArray(p) && p.length === 3), out = [];
     const up0 = c.up && c.up.length === 3 ? c.up : [0, 0, 1];
     for (let i = 0; i + 1 < P.length; i++) {
       const a = P[i], b = P[i + 1], d = norm(sub(b, a));
@@ -155,10 +157,21 @@
       const side = norm(cross(d, up)), u = norm(cross(side, d)), hw = (c.w || CH.w) / 2, hh = (c.h || CH.h) / 2;
       const corner = (p, s, t) => [p[0] + side[0] * s * hw + u[0] * t * hh, p[1] + side[1] * s * hw + u[1] * t * hh, p[2] + side[2] * s * hw + u[2] * t * hh];
       const ring = p => [corner(p, -1, -1), corner(p, 1, -1), corner(p, 1, 1), corner(p, -1, 1)];
-      const ra = ring(a), rb = ring(b), o = pos.length / 3;
-      ra.concat(rb).forEach(q => pos.push(q[0], q[1], q[2]));
-      const quads = [[0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7], [0, 3, 2, 1], [4, 5, 6, 7]];
-      quads.forEach((q, qi) => {
+      out.push({ a, b, k: ring(a).concat(ring(b)), r: Math.max(hw, hh) });
+    }
+    return out;
+  }
+  const glassColor = (c, f) => (c.classes && c.classes.length ? classColor(f, c.classes[0]) : '#5d86b3');
+  // Its mesh (kept on the scene object for anything that measures it; never drawn).
+  function channelMesh(c, f) {
+    const boxes = channelBoxes(c);
+    if (!boxes.length) return null;
+    const rgb = hexRgb(glassColor(c, f));
+    const pos = [], idx = [], col = [], fid = [];
+    for (let i = 0; i < boxes.length; i++) {
+      const o = pos.length / 3;
+      boxes[i].k.forEach(q => pos.push(q[0], q[1], q[2]));
+      QUADS.forEach((q, qi) => {
         idx.push(o + q[0], o + q[1], o + q[2], o + q[0], o + q[2], o + q[3]);
         const k = qi === 2 ? 1 : 0.78;
         for (let t = 0; t < 2; t++) { col.push(rgb[0] * k, rgb[1] * k, rgb[2] * k); fid.push(i * 6 + qi); }
@@ -792,13 +805,16 @@
       selected: () => (S.sel ? (S.sel.kind === 'block' ? 'b:' : S.sel.kind === 'channel' ? 'c:' : 'x:') + S.sel.id : null),
       select: id => {
         // A click on empty space: a cable's line under the pointer picks the cable.
-        S.sel = pick(id) || (S.hoverCable ? { kind: 'cable', id: S.hoverCable } : null);
+        // A cable's line wins over the channel it runs in and the reference: cables show through the glass.
+        const p = pick(id);
+        S.sel = (p && p.kind === 'block' ? p : null) || (S.hoverCable ? { kind: 'cable', id: S.hoverCable } : null) || p;
         refresh();
       },
       moved: (id, T) => { const o = S.sc.blocks[id.slice(2)]; if (o) moveBlock(o, T); },
       turned: (id, axis, deg) => { const o = S.sc.blocks[id.slice(2)]; if (o) turnBlock(o, axis, deg); },
       saved: st => { S.ui.cams = S.ui.cams || {}; if (S.cur) S.ui.cams[S.cur] = st; saveUi(); },
       overlay: drawOverlay,
+      overHit,
       down: onDown,
       hover: onHover,
       dbl: (v, i) => { if (S.tool === 'channel' && S.draft) { finishDraft(); return true; } if (S.tool === 'select' && S.sel && S.sel.kind === 'channel') return addPointAt(v, i); return false; },
@@ -903,9 +919,69 @@
       const k = v.scale;
       let bd = 6;
       (S.lines || []).forEach(L => { if (L.view !== v.key) return; for (let j = 0; j + 1 < L.pts.length; j++) { const r = LM.fbroute.onSeg([i.xy[0] * k, i.xy[1] * k, 0], [L.pts[j][0], L.pts[j][1], 0], [L.pts[j + 1][0], L.pts[j + 1][1], 0]); if (r.d / k < bd) { bd = r.d / k; S.hoverCable = L.id; } } });
-      v.cv.style.cursor = S.hoverCable ? 'pointer' : '';
+      const ch = S.hoverCable ? null : overHit(v, i.xy, i.hit && i.hit.id && !i.hit.id.startsWith('c:') ? i.hit : null);
+      S.hoverCh = ch ? ch.id.slice(2) : null;
+      v.cv.style.cursor = S.hoverCable || S.hoverCh ? 'pointer' : '';
     }
     S.st.overlays();
+  }
+  // ── Glass channels (Chris, 2026-11-15: translucent, wireframe, the cables seen inside) ──
+  // Each run's box: its sides lightly filled in its class color, its edges solid where nothing is in front of them
+  // and faint and dashed where the model or a block is (tested against the view's depth buffer); the selected one
+  // in the accent and wider. The fill shows over the model, as glass would.
+  const GLASS_TOL = 0.5;
+  function drawGlass(v, g, k, f) {
+    const P = p => v.res.project(p), W = v.cv.width - 1, H = v.cv.height - 1;
+    const front = q => { const h = v.res.pick(Math.min(Math.max(q[0], 0), W), Math.min(Math.max(q[1], 0), H)); return !h || q[2] >= h.depth - GLASS_TOL; };
+    f.channels.forEach(c => {
+      const sel = S.sel && S.sel.kind === 'channel' && S.sel.id === c.id, hov = !sel && S.hoverCh === c.id && S.hover && S.hover.v === v.key;
+      const col = sel ? '#00a3b4' : glassColor(c, f), rgb = hexRgb(col);
+      channelBoxes(c).forEach(bx => {
+        const q = bx.k.map(P);
+        g.save();
+        g.fillStyle = 'rgba(' + rgb.join(', ') + ', ' + (sel ? 0.16 : hov ? 0.13 : 0.08) + ')';
+        QUADS.forEach(t => { g.beginPath(); t.forEach((i, j) => (j ? g.lineTo(q[i][0], q[i][1]) : g.moveTo(q[i][0], q[i][1]))); g.closePath(); g.fill(); });
+        g.lineCap = 'round'; g.strokeStyle = col; g.lineWidth = (sel ? 2.4 : hov ? 1.8 : 1.3) * k;
+        EDGES.forEach(([i0, i1]) => {
+          const a = q[i0], b = q[i1], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (6 * k)));
+          const at = t => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+          // Runs of samples seen or hidden, each one stroke.
+          const stroke = (t0, t1, seen) => {
+            const p0 = at(t0), p1 = at(t1);
+            g.globalAlpha = seen ? 0.95 : 0.35; g.setLineDash(seen ? [] : [4 * k, 4 * k]);
+            g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.stroke();
+          };
+          let start = 0, was = null;
+          for (let j = 0; j < n; j++) {
+            const seen = front(at((j + 0.5) / n));
+            if (was === null) was = seen;
+            else if (seen !== was) { stroke(start / n, j / n, was); start = j; was = seen; }
+          }
+          stroke(start / n, 1, was);
+        });
+        g.restore();
+      });
+    });
+  }
+  // The channel under the pointer, for the stage's picking (channels aren't in the depth buffer): inside a run's
+  // outline on screen and not buried behind what's there. The nearest wins.
+  function overHit(v, xy, hit) {
+    if (!cur() || !v.res || !S.sc) return null;
+    const k = v.scale, x = xy[0] * k, y = xy[1] * k;
+    let best = null;
+    S.sc.objs.forEach((o, oi) => {
+      if (!o.ch) return;
+      channelBoxes(o.ch).forEach(bx => {
+        const q = bx.k.map(p => v.res.project(p));
+        const inside = QUADS.some(t => { let wn = 0; for (let j = 0; j < 4; j++) { const a = q[t[j]], b = q[t[(j + 1) % 4]]; if ((a[1] > y) !== (b[1] > y) && x < a[0] + (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1])) wn ^= 1; } return wn; });
+        if (!inside) return;
+        const A = v.res.project(bx.a), B = v.res.project(bx.b), r = LM.fbroute.onSeg([x, y, 0], [A[0], A[1], 0], [B[0], B[1], 0]);
+        const depth = A[2] + (B[2] - A[2]) * r.t + bx.r;
+        if (hit && hit.depth > depth + GLASS_TOL) return;
+        if (!best || depth > best.depth) best = { id: o.id, obj: oi, tri: -1, depth };
+      });
+    });
+    return best;
   }
   // Cables (straight until routed, the route once routed; dashed when not routed or stale), the channel being
   // drawn, the selected channel's points, and the snap or hover feature.
@@ -914,6 +990,7 @@
     if (!f || !sc) return;
     S.lines = (S.lines || []).filter(L => L.view !== v.key);
     const P = p => v.res.project(p);
+    drawGlass(v, g, k, f);
     cableInputs(sc, f).forEach(x => {
       if (x.input.ends.length < 2) return;
       const r = routeOf(f, x), sel = S.sel && S.sel.kind === 'cable' && S.sel.id === x.c.path, hov = S.hoverCable === x.c.path;
