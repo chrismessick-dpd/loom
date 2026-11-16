@@ -1171,6 +1171,7 @@ body.has-banner .sys-view { height: calc(100dvh - 56px - 33px); }
 .proj-sub .st-pill.sm { margin-left: 6px; padding: 0 6px; font-size: 10px; line-height: 15px; vertical-align: 1px; }
 .proj-sub .proj-pn + .st-pill.sm { margin-left: 6px; }
 .proj-sub > .st-pill.sm:first-child { margin-left: 0; }
+.proj > .st-pill.sm { flex: none; padding: 0 6px; font-size: 10px; line-height: 15px; margin-left: 4px; }
 .proj.active .st-pill { background: rgba(255, 255, 255, 0.22); color: inherit; box-shadow: none; }
 .st-bpill rect { fill: var(--bg-elev); stroke: var(--hair); stroke-width: 1; }
 .st-bpill text { font: 600 12px var(--font, sans-serif); fill: var(--text-2); text-anchor: middle; pointer-events: none; }

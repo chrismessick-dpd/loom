@@ -528,6 +528,8 @@
     systems.concat(list).forEach(h => { const k = String(h.project || '').trim(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(h); });
     const holds = h => (h.kind === 'tree' ? holdsOpen(h.node) : h.id === S.cur);
     const keys = [...groups.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+    // Each system's least finished spot, for its pill (Chris, 2026-11-15), worked out once per drawing of the list.
+    const worstOf = LM.system.worstMap();
     const sysRow = (s, path) => {
       const c = LM.system.checks(s, sysHooks.harness);
       // A row in another system's tree carries its tree path (data-tpath), so a click keeps the system's tab.
@@ -536,7 +538,7 @@
       // One line (Chris, 2026-11-12: a compact list); the counts are in the tooltip.
       return `<button class="proj${active ? ' active' : ''}" ${attr} title="${esc(`${s.title}\nSystem · ${s.blocks.length} block${s.blocks.length === 1 ? '' : 's'} · ${s.cables.length} cable${s.cables.length === 1 ? '' : 's'}`)}">
         <span class="pkg-icon">${ICON.system}</span>
-        <span class="proj-body"><span class="proj-name">${esc(s.title)}</span></span>
+        <span class="proj-body"><span class="proj-name">${esc(s.title)}</span></span>${LM.system.statePill(worstOf(s.id), 'sm sys-row-st')}
         <span class="pkg-sev">${e ? `<span class="e">${e}</span>` : ''}${w ? `<span class="w">${w}</span>` : ''}</span>${dirty.has(s.id) ? '<span class="proj-dirty" title="Not synced yet"></span>' : ''}</button>`;
     };
     const row = (h, path) => {

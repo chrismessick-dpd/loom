@@ -487,6 +487,26 @@
     }
     return { counts, total: spots.length, spots, blockState: (x, b) => blockState(x, b), statesIn: (x, b) => statesIn(x, b), stateOf: st };
   }
+  // Each system's least finished spot, itself and everything placed in it, for the sidebar (one pass: systems and
+  // cables each worked out once). Returns id → state, or null for a system with nothing in it.
+  function worstMap() {
+    const memo = new Map(), cabs = new Map();
+    const st = c => { if (!cabs.has(c)) cabs.set(c, stateOf(c)); return cabs.get(c); };
+    const w = (x, trail) => {
+      if (memo.has(x.id)) return memo.get(x.id);
+      memo.set(x.id, null);
+      let r = null;
+      x.blocks.forEach(b => {
+        (b.conns || []).forEach(c => { if (isOpen(x, b, c)) r = worse(r, 'open'); });
+        const ch = childOf(b);
+        if (ch && !trail.includes(ch.id) && trail.length <= DEPTH) r = worse(r, w(ch, trail.concat(ch.id)));
+      });
+      x.cables.forEach(c => { r = worse(r, st(c)); });
+      memo.set(x.id, r);
+      return r;
+    };
+    return id => (S.store[id] ? w(S.store[id], [id]) : null);
+  }
   // A short pill for a state: glyph and name.
   const statePill = (k, cls) => (k ? `<span class="st-pill st-${k}${cls ? ' ' + cls : ''}" title="${esc(STATE[k].text)}">${STATE[k].glyph} ${esc(STATE[k].name)}</span>` : '');
   function status(h) {
@@ -3313,7 +3333,7 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending || (S.tab === 'formboard' && !!LM.formboard && LM.formboard.busy()), act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, filterFlat, filterUi, systemStats, stateOf, statsStrip, STATES, statePill, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
+    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, filterFlat, filterUi, systemStats, stateOf, statsStrip, STATES, statePill, worstMap, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
     tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,
     canUndo: () => !locked() && S.past.length > 0, canRedo: () => !locked() && S.future.length > 0, discardTo, restore, saveFile, openDoc,
     // compare.js: a stored version made ready to draw (its placed systems' tabs resolved), the selection
