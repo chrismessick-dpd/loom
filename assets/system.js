@@ -1310,6 +1310,7 @@
         Object.assign(cap, { text: D.caption.text, lines: D.caption.lines, tags: D.caption.tags, lastW: D.caption.lastW, lh: DW.capLh });
         const c0 = { x: cap.x, y: cap.y - 14 }, c1 = { x: cap.x + D.capW, y: cap.y + (nl - 1) * DW.capLh + 4 };
         pts.push(c0, c1); bare.add(c0); bare.add(c1);
+        cap.box = { x0: c0.x, y0: c0.y, x1: c1.x, y1: c1.y };
       }
       const bounds = P => ({ x0: Math.min(...P.map(q => q.x)), y0: Math.min(...P.map(q => q.y)), x1: Math.max(...P.map(q => q.x)), y1: Math.max(...P.map(q => q.y)) });
       const box = bounds(pts);
@@ -1317,7 +1318,7 @@
       const mpts = pts.filter(q => !bare.has(q));
       boxes.forEach(x => { const g = miniBox(x); mpts.push({ x: g.x, y: g.y }, { x: g.x + g.w, y: g.y + g.h }); });
       leads.forEach(l => l.dots.forEach(q => mpts.push({ x: q.x - MINI_DOT, y: q.y - MINI_DOT }, { x: q.x + MINI_DOT, y: q.y + MINI_DOT })));
-      out.set(cab.id, { paths, boxes, leads, juncs, cap, splits, trunks, box, mbox: bounds(mpts), lane: [ex, { x: ex.x + d[0] * DW.trunk, y: ex.y + d[1] * DW.trunk }] });
+      out.set(cab.id, { paths, boxes, leads, juncs, cap, capBox: cap && cap.box, splits, trunks, box, mbox: bounds(mpts), lane: [ex, { x: ex.x + d[0] * DW.trunk, y: ex.y + d[1] * DW.trunk }] });
     });
     devMemo.set(s.id, { key, out });
     return out;
@@ -1547,9 +1548,21 @@
   // with the cable's name and number past it, one line per cable (two placing systems may plug the same harness,
   // listed once). The break drags anywhere (c.upAt, mm from where it starts, kept with this system; a placed
   // system's tab keeps it in b.tabs). Drawn only here, never in a mini view: the parent draws the cable itself.
-  const UP = { reach: 140, out: 24, zig: 14, font: 13, line: 17, wrapW: 170 };
+  const UP = { reach: 140, out: 24, zig: 14, font: 13, line: 17, wrapW: 170, pad: 8, step: 12, wide: 480, far: 240 };
+  // An unmoved break's step clear of the rest, by block and connector (mm), read when a drag starts.
+  const upAuto = new Map();
   function upStubs(s) {
-    const out = [];
+    const out = [], placed = [];
+    // What a break keeps clear of: the blocks, the device harnesses' far-end boxes and captions, and the breaks
+    // placed before it. Worked out on the first unmoved break.
+    let fixed = null;
+    const taken = () => {
+      if (!fixed) {
+        fixed = s.blocks.map(b => { const z = sizeOf(b); return { x0: b.x * K, y0: b.y * K, x1: (b.x + z.W) * K, y1: (b.y + z.H) * K }; });
+        try { devLayout(s).forEach(D => { D.boxes.forEach(x => fixed.push({ x0: x.x, y0: x.y, x1: x.x + x.w, y1: x.y + x.h })); if (D.capBox) fixed.push(D.capBox); }); } catch (e) { /* no harnesses to read (tests) */ }
+      }
+      return fixed.concat(placed);
+    };
     s.blocks.forEach(b => (b.conns || []).forEach(c => {
       if (!c.external || !fitted(c) || pluggedAt(s, b.id, c.id).length) return;
       const seen = new Set(), cabs = cablesAbove(s, b.id + '/' + c.id, 0).filter(cab => {
@@ -1557,7 +1570,12 @@
         if (seen.has(k)) return false; seen.add(k); return true;
       });
       if (!cabs.length) return;
-      const g = tabGeom(b, c), off = c.upAt || { dx: 0, dy: 0 }, d = [g.dx, g.dy];
+      const g = tabGeom(b, c), d = [g.dx, g.dy];
+      const lines = cabs.flatMap(x => { const hx = harnessOf(x), pn = pnOf(hx, x); return wrapText(`${statusOf(x, hx).glyph} ${titleOf(x, hx)}`, UP.font, UP.wrapW, 3).concat(pn ? [pn] : []); });
+      // Unmoved, the break steps clear of device boxes, captions, blocks, and the other labels (Chris, 2026-11-15:
+      // a label from above sat on a device box); upAuto keeps that step, so a drag starts where it's drawn.
+      const key = b.id + '|' + c.id, off = c.upAt || clearUp(g, d, lines, taken());
+      if (c.upAt) upAuto.delete(key); else upAuto.set(key, off);
       const A0 = { x: g.ex + d[0] * UP.out, y: g.ey + d[1] * UP.out };
       const E = { x: g.ex + d[0] * UP.reach + off.dx * K, y: g.ey + d[1] * UP.reach + off.dy * K };
       // Out of the connector, then at right angles to the break: across halfway (never back past the stub),
@@ -1570,9 +1588,37 @@
       let u = d;
       for (let i = pts.length - 1; i > 0; i--) { const vx = pts[i].x - pts[i - 1].x, vy = pts[i].y - pts[i - 1].y, n = Math.hypot(vx, vy); if (n > 0.5) { u = [vx / n, vy / n]; break; } }
       if (pts.length < 2) pts.push({ x: E.x + d[0], y: E.y + d[1] });
-      out.push({ b, c, g, E, u, pts, cabs });
+      const lab = upLabel(E, u, lines);
+      placed.push(lab.hit);
+      out.push({ b, c, g, E, u, pts, cabs, lines, lab });
     }));
     return out;
+  }
+  // A break's label box (canvas units): where its text starts, its anchor, the box drawn round it, and what it takes
+  // up with the zigzag (hit, padded by UP.pad).
+  function upLabel(E, u, lines) {
+    const horiz = Math.abs(u[0]) > 0.5, gap = 14;
+    const lx = E.x + u[0] * gap, anchor = horiz ? (u[0] > 0 ? 'start' : 'end') : 'middle';
+    const ly0 = horiz ? E.y + 4.5 - (lines.length - 1) * UP.line / 2 : u[1] > 0 ? E.y + gap + UP.font : E.y - gap - (lines.length - 1) * UP.line;
+    const tw = Math.max(0, ...lines.map(t => U.textW(t, UP.font))), bx = anchor === 'start' ? lx - 4 : anchor === 'end' ? lx - tw - 4 : lx - tw / 2 - 4;
+    const box = { x: bx - 4, y: ly0 - UP.font - 4, w: tw + 16, h: lines.length * UP.line + 10 }, z = UP.zig + 3, q = UP.pad;
+    const hit = { x0: Math.min(box.x, E.x - z) - q, y0: Math.min(box.y, E.y - z) - q, x1: Math.max(box.x + box.w, E.x + z) + q, y1: Math.max(box.y + box.h, E.y + z) + q };
+    return { lx, ly0, anchor, box, hit };
+  }
+  const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+  // The nearest spot for an unmoved break whose label box (with its zigzag) touches none of rects: the break slides
+  // across its stub's way first, then further out, in UP.step steps, and stays put when nothing nearby is clear.
+  // Returns the offset in mm, as c.upAt would hold it.
+  function clearUp(g, d, lines, rects) {
+    const p = [d[1] ? 1 : 0, d[0] ? 1 : 0], tries = [];
+    for (let e = 0; e <= UP.far; e += UP.step) for (let w = 0; w <= UP.wide; w += UP.step) { tries.push([e, w]); if (w) tries.push([e, -w]); }
+    tries.sort((a, b) => Math.abs(a[1]) + a[0] * 1.5 - (Math.abs(b[1]) + b[0] * 1.5) || a[0] - b[0]);
+    for (const [e, w] of tries) {
+      const E = { x: g.ex + d[0] * (UP.reach + e) + p[0] * w, y: g.ey + d[1] * (UP.reach + e) + p[1] * w };
+      const h = upLabel(E, d, lines).hit;
+      if (!rects.some(r => overlaps(h, r))) return e || w ? { dx: (d[0] * e + p[0] * w) / K, dy: (d[1] * e + p[1] * w) / K } : { dx: 0, dy: 0 };
+    }
+    return { dx: 0, dy: 0 };
   }
   // ── The view's filter (Chris, 2026-11-15) ──
   // One per open system, kept in this browser: tags and patterns, each Include or Exclude. A pattern is typed in
@@ -1760,23 +1806,19 @@
   function upSvg(s, fm) {
     let o = '';
     const f1 = v => v.toFixed(1);
-    upStubs(s).forEach(({ b, c, E, u, pts, cabs }) => {
+    upStubs(s).forEach(({ b, c, E, u, pts, cabs, lines, lab }) => {
       const cab = cabs[0], h = harnessOf(cab), st = statusOf(cab, h);
       const color = cabColor(cab, h, st);
       const p = [-u[1], u[0]], z = UP.zig, d = 'M' + pts.map(q => f1(q.x) + ' ' + f1(q.y)).join('L');
       // The break: a zigzag across the cable's end.
       const zz = [[-1.2, 0], [-0.55, 0.45], [0.05, -0.45], [0.6, 0.45], [1.2, 0]].map(([a, k]) => ({ x: E.x + p[0] * a * z + u[0] * k * z, y: E.y + p[1] * a * z + u[1] * k * z }));
       // Each cable's name wrapped, its number on a line of its own, all in one box (Chris, 2026-11-15).
-      const lines = cabs.flatMap(x => { const hx = harnessOf(x), pn = pnOf(hx, x); return wrapText(`${statusOf(x, hx).glyph} ${titleOf(x, hx)}`, UP.font, UP.wrapW, 3).concat(pn ? [pn] : []); });
-      const horiz = Math.abs(u[0]) > 0.5, gap = 14;
-      const lx = E.x + u[0] * gap, anchor = horiz ? (u[0] > 0 ? 'start' : 'end') : 'middle';
-      const ly0 = horiz ? E.y + 4.5 - (lines.length - 1) * UP.line / 2 : u[1] > 0 ? E.y + gap + UP.font : E.y - gap - (lines.length - 1) * UP.line;
-      const tw = Math.max(...lines.map(t => U.textW(t, UP.font))), bx = anchor === 'start' ? lx - 4 : anchor === 'end' ? lx - tw - 4 : lx - tw / 2 - 4;
+      const { lx, ly0, anchor, box } = lab;
       const tip = esc(`${b.ref} ${c.ref}: plugged from ${parentsOf(s.id).map(x => x.title).join(', ')} · drag the break to move it`);
       o += `<g class="w sys-w sys-up st-${st.key}${fm ? (cabs.some(fm.cable) ? ' fhit' : ' fout') : ''}" data-upgrab="${b.id}|${esc(c.id)}"><title>${tip}</title>` +
         `<path class="sys-hit" d="${d}"/><path class="w-edge" d="${d}"/><path class="w-base" style="stroke:${color}" d="${d}"/>` +
         `<path class="sys-upzig" d="M${zz.map(q => f1(q.x) + ' ' + f1(q.y)).join('L')}"/>` +
-        `<rect class="sys-upgrab sys-upbox" x="${f1(bx - 4)}" y="${f1(ly0 - UP.font - 4)}" width="${f1(tw + 16)}" height="${f1(lines.length * UP.line + 10)}" rx="6"/>` +
+        `<rect class="sys-upgrab sys-upbox" x="${f1(box.x)}" y="${f1(box.y)}" width="${f1(box.w)}" height="${f1(box.h)}" rx="6"/>` +
         `<circle class="sys-upgrab" cx="${f1(E.x)}" cy="${f1(E.y)}" r="${z + 3}"/>` +
         lines.map((t, i) => `<text class="sys-uptext" x="${f1(lx)}" y="${f1(ly0 + i * UP.line)}" style="text-anchor:${anchor}">${esc(t)}</text>`).join('') + '</g>';
     });
@@ -2733,7 +2775,7 @@
       try { svg.setPointerCapture(e.pointerId); } catch (err) { /* not an active pointer */ }
       if (e.button !== 0) { drag = Object.assign(base, { kind: 'pan', cam: Object.assign({}, S.cam), k: p.k }); return; }
       const upEl = !S.pending && t.closest('[data-upgrab]');
-      if (upEl) { const [ub, uc] = upEl.dataset.upgrab.split('|'), c0 = conn(block(s, ub), uc); drag = Object.assign(base, { kind: 'up', ub, uc, a0: Object.assign({ dx: 0, dy: 0 }, c0 && c0.upAt) }); return; }
+      if (upEl) { const [ub, uc] = upEl.dataset.upgrab.split('|'), c0 = conn(block(s, ub), uc); drag = Object.assign(base, { kind: 'up', ub, uc, a0: Object.assign({ dx: 0, dy: 0 }, c0 && (c0.upAt || upAuto.get(ub + '|' + uc))) }); return; }
       const spEl = !S.pending && t.closest('[data-ssplit]');
       if (spEl) { const [cid, key] = spEl.dataset.ssplit.split('|'), q = (lastLo.get(cid).splits || []).find(x => x.key === key); drag = Object.assign(base, { kind: 'split', cab: cid, key, grab: q ? { x: p.x - q.x, y: p.y - q.y } : { x: 0, y: 0 } }); return; }
       const dvEl0 = !S.pending && t.closest('[data-devgrab]'), dvRun = dvEl0 && (() => { const n = runNear(dvEl0.dataset.devgrab, p); return n && n.d <= n.route.half + 6 ? n : null; })();
@@ -3508,7 +3550,7 @@
   LM.system = { fitted, init, render, leave, open, create, demo, onKey, live, get: id => S.store[id], current: () => S.cur, close: () => { S.cur = null; S.root = null; S.focus = null; persist(); },
     store: () => S.store, persist, flush, busy: () => !!drag || !!S.pending || (S.tab === 'formboard' && !!LM.formboard && LM.formboard.busy()), act, select: t => { S.sel = t; S.pair = null; S.picking = null; A.refresh(); }, pair: t => { S.pair = t; }, checks, summarize, status, statusOf, kindOf, endsOf, plugsOf, normalize, blank, addBoard, addDrawn, mkConn, bestEnd, pnOf, TAB, KINDS,
     layout: (s, view) => { autoExits(s); return layoutNow(s, view); }, exitSide, cells: n => { CELLS = n; },
-    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, filterFlat, filterUi, systemStats, stateOf, statsStrip, STATES, statePill, worstMap, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
+    externals: s => externals(s), resolve: resolveAll, addSystem, flatten, setLengths, setTags, filterMatch, filterFlat, filterUi, clearUp, upLabel, systemStats, stateOf, statsStrip, STATES, statePill, worstMap, places, parentsOf, tree, devLayout, drawnExtent, freshMinis: s => freshMinis(s, 0), turnAll, fitName, blockLabel, NAME_FS,
     // Tests: the app's hooks set for a while (the test page has no app); returns the ones there before.
     testHooks: x => { const was = A; A = x; return was; },
     tab: () => S.tab, setTab, setFocus, crumbs, openAt, focused: () => S.focus, root: () => S.root,

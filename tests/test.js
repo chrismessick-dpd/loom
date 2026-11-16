@@ -1490,6 +1490,17 @@
       ok(Y.checks(top, get).some(x => x.sev === 'error' && /S1 places a system that isn't here any more/.test(x.text)), 'a missing system');
     } finally { done(); }
   });
+  test('system: a label on a cable from above steps clear of what it would cover, nearest first', () => {
+    const Y = LM.system, g = { ex: 400, ey: 400, dx: 0, dy: -1 }, d = [0, -1], lines = ['○ MicroD · End', 'RA-1'];
+    eq(Y.clearUp(g, d, lines, []), { dx: 0, dy: 0 }, 'nothing in the way: where it always went');
+    const at = Y.upLabel({ x: 400, y: 400 - 140 }, d, lines).hit;
+    const box = { x0: at.x0 + 10, y0: at.y0 + 10, x1: at.x1 - 10, y1: at.y1 - 10 };
+    const off = Y.clearUp(g, d, lines, [box]);
+    ok(off.dx || off.dy, 'a box where its label goes moves it');
+    const E = { x: 400 + off.dx * 4, y: 260 + off.dy * 4 }, h = Y.upLabel(E, d, lines).hit;
+    ok(!(h.x0 < box.x1 && box.x0 < h.x1 && h.y0 < box.y1 && box.y0 < h.y1), 'clear of it now');
+    ok(Math.abs(off.dx) * 4 <= (at.x1 - at.x0) + 12, 'by about its own width, no further');
+  });
   test('system: a harness end marked as its device isn’t asked for in a system', () => {
     const { Y, s, a, c, h, get } = sysFixture();
     const ends = h.nodes.filter(M.isConn);
