@@ -805,8 +805,9 @@
       key: (e, v) => onKey(e, v),
     };
   }
-  // Where a click puts a channel point: an existing channel's point within 8 px (a clean join); else on the
-  // model or a block (a corner, an edge, a face, standing off it by half the section's height); else on the
+  // Where a click puts a channel point: an existing channel's point within 8 px (a clean join); else exactly on
+  // the corner, edge, or face of the model or a block that's highlighted (Chris, 2026-11-15: the point and the
+  // rubber band go where the highlight is; it used to stand off by half the section's height); else on the
   // view's plane.
   function pointAt(v, i, h) {
     const f = cur(), k = v.scale;
@@ -814,8 +815,8 @@
     if (S.draft) for (const p of S.draft.pts) { const q = v.res.project(p); if (Math.hypot(q[0] / k - i.xy[0], q[1] / k - i.xy[1]) < 8) return { p: p.slice(), join: true }; }
     const ft = S.st.featureAt(v, i.xy, (oi, o) => o.id === 'ref' || o.id.startsWith('b:'));
     if (ft && (ft.type === 'point' || ft.on)) {
-      const base = ft.type === 'point' ? ft.p : ft.on, n = ft.n ? norm(ft.n) : (v.flat ? (() => { const a = [0, 0, 0]; a[v.flat.fixed] = v.res.cam.f[v.flat.fixed] > 0 ? 1 : -1; return a; })() : [0, 0, 1]);
-      return { p: addv(base, mulv(n, h / 2)), n, ft };
+      const base = ft.type === 'point' ? ft.p : ft.on, n = ft.n ? norm(ft.n) : null;
+      return { p: base.slice(), n, ft };
     }
     const prev = S.draft && S.draft.pts.length ? S.draft.pts[S.draft.pts.length - 1] : null;
     const p = v.flat ? i.plane(prev ? prev[v.flat.fixed] : (v.flat.fixed === 2 ? h / 2 : 0)) : i.plane(prev ? prev[2] : h / 2);

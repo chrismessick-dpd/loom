@@ -57,6 +57,10 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   edges. `stage.js` `featsOf` now reads a mesh whose triangles all share one face id as facets (neighbors under 30°
   join, sharper creases are edges), with no change to stored files. While drawing a channel, the corner or edge a
   click would snap to is drawn and named by the pointer (or *Join channel*).
+  Then (Chris: the point dropped off the highlight, and the rubber band didn't follow it): a channel point goes exactly
+  on the highlighted corner, edge, or face (it used to stand off half the section's height along the face normal, or
+  straight up), and a corner or edge counts only where nothing is in front of it, the part itself included (a corner
+  behind its own wall was picked in the Top view); of two that line up on screen, the nearer wins.
 
 - **Sync (2026-11-15, Chris: "Build sync next").** `store.js` `syncFormboards` runs after the systems in every
   sync (on opening signed in, the Sync button, Ctrl+S). Each formboard is `loom_data/formboards/projects/<id>.json`

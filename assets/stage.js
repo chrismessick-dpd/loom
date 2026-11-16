@@ -253,17 +253,21 @@
       if (!v.res) return null;
       const s = v.scale, x = xy[0] * s, y = xy[1] * s, h = v.res.pick(x, y);
       const tol = ((camOf(v) || {}).fit || 100) * 0.01;
-      const seen = (q, oi) => { const p = v.res.pick(Math.min(Math.max(q[0], 0), v.cv.width - 1), Math.min(Math.max(q[1], 0), v.cv.height - 1)); return !p || p.obj === oi || q[2] >= p.depth - tol; };
+      // Seen: nothing in front of it, its own object included (a corner behind the part's own wall is hidden).
+      const seen = q => { const p = v.res.pick(Math.min(Math.max(q[0], 0), v.cv.width - 1), Math.min(Math.max(q[1], 0), v.cv.height - 1)); return !p || q[2] >= p.depth - tol; };
       let found = null;
       st.objs.forEach((o, oi) => {
         if (o.hidden || !want(oi, o) || !o.mesh.idx.length) return;
         const F = featsOf(o.mesh), P = p => M3().place(o, p), S2 = p => v.res.project(P(p));
-        let best = null, bestD = 9 * s;
-        F.corners.forEach(c => { const p = vtx(o.mesh, c), q = S2(p), d = Math.hypot(q[0] - x, q[1] - y); if (d < bestD && seen(q, oi)) { bestD = d; best = { type: 'point', p: P(p), label: 'Corner', obj: oi, rank: 0, dist: d, draw: { dot: p } }; } });
+        let best = null, bestD = 9 * s, bestZ = -Infinity;
+        // Corners one over another on screen (a top view): the nearer one.
+        F.corners.forEach(c => { const p = vtx(o.mesh, c), q = S2(p), d = Math.hypot(q[0] - x, q[1] - y); if ((d < bestD - 0.5 * s || (d < bestD + 0.5 * s && q[2] > bestZ)) && d < 9 * s && seen(q, oi)) { bestD = d; bestZ = q[2]; best = { type: 'point', p: P(p), label: 'Corner', obj: oi, rank: 0, dist: d, draw: { dot: p } }; } });
         if (!best) {
           bestD = 7 * s;
           let hs = -1;
-          F.segs.forEach((e, i) => { const a = S2(vtx(o.mesh, e.a)), b = S2(vtx(o.mesh, e.b)), r = segDist([x, y], a, b); if (r.d < bestD && seen([a[0] + (b[0] - a[0]) * r.t, a[1] + (b[1] - a[1]) * r.t, a[2] + (b[2] - a[2]) * r.t], oi)) { bestD = r.d; hs = i; } });
+          let ez = -Infinity;
+          // Edges one over another on screen (seen edge-on): the nearer one.
+          F.segs.forEach((e, i) => { const a = S2(vtx(o.mesh, e.a)), b = S2(vtx(o.mesh, e.b)), r = segDist([x, y], a, b), z = a[2] + (b[2] - a[2]) * r.t; if ((r.d < bestD - 0.5 * s || (r.d < bestD + 0.5 * s && z > ez)) && r.d < 7 * s && seen([a[0] + (b[0] - a[0]) * r.t, a[1] + (b[1] - a[1]) * r.t, z], oi)) { bestD = r.d; ez = z; hs = i; } });
           if (hs >= 0) {
             const e = F.segs[hs];
             if (e.circle >= 0) { const c = F.circles[e.circle]; best = { type: 'line', p: P(c.c), d: M3().turn(o, c.n), label: 'Hole axis', obj: oi, rank: 1, dist: bestD, draw: { circle: e.circle, center: c.c } }; }
