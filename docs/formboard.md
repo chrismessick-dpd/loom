@@ -70,6 +70,12 @@ A third tab on a system, **Formboard**, beside System and List. Files:
   buried. A cable's line under the pointer wins over the channel it runs in.
 - **Dragging a channel's point snaps (2026-11-15, Chris)** as drawing does: another channel's point (not its own),
   else the corner, edge, or face highlighted and named by the pointer, else the view's plane at the point's height.
+- **A formboard per system (2026-11-15, Chris: view the whole system and its formboards, or a lower system and its
+  own).** The Formboard tab follows the system picked, as List does (`listSys`: a system picked in the menu or the
+  breadcrumb, or the system holding a picked harness; the open system when nothing is picked), and a pick keeps the
+  tab (`setFocus`). Each system has its own formboards (`f.system`), any number. A formboard imports only its own
+  system: `flatten` walks that system down (placed systems opened inside it, unless kept as one block), so cables
+  plugged into it from the systems above stay out. Only the demo's own system gets the made-up bracket.
 
 - **Sync (2026-11-15, Chris: "Build sync next").** `store.js` `syncFormboards` runs after the systems in every
   sync (on opening signed in, the Sync button, Ctrl+S). Each formboard is `loom_data/formboards/projects/<id>.json`

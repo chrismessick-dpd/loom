@@ -803,22 +803,26 @@
       if (!S.cam) S.cam = bounds(s);
       reveal(s, S.sel);
     } else if (S.tab === 'list') { show(listSys(f)); S.sel = null; }
-    else if (S.tab === 'formboard') { show(S.root); S.sel = null; }
+    // Formboard (Chris, 2026-11-15: a formboard per system): the system picked, as List; its formboards hold only
+    // its own blocks and cables (placed systems opened inside it), never what plugs in from above.
+    else if (S.tab === 'formboard') { show(listSys(f)); S.sel = null; }
     S.autoSel = JSON.stringify(S.sel);
   }
   function setTab(tab) {
     if (!['detail', 'list', 'formboard'].includes(tab) || !S.root) return;
-    if (tab === 'formboard' && LM.formboard) LM.formboard.ensureDemo(S.root);
+    if (tab === 'formboard' && LM.formboard) LM.formboard.ensureDemo(listSys(S.focus));
     if (tab !== S.tab && tab !== 'formboard') focusFromSel();
     S.tab = tab; applyTab(); persist(); A.refresh();
   }
   // A pick in the menu (app.js, a row under the open system): kind system or harness, its id, and its
   // path (a harness's: the system holding it). The open system itself clears the focus, so System draws it
-  // whole. Off the List tab, the pick shows on System where it's placed (Chris, 2026-11-13).
+  // whole. Off the List tab, the pick shows on System where it's placed (Chris, 2026-11-13); on Formboard, the
+  // picked system's formboards (Chris, 2026-11-15).
   function setFocus(kind, id, path) {
     if (!S.root || pathIds({ path })[0] !== S.root) return;
     S.focus = kind === 'system' && id === S.root ? null : { kind, id, path };
-    if (S.tab !== 'list') S.tab = 'detail';
+    if (S.tab !== 'list' && S.tab !== 'formboard') S.tab = 'detail';
+    if (S.tab === 'formboard' && LM.formboard) LM.formboard.ensureDemo(listSys(S.focus));
     applyTab(); A.refresh();
   }
   // The path from the open system to a system inside its tree: along the one drawn now first (its parents,
@@ -2236,8 +2240,9 @@
   function crumbs() {
     if (!S.root || !S.cur) return '';
     const f = S.focus;
-    if (S.tab === 'list') {
+    if (S.tab === 'list' || S.tab === 'formboard') {
       if (!f) return crumbsHtml(S.root);
+      if (S.tab === 'formboard') return crumbsHtml(f.path);
       const h = f.kind === 'harness' ? A.harness(f.id) : null;
       return crumbsHtml(f.path, f.kind === 'harness' ? (h ? h.title : 'Missing harness') : '');
     }
@@ -2430,7 +2435,7 @@
     const sv0 = page.querySelector('.sys-view');
     if (S.tab === 'formboard' && LM.formboard) {
       if (sv0) sv0.hidden = true;
-      LM.formboard.render(page, S.root);
+      LM.formboard.render(page, S.cur);
       return;
     }
     if (LM.formboard) LM.formboard.leave(page);

@@ -1113,7 +1113,8 @@
   function ensureDemo(systemId) {
     if (!DEMO) return;
     live().filter(f => f.demo && f.demoV !== DEMO_V).forEach(f => { delete S.store[f.id]; if (S.cur === f.id) S.cur = null; });
-    if (forSystem(systemId).length) return;
+    // Only the demo's own system gets the made-up bracket; any other system starts with none.
+    if (forSystem(systemId).length || !(LM.system.get(systemId) || {}).demoVersion) return;
     const f = demo(systemId);
     S.store[f.id] = f;
     persist();
