@@ -22,6 +22,12 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Signoff EE vendors the routing engine (2026-11-18, Chris: Loom owns it).** `assets/route.js` and
+  `assets/connect.js` are copied unchanged into `ee_design_review/assets/vendor/` by EE's
+  `tools/sync_routing.py`, and on into Signoff ME and FW, for Scribe's block diagram. After changing either
+  file here (golden test unchanged, or regenerated on purpose), run that script in EE, then `sync_engine.py` in
+  ME and FW; EE's `build.py` fails while the copies are stale.
+
 - **Kept layouts point at the live cables (2026-11-15, Chris: cables didn't draw their set color).** `layout`'s memo key
   leaves out what doesn't move a route (color, tags, label, a harness's title), and its entries held the cable and harness
   objects they were made from; a sync, undo, or redo swaps those for copies, so a color set since drew in the state's
