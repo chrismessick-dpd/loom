@@ -22,6 +22,20 @@ links to it so far. Before every commit:
 
 ## Status (2026-11-06)
 
+- **Working copies in IndexedDB (2026-11-19, Chris: "start Loom's move", after Signoff EE's; built and tested, not
+  committed).** `assets/local.js` (`LM.local.store(ns)`): harnesses, systems, formboards, and `base` live in IndexedDB
+  `loom-local-<ns>` (store `kv`, one record per document, `<map>:<id>`), so they no longer fill the site's shared 5 MB of
+  localStorage (Loom had 2.8 million characters of it). The code still keeps maps in memory: `get(map)` and `set(map, value)`
+  (`app.js` `load`/`writeNow`, `system.js` and `formboard.js` likewise, `store.js` `read`/`write` for `base`, which is saved as
+  a snapshot). Only documents that changed are written. Startup waits for `LOCAL.load()` (`booted`). localStorage under the
+  old keys is an inbox: the first load after the update, a tab on older code, and the page closing (`flushSaves(true)` on
+  `pagehide` and before a tool update's reload: `flushSync` writes the unwritten documents there at once) all land there,
+  and the next load takes each document when it's new or its `updated` is later (`base`: when new), reads them back, then
+  removes the key. Without IndexedDB it all stays in localStorage. Tests 126 (`local store: …`; `clearNs` resets the store).
+  Tried in the pane: the demo's move, a rename kept in IndexedDB, a rename made right before a reload kept by the inbox, and a
+  1.8 million character made-up move (exact fingerprints, keys removed). `lab/placement.js` (another session's) still reads
+  `loom.v1.systems` from localStorage.
+
 - **Signoff EE vendors the routing engine (2026-11-18, Chris: Loom owns it).** `assets/route.js` and
   `assets/connect.js` are copied unchanged into `ee_design_review/assets/vendor/` by EE's
   `tools/sync_routing.py`, and on into Signoff ME and FW, for Scribe's block diagram. After changing either

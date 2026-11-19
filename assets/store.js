@@ -38,8 +38,11 @@
   let NS = 'loom.v1.';   // tests use their own (setNamespace)
   const DEFAULTS = { owner: 'chrismessick-dpd', dataRepo: 'loom_data', prefix: 'review-loom-', plRepo: 'signoff_pl_data' };
 
-  const read = (k, d) => { try { const v = JSON.parse(localStorage.getItem(NS + k) || 'null'); return v == null ? d : v; } catch (e) { return d; } };
-  const write = (k, v) => { try { localStorage.setItem(NS + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } };
+  // `base` (the harnesses as the last sync left them) is one of the big maps kept in IndexedDB (assets/local.js),
+  // written as a snapshot as localStorage kept it; the rest are small and stay in localStorage.
+  const BIG = { base: 1 };
+  const read = (k, d) => { if (BIG[k] && LM.local) { const v = LM.local.store(NS).get(k); return v && Object.keys(v).length ? v : d; } try { const v = JSON.parse(localStorage.getItem(NS + k) || 'null'); return v == null ? d : v; } catch (e) { return d; } };
+  const write = (k, v) => { if (BIG[k] && LM.local) { LM.local.store(NS).set(k, JSON.parse(JSON.stringify(v || {}))); return; } try { localStorage.setItem(NS + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } };
 
   function token() {
     const clean = t => String(t || '').replace(/[\s​-‍⁠﻿]/g, '');
@@ -172,18 +175,11 @@
   }
   // The stamp of the kept copy of what the last sync left (harnesses: localStorage `base`, read once while
   // it doesn't change; systems: IndexedDB, read at start).
-  let keptMemo = { raw: null, map: {} };
   function keptStamp(kind, id) {
     if (kind === 'system') return sysStamps[id] || '';
     if (kind === 'formboard') return '';
-    let raw = null;
-    try { raw = localStorage.getItem(NS + 'base'); } catch (e) { raw = null; }
-    if (raw !== keptMemo.raw) {
-      const map = {};
-      try { const all = JSON.parse(raw || '{}') || {}; Object.keys(all).forEach(k => { map[k] = stampKey(all[k]); }); } catch (e) { /* none */ }
-      keptMemo = { raw, map };
-    }
-    return keptMemo.map[id] || '';
+    const d = read('base', {})[id];
+    return d ? stampKey(d) : '';
   }
   // Whether this browser has edits to a document that its last sync didn't take (never synced counts).
   // With a base: its stamp moved off it. Without one (a copy from before syncBase): unedited when its stamp

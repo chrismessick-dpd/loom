@@ -8,6 +8,8 @@
   const $ = s => document.querySelector(s);
   const DEMO = /[?&]demo\b/.test(location.search);
   const NS = DEMO ? 'loom.demo.' : 'loom.v1.';
+  const LOCAL = LM.local.store(NS);   // harnesses, systems, formboards, and base in IndexedDB (assets/local.js)
+  let booted = false;
 
   const S = {
     store: {}, cur: null, view: 'build', sel: null, pending: null, cam: null, past: [], future: [],
@@ -62,7 +64,7 @@
 
   // ── Storage ──
   function load() {
-    try { S.store = JSON.parse(localStorage.getItem(NS + 'harnesses') || '{}') || {}; } catch (e) { S.store = {}; }
+    S.store = LOCAL.get('harnesses');   // IndexedDB (assets/local.js), loaded before this runs
     Object.keys(S.store).forEach(id => { try { M.normalize(S.store[id]); } catch (e) { delete S.store[id]; } });
     if (DEMO && (!S.store.hdemo1 || S.store.hdemo1.demoVersion !== LM.demo.VERSION)) S.store.hdemo1 = LM.demo.harness();
     let c = null;
@@ -249,7 +251,7 @@
   function writeNow() {
     saveTimer = null;
     try {
-      localStorage.setItem(NS + 'harnesses', JSON.stringify(S.store));
+      LOCAL.set('harnesses', S.store).then(ok => { if (!ok) toast("Couldn't keep this in the browser.", 'error'); });
       localStorage.setItem(NS + 'current', S.cur || '');
     } catch (e) { toast("Couldn't keep this in the browser: " + e.message, 'error'); }
   }
@@ -260,10 +262,13 @@
   }
   // Writes saves still waiting on their 200 ms timers (harnesses here, systems in system.js), so a tool
   // update's reload, or the tab closing, never drops the last edit.
-  function flushSaves() {
+  // final (the page closing or reloading): what isn't written to IndexedDB yet also goes to localStorage at
+  // once, since an IndexedDB write may not finish (assets/local.js, flushSync).
+  function flushSaves(final) {
     if (saveTimer) { clearTimeout(saveTimer); writeNow(); }
     if (LM.system && LM.system.flush) LM.system.flush();
     if (LM.formboard && LM.formboard.flush) LM.formboard.flush();
+    if (final === true && booted) ['harnesses', 'systems', 'formboards'].forEach(m => LOCAL.flushSync(m));
   }
   // An edit to a harness that may not be open (Formboard's Save to base part): stamped and saved as any
   // edit is. The formboard keeps its own undo step for it.
@@ -276,7 +281,7 @@
     persist(); renderAll();
     return true;
   }
-  window.addEventListener('pagehide', flushSaves);
+  window.addEventListener('pagehide', () => flushSaves(true));
 
   // ── Changes and undo ──
   function snapshot() { if (locked()) return; S.past.push(JSON.stringify(H())); if (S.past.length > 120) S.past.shift(); S.future = []; }
@@ -3051,7 +3056,7 @@
     if (!updateWaiting) return;
     if (!pageIdle()) { setTimeout(reloadWhenIdle, 30000); return; }
     if (updateMemo({ tried: updateWaiting, from: LM.VERSION }) === null) { updateWaiting = ''; return; }
-    flushSaves();
+    flushSaves(true);
     const own = u => { try { return new URL(u, location.href).origin === location.origin; } catch (e) { return false; } };
     const urls = [location.href.split('#')[0]]
       .concat([...document.scripts].map(s => s.src), [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.href))
@@ -3094,27 +3099,33 @@
     b.innerHTML = 'Demo: made-up harnesses for Acme Climate. Edits stay in this browser. <button class="btn btn-plain" data-act="demo-reset">Reset demo</button> <a href="./">Leave the demo</a>';
     document.querySelectorAll('[data-demo-href]').forEach(a => { a.href = a.getAttribute('href') + '?demo'; });
   }
-  load();
-  renderAll();
-  // Sync once on opening, so names and part numbers edited in Signoff PL come over (quietly: no toast
-  // unless something happened or it failed for a reason other than a missing repo).
-  if (canSync()) setTimeout(() => syncNow(true), 400);
-  // Accepted from the suite's invitations card (signoff/assets/invites.js): sync to pick up what was joined.
-  window.addEventListener('signoff:invites-accepted', () => { if (canSync()) syncNow(true); });
-  // Signed in or out in another tab (Signoff EE, say): show it, and sync once signed in. A sign-in's
-  // refresh replaces the token but not who it is (the engine's tokenTag), so it changes nothing here.
-  if (!DEMO) {
-    const whoTag = () => { const t = R ? R.token() : ''; return t && window.Signoff && window.Signoff.model ? window.Signoff.model.tokenTag(t) : t ? 'x' : ''; };
-    let seenTag = whoTag();
-    window.addEventListener('storage', e => {
-      if (e.key !== 'signoff.token' && e.key !== 'signoff.login') return;
-      const tag = whoTag();
-      if (tag === seenTag) return;
-      seenTag = tag;
-      renderSidebar();
-      if (canSync()) syncNow(true);
-    });
-  }
+  // The working copies load from IndexedDB first (assets/local.js), taking in what older code or a closing page left
+  // in localStorage; then the page draws and syncs as it always has.
+  LOCAL.load().catch(() => null).then(info => {
+    booted = true;
+    if (info && info.backend === 'ls' && !DEMO) setTimeout(() => toast('This browser won’t give Loom its larger storage (IndexedDB), so harnesses are kept the old way, with less room.'), 600);
+    load();
+    renderAll();
+    // Sync once on opening, so names and part numbers edited in Signoff PL come over (quietly: no toast
+    // unless something happened or it failed for a reason other than a missing repo).
+    if (canSync()) setTimeout(() => syncNow(true), 400);
+    // Accepted from the suite's invitations card (signoff/assets/invites.js): sync to pick up what was joined.
+    window.addEventListener('signoff:invites-accepted', () => { if (canSync()) syncNow(true); });
+    // Signed in or out in another tab (Signoff EE, say): show it, and sync once signed in. A sign-in's
+    // refresh replaces the token but not who it is (the engine's tokenTag), so it changes nothing here.
+    if (!DEMO) {
+      const whoTag = () => { const t = R ? R.token() : ''; return t && window.Signoff && window.Signoff.model ? window.Signoff.model.tokenTag(t) : t ? 'x' : ''; };
+      let seenTag = whoTag();
+      window.addEventListener('storage', e => {
+        if (e.key !== 'signoff.token' && e.key !== 'signoff.login') return;
+        const tag = whoTag();
+        if (tag === seenTag) return;
+        seenTag = tag;
+        renderSidebar();
+        if (canSync()) syncNow(true);
+      });
+    }
+  });
   // Settings and People & access, shared with the suite (signoff/assets/sidefoot.js); the sync pill stays Loom's.
   if (window.SignoffFoot) window.SignoffFoot.mount({
     settings: '[data-foot-settings]', people: '#people-link',

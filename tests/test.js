@@ -6,7 +6,7 @@
   const out = document.getElementById('out');
   const results = [];
   const NSP = 'loom.test.';
-  function clearNs() { Object.keys(localStorage).filter(k => k.indexOf(NSP) === 0).forEach(k => localStorage.removeItem(k)); }
+  function clearNs() { Object.keys(localStorage).filter(k => k.indexOf(NSP) === 0).forEach(k => localStorage.removeItem(k)); if (LM.local) LM.local.reset(NSP); }
   R.setNamespace(NSP);
 
   function eq(a, b, msg) {
@@ -23,6 +23,44 @@
     return M.normalize(h);
   }
   const stable = v => SG.model.stableStringify(v);
+
+  // ── The local store (assets/local.js, 2026-11-19): harnesses, systems, formboards, and base in IndexedDB ──
+  test('local store: localStorage moves in, reads back, and its keys go; only changed documents are written', async () => {
+    const ns = 'loom.test-local.', name = LM.local.dbName(ns);
+    await new Promise(r => { const q = indexedDB.deleteDatabase(name); q.onsuccess = q.onerror = q.onblocked = () => r(); });
+    LM.local.MAPS.forEach(m => localStorage.removeItem(ns + m));
+    const h1 = { id: 'h1', title: 'One', updated: 100 }, h2 = { id: 'h2', title: 'Two', updated: 200 }, s1 = { id: 's1', title: 'Sys', updated: 50 };
+    localStorage.setItem(ns + 'harnesses', JSON.stringify({ h1, h2 }));
+    localStorage.setItem(ns + 'systems', JSON.stringify({ s1 }));
+    let st = new LM.local.Store(ns);
+    const info = await st.load();
+    eq([info.backend, info.absorbed, Object.keys(st.get('harnesses')).sort(), st.get('systems').s1.title], ['idb', 3, ['h1', 'h2'], 'Sys'], 'everything moved in');
+    eq([localStorage.getItem(ns + 'harnesses'), localStorage.getItem(ns + 'systems')], [null, null], 'and the localStorage keys are gone');
+    // A page closing writes what isn't written yet to localStorage (the inbox); the next load takes the newer one.
+    const map = st.get('harnesses');
+    map.h1 = Object.assign({}, map.h1, { title: 'One, edited', updated: 300 });
+    st.flushSync('harnesses');
+    eq(Object.keys(JSON.parse(localStorage.getItem(ns + 'harnesses'))), ['h1'], 'only the changed document goes to the inbox');
+    await st.chain;
+    // An older writer's whole map in the inbox: an older copy never replaces a newer one.
+    localStorage.setItem(ns + 'harnesses', JSON.stringify({ h1: { id: 'h1', title: 'stale', updated: 150 }, h3: { id: 'h3', title: 'Three', updated: 10 } }));
+    if (st.db) st.db.close();
+    st = new LM.local.Store(ns);
+    await st.load();
+    const hs = st.get('harnesses');
+    eq([hs.h1.title, hs.h2.title, hs.h3.title, localStorage.getItem(ns + 'harnesses')], ['One, edited', 'Two', 'Three', null], 'newer wins, new ones come in, the inbox goes');
+    // A document gone from the map is deleted; one unchanged isn't rewritten.
+    delete hs.h3;
+    const before = Object.assign({}, st.last.harnesses);
+    ok(await st.set('harnesses', hs), 'set');
+    eq([Object.keys(st.last.harnesses).sort(), st.last.harnesses.h2 === before.h2], [['h1', 'h2'], true], 'deleted, and the rest kept');
+    if (st.db) st.db.close();
+    const st2 = new LM.local.Store(ns);
+    await st2.load();
+    eq(Object.keys(st2.get('harnesses')).sort(), ['h1', 'h2'], 'a new page loads it so');
+    if (st2.db) st2.db.close();
+    await new Promise(r => { const q = indexedDB.deleteDatabase(name); q.onsuccess = q.onerror = q.onblocked = () => r(); });
+  });
 
   // ── Wire routes (route.js) ──
   const RT = LM.route;
@@ -1210,7 +1248,7 @@
     // A second sync of each lists the repo, which is when the fake hub learns its blobs (GitHub has them all).
     await R.sync(res.store, opts(hub)); await R.syncSystems(rs.store, get, opts(hub));
     // As if the syncs ran on a version that kept no copies.
-    localStorage.removeItem(NSP + 'base');
+    localStorage.removeItem(NSP + 'base'); if (LM.local) LM.local.reset(NSP);   // base lives in the local store now
     await new Promise((ok2, bad) => { const r = indexedDB.deleteDatabase('loom-sysbase'); r.onsuccess = ok2; r.onerror = bad; r.onblocked = ok2; });
     await R.loadSysBase();
     ok(!R.base(h.id) && !R.hasSysBase(s.id), 'no copies kept here');

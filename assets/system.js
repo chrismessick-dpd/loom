@@ -648,7 +648,7 @@
 
   // ── Storage ──
   function load() {
-    try { S.store = JSON.parse(localStorage.getItem(NS + 'systems') || '{}') || {}; } catch (e) { S.store = {}; }
+    S.store = LM.local.store(NS).get('systems');   // IndexedDB (assets/local.js), loaded before init
     Object.keys(S.store).forEach(id => { try { normalize(S.store[id]); } catch (e) { delete S.store[id]; } });
     resolveAll();
     let c = null;
@@ -660,8 +660,8 @@
   let saveTimer = null;
   function writeNow() {
     saveTimer = null;
-    try { localStorage.setItem(NS + 'systems', JSON.stringify(S.store)); localStorage.setItem(NS + 'currentSystem', S.root || S.cur || ''); }
-    catch (e) { A.toast("Couldn't keep this in the browser: " + e.message, 'error'); }
+    LM.local.store(NS).set('systems', S.store).then(ok => { if (!ok) A.toast("Couldn't keep this in the browser.", 'error'); });
+    try { localStorage.setItem(NS + 'currentSystem', S.root || S.cur || ''); } catch (e) { /* storage blocked */ }
   }
   function persist() {
     if (locked()) LM.compare.reset();   // a drag into the tagged version goes back

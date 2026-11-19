@@ -2,7 +2,7 @@
 // (a STEP model, a DXF, or a picture), routing channels drawn on it, and every cable routed through the
 // channels its classes allow, with a build length for each. A tab beside System and List.
 //
-// A formboard is its own document (loom.v1.formboards here; loom_data/formboards/ when it syncs), naming
+// A formboard is its own document (formboards in IndexedDB here, assets/local.js; loom_data/formboards/ when it syncs), naming
 // its system. What it stores is only what was done to it: blocks moved (blocks[path]), placed systems kept
 // whole (keep[path]), channels, classes, each cable's classes, vias, pin, and end allowances, the settings,
 // and each cable's last route (written by Route, never while drawing). Start spots, the flattened system,
@@ -25,14 +25,14 @@
 
   // ── Store ──
   function load() {
-    try { S.store = JSON.parse(localStorage.getItem(NS + 'formboards') || '{}') || {}; } catch (e) { S.store = {}; }
+    S.store = LM.local.store(NS).get('formboards');   // IndexedDB (assets/local.js), loaded before init
     try { S.ui = JSON.parse(localStorage.getItem(NS + 'fbui') || '{}') || {}; } catch (e) { S.ui = {}; }
     Object.values(S.store).forEach(normalize);
   }
   let saveTimer = 0;
   function writeNow() {
     saveTimer = 0;
-    try { localStorage.setItem(NS + 'formboards', JSON.stringify(S.store)); } catch (e) { if (A) A.toast("Couldn't keep the formboard in the browser: " + e.message, 'error'); }
+    LM.local.store(NS).set('formboards', S.store).then(ok => { if (!ok && A) A.toast("Couldn't keep the formboard in the browser.", 'error'); });
   }
   function persist() { clearTimeout(saveTimer); saveTimer = setTimeout(writeNow, 200); }
   function flush() { if (saveTimer) { clearTimeout(saveTimer); writeNow(); } }
